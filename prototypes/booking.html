@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+
+<html lang="tr"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>RASTLA - Rezervasyon</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "on-primary": "#ffffff",
+                    "secondary-fixed-dim": "#b5c8df",
+                    "primary": "#003e8c",
+                    "tertiary-fixed": "#ffdad6",
+                    "on-tertiary-fixed": "#410002",
+                    "inverse-surface": "#30312f",
+                    "on-surface": "#1b1c1a",
+                    "on-secondary-fixed-variant": "#36485b",
+                    "surface-container-lowest": "#ffffff",
+                    "secondary": "#4e6074",
+                    "surface-variant": "#e4e2df",
+                    "surface-tint": "#175abe",
+                    "inverse-on-surface": "#f2f0ed",
+                    "on-primary-fixed": "#001a43",
+                    "primary-container": "#0754b8",
+                    "on-secondary": "#ffffff",
+                    "surface-bright": "#fbf9f6",
+                    "surface": "#fbf9f6",
+                    "on-tertiary": "#ffffff",
+                    "on-error-container": "#93000a",
+                    "secondary-fixed": "#d1e4fc",
+                    "on-surface-variant": "#424753",
+                    "on-primary-fixed-variant": "#004397",
+                    "error": "#ba1a1a",
+                    "on-secondary-container": "#54667a",
+                    "surface-container-high": "#eae8e5",
+                    "on-error": "#ffffff",
+                    "on-primary-container": "#bccfff",
+                    "on-tertiary-container": "#ffc0b9",
+                    "error-container": "#ffdad6",
+                    "background": "#fbf9f6",
+                    "primary-fixed-dim": "#aec6ff",
+                    "tertiary-container": "#ad1d1c",
+                    "tertiary-fixed-dim": "#ffb4ab",
+                    "inverse-primary": "#aec6ff",
+                    "primary-fixed": "#d8e2ff",
+                    "surface-dim": "#dbdad7",
+                    "outline-variant": "#c2c6d5",
+                    "on-secondary-fixed": "#091d2e",
+                    "surface-container-low": "#f5f3f0",
+                    "secondary-container": "#d1e4fc",
+                    "surface-container": "#efeeeb",
+                    "surface-container-highest": "#e4e2df",
+                    "on-tertiary-fixed-variant": "#92030c",
+                    "outline": "#737784",
+                    "on-background": "#1b1c1a",
+                    "tertiary": "#890009"
+            },
+            "borderRadius": {
+                    "DEFAULT": "0.25rem",
+                    "lg": "0.5rem",
+                    "xl": "0.75rem",
+                    "full": "9999px"
+            },
+            "spacing": {
+                    "base": "4px",
+                    "xl": "32px",
+                    "lg": "24px",
+                    "sm": "12px",
+                    "container-margin": "20px",
+                    "xs": "8px",
+                    "md": "16px",
+                    "gutter": "16px"
+            },
+            "fontFamily": {
+                    "body-md": [
+                            "Inter"
+                    ],
+                    "title-price": [
+                            "Inter"
+                    ],
+                    "display-lg": [
+                            "Inter"
+                    ],
+                    "label-sm": [
+                            "Inter"
+                    ],
+                    "headline-sm": [
+                            "Inter"
+                    ],
+                    "label-bold": [
+                            "Inter"
+                    ],
+                    "headline-md": [
+                            "Inter"
+                    ],
+                    "body-lg": [
+                            "Inter"
+                    ]
+            },
+            "fontSize": {
+                    "body-md": [
+                            "14px",
+                            {
+                                    "lineHeight": "20px",
+                                    "fontWeight": "400"
+                            }
+                    ],
+                    "title-price": [
+                            "22px",
+                            {
+                                    "lineHeight": "24px",
+                                    "fontWeight": "700"
+                            }
+                    ],
+                    "display-lg": [
+                            "32px",
+                            {
+                                    "lineHeight": "40px",
+                                    "letterSpacing": "-0.02em",
+                                    "fontWeight": "700"
+                            }
+                    ],
+                    "label-sm": [
+                            "12px",
+                            {
+                                    "lineHeight": "16px",
+                                    "fontWeight": "400"
+                            }
+                    ],
+                    "headline-sm": [
+                            "20px",
+                            {
+                                    "lineHeight": "28px",
+                                    "fontWeight": "600"
+                            }
+                    ],
+                    "label-bold": [
+                            "12px",
+                            {
+                                    "lineHeight": "16px",
+                                    "letterSpacing": "0.02em",
+                                    "fontWeight": "600"
+                            }
+                    ],
+                    "headline-md": [
+                            "24px",
+                            {
+                                    "lineHeight": "32px",
+                                    "letterSpacing": "-0.01em",
+                                    "fontWeight": "700"
+                            }
+                    ],
+                    "body-lg": [
+                            "16px",
+                            {
+                                    "lineHeight": "24px",
+                                    "fontWeight": "400"
+                            }
+                    ]
+            }
+    },
+        },
+      }
+    </script>
+</head>
+<body class="bg-background text-on-background font-body-md antialiased md:hidden pb-[100px]">
+<!-- TopAppBar -->
+<header class="fixed top-0 w-full z-50 bg-surface dark:bg-background shadow-sm flex justify-between items-center px-container-margin h-16 max-w-7xl mx-auto border-b border-surface-variant">
+<div class="flex items-center gap-4">
+<button class="active:scale-95 transition-transform p-2 rounded-full hover:bg-surface-container-low text-on-surface-variant">
+<span class="material-symbols-outlined">arrow_back</span>
+</button>
+<h1 class="font-headline-sm text-headline-sm text-primary">Rezervasyon</h1>
+</div>
+</header>
+<main class="mt-20 px-container-margin max-w-lg mx-auto space-y-lg">
+<!-- Step 1: Date & Time -->
+<section class="bg-surface-container-lowest rounded-xl p-md border border-outline-variant shadow-[0_2px_8px_rgba(0,0,0,0.05)]">
+<h2 class="font-headline-sm text-headline-sm text-on-surface mb-md">Tarih ve Saat Seçimi</h2>
+<!-- Calendar Placeholder -->
+<div class="mb-lg">
+<div class="flex justify-between items-center mb-sm">
+<button class="p-1 rounded-full hover:bg-surface-container"><span class="material-symbols-outlined text-on-surface-variant">chevron_left</span></button>
+<span class="font-label-bold text-label-bold text-on-surface">Ekim 2023</span>
+<button class="p-1 rounded-full hover:bg-surface-container"><span class="material-symbols-outlined text-on-surface-variant">chevron_right</span></button>
+</div>
+<div class="grid grid-cols-7 gap-1 text-center font-label-sm text-label-sm mb-sm text-on-surface-variant">
+<div>Pzt</div><div>Sal</div><div>Çar</div><div>Per</div><div>Cum</div><div>Cmt</div><div>Paz</div>
+</div>
+<div class="grid grid-cols-7 gap-1 text-center font-body-md text-body-md">
+<div class="py-2 text-outline">28</div><div class="py-2 text-outline">29</div><div class="py-2 text-outline">30</div><div class="py-2 text-outline">31</div>
+<div class="py-2 rounded-full hover:bg-surface-container cursor-pointer">1</div>
+<div class="py-2 rounded-full hover:bg-surface-container cursor-pointer">2</div>
+<div class="py-2 rounded-full hover:bg-surface-container cursor-pointer">3</div>
+<div class="py-2 rounded-full hover:bg-surface-container cursor-pointer">4</div>
+<div class="py-2 rounded-full hover:bg-surface-container cursor-pointer">5</div>
+<div class="py-2 rounded-full hover:bg-surface-container cursor-pointer">6</div>
+<div class="py-2 rounded-full hover:bg-surface-container cursor-pointer">7</div>
+<div class="py-2 rounded-full hover:bg-surface-container cursor-pointer">8</div>
+<div class="py-2 rounded-full hover:bg-surface-container cursor-pointer">9</div>
+<div class="py-2 rounded-full hover:bg-surface-container cursor-pointer">10</div>
+<div class="py-2 rounded-full bg-primary text-on-primary font-bold shadow-sm cursor-pointer">11</div>
+<div class="py-2 rounded-full hover:bg-surface-container cursor-pointer">12</div>
+<div class="py-2 rounded-full hover:bg-surface-container cursor-pointer">13</div>
+<div class="py-2 rounded-full hover:bg-surface-container cursor-pointer">14</div>
+<div class="py-2 rounded-full hover:bg-surface-container cursor-pointer">15</div>
+</div>
+</div>
+<!-- Time Slots -->
+<div>
+<span class="font-label-bold text-label-bold text-on-surface-variant block mb-sm">Saat Seçin</span>
+<div class="grid grid-cols-2 gap-sm">
+<button class="py-2 border border-outline-variant rounded-lg font-body-md text-body-md text-on-surface hover:border-primary focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-colors">09:00</button>
+<button class="py-2 border border-outline-variant rounded-lg font-body-md text-body-md text-on-surface hover:border-primary focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-colors">11:00</button>
+<button class="py-2 border border-outline-variant rounded-lg font-body-md text-body-md text-on-surface hover:border-primary focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-colors">15:00</button>
+<button class="py-2 border-2 border-primary bg-primary-fixed rounded-lg font-body-md text-body-md text-primary font-bold shadow-[0_2px_8px_rgba(0,0,0,0.05)] outline-none relative overflow-hidden flex items-center justify-center gap-1">
+                        18:30 <span class="font-label-sm text-label-sm font-normal text-on-primary-fixed-variant">(Gün Batımı)</span>
+</button>
+</div>
+</div>
+</section>
+<!-- Step 2: Participants -->
+<section class="bg-surface-container-lowest rounded-xl p-md border border-outline-variant shadow-[0_2px_8px_rgba(0,0,0,0.05)]">
+<h2 class="font-headline-sm text-headline-sm text-on-surface mb-md">Katılımcı Sayısı</h2>
+<div class="flex items-center justify-between mb-md">
+<div>
+<div class="font-body-lg text-body-lg text-on-surface font-semibold">Yetişkin</div>
+<div class="font-label-sm text-label-sm text-on-surface-variant">12+ yaş</div>
+</div>
+<div class="flex items-center gap-sm">
+<button class="w-8 h-8 rounded-full border border-outline-variant flex items-center justify-center text-on-surface-variant hover:bg-surface-container active:scale-95">
+<span class="material-symbols-outlined" style="font-size: 20px;">remove</span>
+</button>
+<span class="font-body-lg text-body-lg text-on-surface w-4 text-center font-semibold">2</span>
+<button class="w-8 h-8 rounded-full border border-outline-variant flex items-center justify-center text-primary hover:bg-primary-fixed active:scale-95">
+<span class="material-symbols-outlined" style="font-size: 20px;">add</span>
+</button>
+</div>
+</div>
+<div class="flex items-center justify-between">
+<div>
+<div class="font-body-lg text-body-lg text-on-surface font-semibold">Çocuk</div>
+<div class="font-label-sm text-label-sm text-on-surface-variant">2-11 yaş</div>
+</div>
+<div class="flex items-center gap-sm">
+<button class="w-8 h-8 rounded-full border border-outline-variant flex items-center justify-center text-outline hover:bg-surface-container active:scale-95 opacity-50 cursor-not-allowed">
+<span class="material-symbols-outlined" style="font-size: 20px;">remove</span>
+</button>
+<span class="font-body-lg text-body-lg text-on-surface w-4 text-center font-semibold">0</span>
+<button class="w-8 h-8 rounded-full border border-outline-variant flex items-center justify-center text-primary hover:bg-primary-fixed active:scale-95">
+<span class="material-symbols-outlined" style="font-size: 20px;">add</span>
+</button>
+</div>
+</div>
+</section>
+<!-- Step 3: Summary -->
+<section class="bg-surface-container-lowest rounded-xl p-md border border-outline-variant shadow-[0_2px_8px_rgba(0,0,0,0.05)]">
+<h2 class="font-headline-sm text-headline-sm text-on-surface mb-sm">Özet ve Toplam</h2>
+<div class="space-y-xs font-body-md text-body-md text-on-surface-variant mb-md">
+<div class="flex justify-between">
+<span>11 Ekim 2023 - 18:30 (Gün Batımı)</span>
+</div>
+<div class="flex justify-between pb-sm border-b border-outline-variant border-dashed">
+<span>2 Yetişkin x 600 TL</span>
+<span class="text-on-surface font-medium">1.200 TL</span>
+</div>
+</div>
+<div class="flex justify-between items-center mt-sm">
+<span class="font-body-lg text-body-lg text-on-surface font-semibold">Toplam</span>
+<span class="font-title-price text-title-price text-primary">1.200 TL</span>
+</div>
+</section>
+</main>
+<!-- Sticky Booking Bar -->
+<div class="fixed bottom-0 w-full z-50 bg-surface border-t border-outline-variant p-md shadow-[0_-4px_16px_rgba(0,0,0,0.08)] flex justify-between items-center md:hidden">
+<div>
+<span class="font-label-sm text-label-sm text-on-surface-variant block">Toplam Tutar</span>
+<span class="font-title-price text-title-price text-on-surface">1.200 TL</span>
+</div>
+<button class="bg-primary text-on-primary font-headline-sm text-headline-sm py-3 px-6 rounded-xl hover:bg-primary-container active:scale-95 transition-all shadow-sm">
+            Ödemeye Geç
+        </button>
+</div>
+</body></html>

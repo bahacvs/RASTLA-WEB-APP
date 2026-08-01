@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+
+<html class="light" lang="tr"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>RASTLA - Ana Sayfa</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "on-primary": "#ffffff",
+                        "secondary-fixed-dim": "#b5c8df",
+                        "primary": "#003e8c",
+                        "tertiary-fixed": "#ffdad6",
+                        "on-tertiary-fixed": "#410002",
+                        "inverse-surface": "#30312f",
+                        "on-surface": "#1b1c1a",
+                        "on-secondary-fixed-variant": "#36485b",
+                        "surface-container-lowest": "#ffffff",
+                        "secondary": "#4e6074",
+                        "surface-variant": "#e4e2df",
+                        "surface-tint": "#175abe",
+                        "inverse-on-surface": "#f2f0ed",
+                        "on-primary-fixed": "#001a43",
+                        "primary-container": "#0754b8",
+                        "on-secondary": "#ffffff",
+                        "surface-bright": "#fbf9f6",
+                        "surface": "#fbf9f6",
+                        "on-tertiary": "#ffffff",
+                        "on-error-container": "#93000a",
+                        "secondary-fixed": "#d1e4fc",
+                        "on-surface-variant": "#424753",
+                        "on-primary-fixed-variant": "#004397",
+                        "error": "#ba1a1a",
+                        "on-secondary-container": "#54667a",
+                        "surface-container-high": "#eae8e5",
+                        "on-error": "#ffffff",
+                        "on-primary-container": "#bccfff",
+                        "on-tertiary-container": "#ffc0b9",
+                        "error-container": "#ffdad6",
+                        "background": "#fbf9f6",
+                        "primary-fixed-dim": "#aec6ff",
+                        "tertiary-container": "#ad1d1c",
+                        "tertiary-fixed-dim": "#ffb4ab",
+                        "inverse-primary": "#aec6ff",
+                        "primary-fixed": "#d8e2ff",
+                        "surface-dim": "#dbdad7",
+                        "outline-variant": "#c2c6d5",
+                        "on-secondary-fixed": "#091d2e",
+                        "surface-container-low": "#f5f3f0",
+                        "secondary-container": "#d1e4fc",
+                        "surface-container": "#efeeeb",
+                        "surface-container-highest": "#e4e2df",
+                        "on-tertiary-fixed-variant": "#92030c",
+                        "outline": "#737784",
+                        "on-background": "#1b1c1a",
+                        "tertiary": "#890009"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "base": "4px",
+                        "xl": "32px",
+                        "lg": "24px",
+                        "sm": "12px",
+                        "container-margin": "20px",
+                        "xs": "8px",
+                        "md": "16px",
+                        "gutter": "16px"
+                    },
+                    "fontFamily": {
+                        "body-md": ["Inter"],
+                        "title-price": ["Inter"],
+                        "display-lg": ["Inter"],
+                        "label-sm": ["Inter"],
+                        "headline-sm": ["Inter"],
+                        "label-bold": ["Inter"],
+                        "headline-md": ["Inter"],
+                        "body-lg": ["Inter"]
+                    },
+                    "fontSize": {
+                        "body-md": ["14px", { "lineHeight": "20px", "fontWeight": "400" }],
+                        "title-price": ["22px", { "lineHeight": "24px", "fontWeight": "700" }],
+                        "display-lg": ["32px", { "lineHeight": "40px", "letterSpacing": "-0.02em", "fontWeight": "700" }],
+                        "label-sm": ["12px", { "lineHeight": "16px", "fontWeight": "400" }],
+                        "headline-sm": ["20px", { "lineHeight": "28px", "fontWeight": "600" }],
+                        "label-bold": ["12px", { "lineHeight": "16px", "letterSpacing": "0.02em", "fontWeight": "600" }],
+                        "headline-md": ["24px", { "lineHeight": "32px", "letterSpacing": "-0.01em", "fontWeight": "700" }],
+                        "body-lg": ["16px", { "lineHeight": "24px", "fontWeight": "400" }]
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-background text-on-background font-body-md pb-24">
+<!-- TopAppBar -->
+<header class="bg-surface shadow-sm fixed top-0 w-full z-50 flex justify-between items-center px-container-margin h-16 w-full max-w-7xl mx-auto">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-primary" style="font-variation-settings: 'FILL' 1;">location_on</span>
+<div class="flex flex-col">
+<span class="font-label-sm text-label-sm text-on-surface-variant">Konum</span>
+<span class="font-body-md text-body-md font-semibold">Büyükçekmece, İstanbul</span>
+</div>
+</div>
+<div class="flex items-center gap-4">
+<img alt="RASTLA Logo" class="h-8 w-8 object-contain" src="https://lh3.googleusercontent.com/aida-public/AB6AXuD-vN6y3ZdEKooX6IkmdNnkyiidVBYZI72Mi3TUWvMZ6vZ8aK_8dVIBgiqS0rxTQoOvk3uwQgphwSxiN0RyMXmrhFLU6RUfVVrHL6zs1c4DNoBNfuBTesW_L8vomRxHeBxCVRfQxLD_p_dyMB97DHIyRFc3SHzZRga74ba0e-s-rSzECxIsYvBDQStzktZ4sr3Qnp7KpOz6sEpkwF4xmro5QeN5vHpRh53cozKR7sbWX-jNpNdmDiC-jA"/>
+<button class="active:scale-95 transition-transform text-on-surface-variant hover:bg-surface-container-low p-2 rounded-full">
+<span class="material-symbols-outlined">notifications</span>
+</button>
+</div>
+</header>
+<main class="pt-20 px-container-margin max-w-7xl mx-auto">
+<!-- Hero Section -->
+<section class="mt-xl mb-xl">
+<h1 class="font-display-lg text-display-lg text-on-background mb-4">Yakınındaki deneyimlere rastla.</h1>
+<p class="font-body-lg text-body-lg text-on-surface-variant mb-6">Su sporlarından tekne turlarına, bölgedeki en iyi aktiviteleri şeffaf fiyatlarla keşfet ve güvenle rezervasyon yap.</p>
+<!-- Search Bento Box -->
+<div class="bg-surface-container-lowest p-md rounded-xl border border-outline-variant shadow-[0_2px_8px_rgba(0,0,0,0.05)]">
+<div class="grid grid-cols-1 gap-sm">
+<div class="flex items-center gap-3 p-3 bg-surface border border-outline-variant rounded-lg">
+<span class="material-symbols-outlined text-outline">search</span>
+<input class="bg-transparent border-none outline-none w-full font-body-md text-body-md placeholder:text-outline focus:ring-0 p-0" placeholder="Nerede?" type="text" value="Büyükçekmece"/>
+</div>
+<div class="flex items-center gap-3 p-3 bg-surface border border-outline-variant rounded-lg">
+<span class="material-symbols-outlined text-outline">kayaking</span>
+<input class="bg-transparent border-none outline-none w-full font-body-md text-body-md placeholder:text-outline focus:ring-0 p-0" placeholder="Ne yapmak istiyorsun?" type="text"/>
+</div>
+<div class="grid grid-cols-2 gap-sm">
+<div class="flex items-center gap-3 p-3 bg-surface border border-outline-variant rounded-lg">
+<span class="material-symbols-outlined text-outline">calendar_today</span>
+<span class="font-body-md text-body-md text-on-surface">Tarih</span>
+</div>
+<div class="flex items-center gap-3 p-3 bg-surface border border-outline-variant rounded-lg">
+<span class="material-symbols-outlined text-outline">group</span>
+<span class="font-body-md text-body-md text-on-surface">Kişi sayısı</span>
+</div>
+</div>
+<button class="bg-primary text-on-primary font-headline-sm text-headline-sm py-3 rounded-lg w-full flex items-center justify-center gap-2 active:scale-95 transition-transform mt-2">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">search</span>
+                        Ara
+                    </button>
+</div>
+</div>
+</section>
+<!-- Quick Categories -->
+<section class="mb-xl overflow-hidden">
+<div class="flex gap-4 overflow-x-auto pb-4 scrollbar-hide -mx-container-margin px-container-margin">
+<button class="flex flex-col items-center gap-2 min-w-[72px]">
+<div class="w-16 h-16 rounded-full bg-secondary-container flex items-center justify-center border border-outline-variant">
+<span class="material-symbols-outlined text-on-secondary-container text-3xl">speed</span>
+</div>
+<span class="font-label-sm text-label-sm text-on-surface">Jet Ski</span>
+</button>
+<button class="flex flex-col items-center gap-2 min-w-[72px]">
+<div class="w-16 h-16 rounded-full bg-surface-container-lowest flex items-center justify-center border border-outline-variant">
+<span class="material-symbols-outlined text-on-surface-variant text-3xl">surfing</span>
+</div>
+<span class="font-label-sm text-label-sm text-on-surface-variant">Elek. SUP</span>
+</button>
+<button class="flex flex-col items-center gap-2 min-w-[72px]">
+<div class="w-16 h-16 rounded-full bg-surface-container-lowest flex items-center justify-center border border-outline-variant">
+<span class="material-symbols-outlined text-on-surface-variant text-3xl">water</span>
+</div>
+<span class="font-label-sm text-label-sm text-on-surface-variant">SUP</span>
+</button>
+<button class="flex flex-col items-center gap-2 min-w-[72px]">
+<div class="w-16 h-16 rounded-full bg-surface-container-lowest flex items-center justify-center border border-outline-variant">
+<span class="material-symbols-outlined text-on-surface-variant text-3xl">rowing</span>
+</div>
+<span class="font-label-sm text-label-sm text-on-surface-variant">Kano</span>
+</button>
+<button class="flex flex-col items-center gap-2 min-w-[72px]">
+<div class="w-16 h-16 rounded-full bg-surface-container-lowest flex items-center justify-center border border-outline-variant">
+<span class="material-symbols-outlined text-on-surface-variant text-3xl">sailing</span>
+</div>
+<span class="font-label-sm text-label-sm text-on-surface-variant">Tekne</span>
+</button>
+</div>
+</section>
+<!-- Popüler Deneyimler -->
+<section class="mb-xl">
+<h2 class="font-headline-md text-headline-md text-on-background mb-lg">Yakınındaki popüler deneyimler</h2>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-md">
+<!-- Card 1 -->
+<div class="bg-surface-container-lowest rounded-xl border border-outline-variant overflow-hidden shadow-[0_2px_8px_rgba(0,0,0,0.05)]">
+<div class="h-48 w-full relative" data-alt="A vibrant, high-quality, sunny photograph of a fast jet ski speeding across bright blue sparkling ocean water near a clean sandy beach. Bright, cheerful lighting, energetic mood, modern lifestyle photography style suitable for a high-end booking app." style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuAUFmRyiCtbpvZGgS64t9HLjVQt6owsDBrH3bHSuwPVHD3mLJeMO0uv4CHNYWPAeM7GaKFYHJmDH8pnkiH9eAhIEtQOV5jmXFiF9Rtlfxxb3Cb5sBzT5gWgo-3AkN3DqSgiDTB19nHA0eggugV0nZDvHza7dKDhoBFKXlO9sLw9A2xZUFSQoMQhdxJwJ1Z_567CitJ74y9ylxuv5c0Xztilp08RQ31moKHsxa9pSHiFOXSIzi3c71vr1A')">
+<div class="absolute top-3 left-3 bg-surface-container-lowest px-2 py-1 rounded text-primary font-label-bold text-label-bold flex items-center gap-1">
+<span class="material-symbols-outlined text-sm" style="font-variation-settings: 'FILL' 1;">star</span>
+                            4.9 (124)
+                        </div>
+</div>
+<div class="p-4">
+<div class="flex justify-between items-start mb-2">
+<h3 class="font-headline-sm text-headline-sm text-on-surface">Premium Jet Ski Kiralama</h3>
+<button class="text-on-surface-variant"><span class="material-symbols-outlined">favorite_border</span></button>
+</div>
+<p class="font-body-md text-body-md text-on-surface-variant mb-4 flex items-center gap-2">
+<span class="material-symbols-outlined text-sm">schedule</span> 30 Dk • Büyükçekmece Sahil
+                        </p>
+<div class="flex justify-between items-end">
+<div>
+<span class="font-label-sm text-label-sm text-on-surface-variant block">Kişi başı</span>
+<span class="font-title-price text-title-price text-on-surface">1.200 TL</span>
+</div>
+<button class="bg-primary-container text-on-primary-container px-4 py-2 rounded-lg font-label-bold text-label-bold active:scale-95 transition-transform">İncele</button>
+</div>
+</div>
+</div>
+<!-- Card 2 -->
+<div class="bg-surface-container-lowest rounded-xl border border-outline-variant overflow-hidden shadow-[0_2px_8px_rgba(0,0,0,0.05)]">
+<div class="h-48 w-full relative" data-alt="A calm, serene photograph of a person paddleboarding on clear, tranquil waters at sunset near a coast. Warm golden hour lighting, peaceful mood, high-quality travel photography style for a modern activity marketplace." style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuCEVK4u4HioNcV-T1MZKJIwVYUutegjHFqvW1L6AmrpSvMDuLRfw7Q2GZ96ADCVcG15AhkEIoD9ASiqXZnqk29UJGvhksxnq7z1HtOzwvhnwE6vWV_7YUUGYHrTHtgW_Bh7UhoqGrvBAR_F9bIfH7fTboJwX7mUEy403iENo7O2KWGMBVUHJcdQKsNK9MS3VKqnErnMAPWh84wFKJEFn49ir4lzk8Io6vSsTAy-Ci3rSY9zltUbtNTi3Q')">
+<div class="absolute top-3 left-3 bg-surface-container-lowest px-2 py-1 rounded text-primary font-label-bold text-label-bold flex items-center gap-1">
+<span class="material-symbols-outlined text-sm" style="font-variation-settings: 'FILL' 1;">star</span>
+                            4.7 (89)
+                        </div>
+</div>
+<div class="p-4">
+<div class="flex justify-between items-start mb-2">
+<h3 class="font-headline-sm text-headline-sm text-on-surface">Gün Batımı SUP Turu</h3>
+<button class="text-on-surface-variant"><span class="material-symbols-outlined">favorite_border</span></button>
+</div>
+<p class="font-body-md text-body-md text-on-surface-variant mb-4 flex items-center gap-2">
+<span class="material-symbols-outlined text-sm">schedule</span> 1 Saat • Mimaroba Koyu
+                        </p>
+<div class="flex justify-between items-end">
+<div>
+<span class="font-label-sm text-label-sm text-on-surface-variant block">Kişi başı</span>
+<span class="font-title-price text-title-price text-on-surface">450 TL</span>
+</div>
+<button class="bg-primary-container text-on-primary-container px-4 py-2 rounded-lg font-label-bold text-label-bold active:scale-95 transition-transform">İncele</button>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Bugün Müsait -->
+<section class="mb-xl bg-surface-container-low -mx-container-margin px-container-margin py-lg">
+<div class="flex justify-between items-end mb-md">
+<div>
+<h2 class="font-headline-md text-headline-md text-on-background">Bugün Müsait</h2>
+<p class="font-body-md text-body-md text-on-surface-variant">Büyükçekmece'de hemen rezerve et</p>
+</div>
+<button class="text-primary font-label-bold text-label-bold">Tümü</button>
+</div>
+<div class="flex gap-4 overflow-x-auto pb-4 scrollbar-hide">
+<div class="min-w-[240px] bg-surface-container-lowest rounded-xl border border-outline-variant p-3 shadow-sm">
+<div class="flex gap-3">
+<div class="w-20 h-20 rounded-lg bg-cover bg-center flex-shrink-0" data-alt="Close up photography of colorful kayaks resting on a sandy beach looking out towards clear blue ocean water. Bright daylight, inviting mood, crisp details for a leisure booking app interface." style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuD_qtwB8pSyZZExkMW8_IwiyC_YgNgc8yJQIx9bkG4_BvM77kQTxHwOEzFM-XrAyNrdiEuxFO1c0z1inmlQO1uiCPf0hZjYwflCJMnCqREHVWDAfIDjeYw-UdLmVDGakwlU0-WmgKAzy2Iq6QBfJKnezdmQFXveLxt4IzD8JcrA8TxYIFnAZKLVBnX0XCtZYLpXXmurK4KeirC5HJmZTXVOEc9gS92GoBlabXz00eBflG7K0TtMGTjn6Q')"></div>
+<div class="flex flex-col justify-between">
+<h4 class="font-headline-sm text-headline-sm text-on-surface text-sm line-clamp-2">Tekli Kano Kiralama</h4>
+<div class="flex items-center gap-1 text-tertiary">
+<span class="material-symbols-outlined text-sm">flash_on</span>
+<span class="font-label-bold text-label-bold text-xs">Hemen Onay</span>
+</div>
+<span class="font-title-price text-title-price text-on-surface text-lg">250 TL</span>
+</div>
+</div>
+</div>
+<div class="min-w-[240px] bg-surface-container-lowest rounded-xl border border-outline-variant p-3 shadow-sm">
+<div class="flex gap-3">
+<div class="w-20 h-20 rounded-lg bg-cover bg-center flex-shrink-0" data-alt="High quality aerial shot of a small white motorboat cruising near a coastline. Bright blue water, sunny day, professional travel and leisure aesthetic." style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuAafRTMsJcIJ4o7aOTOUlrzrr_w4Pj5L7zLQ34X-qemwt12IPjZ_sodUTQFRXGLYxMQN001RvWcQGfLX190l31ys4-znehOT5oyThGD148v1yjTDgOxknaBgwIit-mQ7sgA-58FvDEHVEdrba8NsyztlmL9U_TXuiT23ttoJDadmSRKDTfB1hwSV4vL0Xx9Whq7E6wDj_q2wJpkMRyzP-i9GlYuoTuGTIEU0bhCnF9eW4Ado95NZASjiQ')"></div>
+<div class="flex flex-col justify-between">
+<h4 class="font-headline-sm text-headline-sm text-on-surface text-sm line-clamp-2">Özel Tekne Turu (2 Saat)</h4>
+<div class="flex items-center gap-1 text-tertiary">
+<span class="material-symbols-outlined text-sm">flash_on</span>
+<span class="font-label-bold text-label-bold text-xs">Hemen Onay</span>
+</div>
+<span class="font-title-price text-title-price text-on-surface text-lg">3.500 TL</span>
+</div>
+</div>
+</div>
+</div>
+</section>
+</main>
+<!-- BottomNavBar -->
+<nav class="bg-surface border-t border-outline-variant shadow-[0_-2px_8px_rgba(0,0,0,0.05)] fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-4 pb-4 pt-2 md:hidden rounded-t-xl">
+<button class="flex flex-col items-center justify-center bg-secondary-container text-on-secondary-container rounded-full px-4 py-1 active:scale-90 duration-200">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">home</span>
+<span class="font-label-bold text-label-bold mt-1">Home</span>
+</button>
+<button class="flex flex-col items-center justify-center text-on-surface-variant px-4 py-1 hover:text-primary transition-all active:scale-90 duration-200">
+<span class="material-symbols-outlined">search</span>
+<span class="font-label-bold text-label-bold mt-1">Search</span>
+</button>
+<button class="flex flex-col items-center justify-center text-on-surface-variant px-4 py-1 hover:text-primary transition-all active:scale-90 duration-200">
+<span class="material-symbols-outlined">calendar_today</span>
+<span class="font-label-bold text-label-bold mt-1">Bookings</span>
+</button>
+<button class="flex flex-col items-center justify-center text-on-surface-variant px-4 py-1 hover:text-primary transition-all active:scale-90 duration-200">
+<span class="material-symbols-outlined">person</span>
+<span class="font-label-bold text-label-bold mt-1">Profile</span>
+</button>
+</nav>
+<style>
+        .scrollbar-hide::-webkit-scrollbar {
+            display: none;
+        }
+        .scrollbar-hide {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+    </style>
+</body></html>
