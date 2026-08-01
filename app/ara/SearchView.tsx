@@ -1,21 +1,33 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import Image from 'next/image';
 import { Icon } from '@/components/Icon';
 import { SearchResultCard } from '@/components/SearchResultCard';
 import { BottomNavBar } from '@/components/BottomNavBar';
 import { FilterModal } from './FilterModal';
-import { ACTIVITIES, MAP_IMAGE, MAP_PINS, SEARCH_RESULT_SLUGS } from '@/lib/data';
+import {
+  CATEGORIES,
+  MAP_IMAGE,
+  MAP_PINS,
+  searchActivities,
+  type ActivityCategory,
+} from '@/lib/data';
 import { formatPrice } from '@/lib/format';
 
-const results = SEARCH_RESULT_SLUGS.map((s) => ACTIVITIES.find((a) => a.slug === s)!);
-
-const QUICK_FILTERS = ['Su Sporları', 'Bugün', 'Fiyat: Düşük-Yüksek'];
-
-export function SearchView() {
+export function SearchView({
+  initialQuery = '',
+  initialCategory,
+}: {
+  initialQuery?: string;
+  initialCategory?: ActivityCategory;
+}) {
   const [view, setView] = useState<'list' | 'map'>('list');
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [query, setQuery] = useState(initialQuery);
+  const [category, setCategory] = useState<ActivityCategory | undefined>(initialCategory);
+
+  const results = useMemo(() => searchActivities({ query, category }), [query, category]);
 
   return (
     <div className="pb-[80px]">
@@ -45,7 +57,9 @@ export function SearchView() {
               <Icon name="search" />
             </span>
             <input
-              type="text"
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
               placeholder="Aktivite, lokasyon ara..."
               aria-label="Aktivite, lokasyon ara"
               className="h-12 w-full rounded-[14px] border border-outline-variant bg-surface-container-lowest pr-4 pl-10 text-body-md text-on-surface shadow-card focus:ring-2 focus:ring-primary focus:outline-none"
@@ -62,15 +76,26 @@ export function SearchView() {
             <Icon name="tune" size={18} />
             Filtrele
           </button>
-          {QUICK_FILTERS.map((label) => (
-            <button
-              key={label}
-              type="button"
-              className="rounded-full border border-outline-variant bg-surface-container-lowest px-4 py-2 text-label-bold whitespace-nowrap text-on-surface-variant transition-transform active:scale-95"
-            >
-              {label}
-            </button>
-          ))}
+
+          {/* Kategori çipleri. Aktif olan yeniden tıklanınca filtre kalkar. */}
+          {CATEGORIES.map(({ id, label }) => {
+            const active = category === id;
+            return (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setCategory(active ? undefined : id)}
+                aria-pressed={active}
+                className={`rounded-full border px-4 py-2 text-label-bold whitespace-nowrap transition-transform active:scale-95 ${
+                  active
+                    ? 'border-primary bg-primary text-on-primary'
+                    : 'border-outline-variant bg-surface-container-lowest text-on-surface-variant'
+                }`}
+              >
+                {label}
+              </button>
+            );
+          })}
         </div>
 
         <div className="mt-md flex justify-center px-container-margin">
@@ -97,26 +122,56 @@ export function SearchView() {
       <main className="relative min-h-[calc(100vh-250px)] w-full">
         {view === 'list' ? (
           <div className="flex flex-col gap-md p-container-margin">
-            {results.map((activity) => (
-              <SearchResultCard key={activity.slug} activity={activity} />
-            ))}
+            <p className="text-body-md text-on-surface-variant" aria-live="polite">
+              {results.length > 0
+                ? `${results.length} deneyim bulundu`
+                : 'Aramanla eşleşen deneyim yok'}
+            </p>
+
+            {results.length > 0 ? (
+              results.map((activity) => (
+                <SearchResultCard key={activity.slug} activity={activity} />
+              ))
+            ) : (
+              <div className="rounded-xl border border-outline-variant bg-surface-container-lowest p-lg text-center shadow-card">
+                <p className="mb-sm text-headline-sm text-on-surface">Sonuç bulunamadı</p>
+                <p className="mb-md text-body-md text-on-surface-variant">
+                  Farklı bir kelime deneyin ya da filtreleri temizleyin.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setQuery('');
+                    setCategory(undefined);
+                  }}
+                  className="rounded-lg bg-primary px-4 py-2 text-label-bold text-on-primary transition-transform active:scale-95"
+                >
+                  Filtreleri Temizle
+                </button>
+              </div>
+            )}
           </div>
         ) : (
           <div className="absolute inset-0 h-full w-full">
             <div className="relative h-full w-full">
               <Image src={MAP_IMAGE.src} alt={MAP_IMAGE.alt} fill className="object-cover" />
 
-              {MAP_PINS.map((pin) => (
+              {/*
+                Konumlar temsilî (gerçek harita sağlayıcısı henüz bağlı değil),
+                ama fiyatlar filtrelenmiş sonuçlardan gelir — böylece harita ile
+                liste birbiriyle çelişmez.
+              */}
+              {results.slice(0, MAP_PINS.length).map((activity, i) => (
                 <div
-                  key={`${pin.top}-${pin.left}`}
-                  style={{ top: pin.top, left: pin.left }}
+                  key={activity.slug}
+                  style={{ top: MAP_PINS[i].top, left: MAP_PINS[i].left }}
                   className={`absolute flex items-center gap-1 rounded-lg px-2 py-1 text-label-sm font-semibold shadow-md ${
-                    pin.highlighted
+                    MAP_PINS[i].highlighted
                       ? 'z-10 scale-110 bg-primary text-on-primary'
                       : 'border border-outline-variant bg-surface-container-lowest text-on-surface'
                   }`}
                 >
-                  {formatPrice(pin.priceTRY)}
+                  {formatPrice(activity.priceTRY)}
                 </div>
               ))}
 

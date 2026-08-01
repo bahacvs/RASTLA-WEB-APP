@@ -25,7 +25,12 @@ export default function HomePage() {
             ve güvenle rezervasyon yap.
           </p>
 
-          <div className="rounded-xl border border-outline-variant bg-surface-container-lowest p-md shadow-card">
+          {/* GET formu: JavaScript olmadan da /ara?q=… adresine gider. */}
+          <form
+            action="/ara"
+            method="get"
+            className="rounded-xl border border-outline-variant bg-surface-container-lowest p-md shadow-card"
+          >
             <div className="grid grid-cols-1 gap-sm">
               <div className="flex items-center gap-3 rounded-lg border border-outline-variant bg-surface p-3">
                 <Icon name="search" className="text-outline" />
@@ -41,7 +46,8 @@ export default function HomePage() {
               <div className="flex items-center gap-3 rounded-lg border border-outline-variant bg-surface p-3">
                 <Icon name="kayaking" className="text-outline" />
                 <input
-                  type="text"
+                  type="search"
+                  name="q"
                   placeholder="Ne yapmak istiyorsun?"
                   aria-label="Ne yapmak istiyorsun?"
                   className="w-full border-none bg-transparent p-0 text-body-md outline-none placeholder:text-outline focus:ring-0"
@@ -59,40 +65,30 @@ export default function HomePage() {
                 </div>
               </div>
 
-              <Link
-                href="/ara"
+              <button
+                type="submit"
                 className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg bg-primary py-3 text-headline-sm text-on-primary transition-transform active:scale-95"
               >
                 <Icon name="search" filled />
                 Ara
-              </Link>
+              </button>
             </div>
-          </div>
+          </form>
         </section>
 
         {/* Hızlı kategoriler */}
         <section className="mb-xl overflow-hidden">
           <div className="scrollbar-hide -mx-container-margin flex gap-4 overflow-x-auto px-container-margin pb-4">
-            {CATEGORIES.map(({ id, label, icon }, i) => (
+            {CATEGORIES.map(({ id, label, icon }) => (
               <Link
                 key={id}
-                href="/ara"
+                href={`/ara?kategori=${id}`}
                 className="flex min-w-[72px] flex-col items-center gap-2"
               >
-                <div
-                  className={`flex h-16 w-16 items-center justify-center rounded-full border border-outline-variant ${
-                    i === 0
-                      ? 'bg-secondary-container text-on-secondary-container'
-                      : 'bg-surface-container-lowest text-on-surface-variant'
-                  }`}
-                >
+                <div className="flex h-16 w-16 items-center justify-center rounded-full border border-outline-variant bg-surface-container-lowest text-on-surface-variant transition-colors hover:bg-secondary-container hover:text-on-secondary-container">
                   <Icon name={icon} size={30} />
                 </div>
-                <span
-                  className={`text-label-sm ${i === 0 ? 'text-on-surface' : 'text-on-surface-variant'}`}
-                >
-                  {label}
-                </span>
+                <span className="text-label-sm text-on-surface-variant">{label}</span>
               </Link>
             ))}
           </div>

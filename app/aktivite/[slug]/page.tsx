@@ -5,8 +5,9 @@ import Link from 'next/link';
 import { Icon } from '@/components/Icon';
 import { DetailHeader } from './DetailHeader';
 import { Gallery } from './Gallery';
-import { ACTIVITIES, getActivity } from '@/lib/data';
+import { ACTIVITIES, getActivity, type Activity } from '@/lib/data';
 import { formatPrice } from '@/lib/format';
+import { SITE_URL } from '@/lib/site';
 
 export function generateStaticParams() {
   return ACTIVITIES.map((a) => ({ slug: a.slug }));
@@ -21,11 +22,52 @@ export async function generateMetadata({
   const activity = getActivity(slug);
   if (!activity) return {};
 
+  const description =
+    activity.description ??
+    `${activity.location} bölgesinde ${activity.durationLabel} süren ${activity.title}.`;
+
   return {
     title: activity.title,
-    description:
-      activity.description ??
-      `${activity.location} bölgesinde ${activity.durationLabel} süren ${activity.title}.`,
+    description,
+    alternates: { canonical: `/aktivite/${activity.slug}` },
+    openGraph: {
+      type: 'article',
+      title: activity.title,
+      description,
+      url: `/aktivite/${activity.slug}`,
+      images: [{ url: activity.image, alt: activity.imageAlt }],
+    },
+  };
+}
+
+/**
+ * Arama motorlarının fiyat, puan ve konumu doğrudan okuyabilmesi için
+ * yapılandırılmış veri. Yerel aramada zengin sonuç görünümü sağlar.
+ */
+function activityJsonLd(activity: Activity) {
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'Product',
+    name: activity.title,
+    description: activity.description,
+    // schema.org mutlak URL bekler; göreli yol tarayıcıda çözülse de
+    // tarama araçları için yeterli değil.
+    image: `${SITE_URL}${activity.image}`,
+    url: `${SITE_URL}/aktivite/${activity.slug}`,
+    category: activity.category,
+    ...(activity.operator && { brand: { '@type': 'Organization', name: activity.operator } }),
+    offers: {
+      '@type': 'Offer',
+      price: activity.priceTRY,
+      priceCurrency: 'TRY',
+      availability: 'https://schema.org/InStock',
+      areaServed: activity.location,
+    },
+    aggregateRating: {
+      '@type': 'AggregateRating',
+      ratingValue: activity.rating,
+      reviewCount: activity.reviewCount,
+    },
   };
 }
 
@@ -42,6 +84,10 @@ export default async function ActivityDetailPage({
 
   return (
     <div className="flex min-h-screen flex-col pb-24 md:pb-0">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(activityJsonLd(activity)) }}
+      />
       <DetailHeader />
 
       {/* max-w-[28rem]: `max-w-md` kullanılamıyor — @theme'deki --spacing-md

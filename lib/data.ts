@@ -192,8 +192,49 @@ export const POPULAR_SLUGS = ['premium-jet-ski', 'gun-batimi-sup-turu'];
 /** Ana sayfadaki "Bugün Müsait" şeridi — anında onaylanan kısa aktiviteler. */
 export const AVAILABLE_TODAY_SLUGS = ['tekli-kano-kiralama', 'ozel-tekne-turu'];
 
-/** Arama sonuçları listesi. */
-export const SEARCH_RESULT_SLUGS = ['elektrikli-sup-deneyimi', 'ruzgar-sorfu-baslangic'];
+/** Kategori kimliğinden görünen ada. */
+export const CATEGORY_LABELS: Record<ActivityCategory, string> = {
+  'jet-ski': 'Jet Ski',
+  'elektrikli-sup': 'Elektrikli SUP',
+  sup: 'SUP',
+  kano: 'Kano',
+  tekne: 'Tekne',
+  'ruzgar-sorfu': 'Rüzgâr Sörfü',
+};
+
+export function isActivityCategory(value: string | undefined): value is ActivityCategory {
+  return value !== undefined && value in CATEGORY_LABELS;
+}
+
+/** Türkçe arama için: aksanları ve büyük/küçük farkını yok sayar. */
+function normalize(value: string): string {
+  return value
+    .toLocaleLowerCase('tr-TR')
+    .replaceAll('ı', 'i')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+}
+
+/** Başlık, konum ve kategori üzerinden arama. Boş sorgu tüm listeyi döner. */
+export function searchActivities({
+  query = '',
+  category,
+}: {
+  query?: string;
+  category?: ActivityCategory;
+}): Activity[] {
+  const q = normalize(query.trim());
+
+  return ACTIVITIES.filter((activity) => {
+    if (category && activity.category !== category) return false;
+    if (!q) return true;
+
+    const haystack = normalize(
+      `${activity.title} ${activity.location} ${CATEGORY_LABELS[activity.category]}`
+    );
+    return q.split(/\s+/).every((term) => haystack.includes(term));
+  });
+}
 
 /** Ana sayfadaki hızlı kategori şeridi. */
 export const CATEGORIES: {

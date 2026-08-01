@@ -20,10 +20,14 @@ RASTLA, Türkiye'deki su sporları ve yerel turistik aktiviteleri tek platformda
 
 | Rota | Ekran |
 | --- | --- |
-| `/` | Ana sayfa — arama, kategoriler, popüler ve bugün müsait deneyimler |
-| `/ara` | Arama — liste/harita geçişi ve filtre paneli |
+| `/` | Ana sayfa — arama formu, kategoriler, popüler ve bugün müsait deneyimler |
+| `/ara` | Arama — metin ve kategori filtresi, liste/harita geçişi, filtre paneli |
 | `/aktivite/[slug]` | Aktivite detayı — galeri, bilgiler, harita, değerlendirmeler |
 | `/rezervasyon/[slug]` | Rezervasyon — tarih, saat, katılımcı seçimi ve tutar hesabı |
+
+Arama `?q=` ve `?kategori=` parametrelerini kabul eder; ana sayfadaki form ve kategori çipleri buraya bağlanır. Arama Türkçe'ye duyarlıdır: aksan ve büyük/küçük harf farkı yok sayılır (`buyukcekmece` → `Büyükçekmece`).
+
+Ayrıca `/sitemap.xml`, `/robots.txt` ve `/manifest.webmanifest` üretilir; aktivite sayfaları schema.org `Product` yapılandırılmış verisi taşır.
 
 ## Yerelde çalıştırma
 
@@ -53,7 +57,7 @@ npm run fetch:images     # prototip görsellerini yeniden indirir (kaynak kaydı
 | Değişken | Etkisi |
 | --- | --- |
 | `NEXT_PUBLIC_WHATSAPP_NUMBER` | Operasyonun numarası (uluslararası biçim, yalnızca rakam: `905321234567`). **Tanımlı değilse** rezervasyon butonu "Yakında" olarak devre dışı kalır — bozuk bağlantı üretilmez. |
-| `NEXT_PUBLIC_SITE_URL` | Mesaja eklenecek aktivite bağlantısının kökü. Tanımsızsa bağlantı eklenmez. |
+| `NEXT_PUBLIC_SITE_URL` | Sitenin genel adresi. Sitemap, robots, canonical ve Open Graph etiketleri ile WhatsApp mesajındaki bağlantı bunu kullanır. Vercel'de tanımsızsa dağıtımın kendi adresine düşer. |
 
 Bunlar `NEXT_PUBLIC_*` oldukları için **derleme anında** gömülür; değiştirdikten sonra yeniden derleyin.
 
