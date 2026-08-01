@@ -1,4 +1,19 @@
+# Bağımlılıklar
+node_modules
+
+# Next.js build çıktıları
+.next
+out
+next-env.d.ts
+*.tsbuildinfo
+
+# Dağıtım
+.vercel
+
+# İşletim sistemi
 .DS_Store
 Thumbs.db
-.vercel
-node_modules
+
+# Ortam değişkenleri
+.env
+.env*.local
