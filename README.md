@@ -44,6 +44,21 @@ npm run generate:icons   # ikon SVG'lerini yeniden üretir
 npm run fetch:images     # prototip görsellerini yeniden indirir (kaynak kaydı)
 ```
 
+## Pilot rezervasyon kanalı
+
+Ödeme altyapısı ve rezervasyon veritabanı devreye girene kadar rezervasyon talepleri **WhatsApp üzerinden, elle** karşılanır. Kullanıcının seçtiği tarih, saat, katılımcı sayısı ve tutar hazır bir mesaja dönüşür.
+
+`.env.example` dosyasını `.env.local` olarak kopyalayıp doldurun:
+
+| Değişken | Etkisi |
+| --- | --- |
+| `NEXT_PUBLIC_WHATSAPP_NUMBER` | Operasyonun numarası (uluslararası biçim, yalnızca rakam: `905321234567`). **Tanımlı değilse** rezervasyon butonu "Yakında" olarak devre dışı kalır — bozuk bağlantı üretilmez. |
+| `NEXT_PUBLIC_SITE_URL` | Mesaja eklenecek aktivite bağlantısının kökü. Tanımsızsa bağlantı eklenmez. |
+
+Bunlar `NEXT_PUBLIC_*` oldukları için **derleme anında** gömülür; değiştirdikten sonra yeniden derleyin.
+
+Bu kanal geçicidir: gerçek rezervasyon kaydı, ödeme ve müsaitlik yönetimi devreye girdiğinde `lib/whatsapp.ts` ve `BookingAction` bileşeni kaldırılacaktır.
+
 ## Doğrulama betikleri
 
 Sunucu ayaktayken (`npm start`) çalıştırılır:
@@ -70,7 +85,7 @@ Bu çalışma tam bir üretim uygulaması değildir; veri katmanı henüz sahted
 4. Harita sağlayıcısı ve konum altyapısı seçilmelidir — şu an harita statik bir görseldir.
 5. KVKK, mesafeli satış, iptal/iade ve işletme sözleşmeleri hazırlanmalıdır.
 
-Rezervasyon akışı arayüz seviyesinde çalışır (tarih, saat, katılımcı ve tutar hesabı gerçek state'e bağlıdır) ancak hiçbir rezervasyon kaydı oluşturmaz.
+Rezervasyon akışı arayüz seviyesinde çalışır (tarih, saat, katılımcı ve tutar hesabı gerçek state'e bağlıdır) ancak veritabanına hiçbir kayıt yazmaz — talepler yukarıdaki pilot kanaldan elle karşılanır.
 
 ### Görsel lisansı — açık madde
 

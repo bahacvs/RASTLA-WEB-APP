@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Icon } from '@/components/Icon';
 import { formatPrice } from '@/lib/format';
+import { activityUrl, buildWhatsAppUrl, isPilotBookingEnabled } from '@/lib/whatsapp';
 import type { Activity } from '@/lib/data';
 
 const WEEKDAYS = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz'];
@@ -48,6 +49,20 @@ export function BookingView({ activity }: { activity: Activity }) {
 
   // Bu fazda çocuk indirimi tanımlı değil; herkes kişi başı fiyattan sayılır.
   const total = (adults + children) * activity.priceTRY;
+
+  const dateLabel = selectedDay ? `${selectedDay} ${MONTHS[month]} ${year}` : null;
+  const timeLabel = slot ? `${slot}${selectedSlot?.note ? ` (${selectedSlot.note})` : ''}` : null;
+  const ready = Boolean(selectedDay && slot);
+
+  const whatsappUrl = buildWhatsAppUrl({
+    activityTitle: activity.title,
+    activityUrl: activityUrl(activity.slug),
+    dateLabel,
+    timeLabel,
+    adults,
+    children,
+    totalLabel: formatPrice(total),
+  });
 
   function shiftMonth(delta: number) {
     const next = new Date(year, month + delta, 1);
@@ -191,9 +206,8 @@ export function BookingView({ activity }: { activity: Activity }) {
           <div className="mb-md space-y-xs text-body-md text-on-surface-variant">
             <div className="flex justify-between">
               <span>
-                {selectedDay ? `${selectedDay} ${MONTHS[month]} ${year}` : 'Tarih seçilmedi'}
-                {slot && ` - ${slot}`}
-                {selectedSlot?.note && ` (${selectedSlot.note})`}
+                {dateLabel ?? 'Tarih seçilmedi'}
+                {timeLabel && ` - ${timeLabel}`}
               </span>
             </div>
 
@@ -224,10 +238,17 @@ export function BookingView({ activity }: { activity: Activity }) {
             <span className="text-body-lg font-semibold text-on-surface">Toplam</span>
             <span className="text-title-price text-primary">{formatPrice(total)}</span>
           </div>
+
+          {/* Masaüstünde yapışkan çubuk gizli olduğu için aksiyon burada durur. */}
+          <div className="mt-md hidden md:block">
+            <BookingAction ready={ready} href={whatsappUrl} className="w-full" />
+          </div>
         </section>
 
         <p className="pb-4 text-label-sm text-on-surface-variant">
-          Bu bir arayüz prototipidir. Ödeme altyapısı ve rezervasyon kaydı henüz bağlı değildir.
+          {isPilotBookingEnabled
+            ? 'Rezervasyon talebiniz WhatsApp üzerinden iletilir ve işletme tarafından teyit edilir. Online ödeme henüz devrede değildir.'
+            : 'Bu bir arayüz prototipidir. Ödeme altyapısı ve rezervasyon kaydı henüz bağlı değildir.'}
         </p>
       </main>
 
@@ -237,15 +258,57 @@ export function BookingView({ activity }: { activity: Activity }) {
           <span className="block text-label-sm text-on-surface-variant">Toplam Tutar</span>
           <span className="text-title-price text-on-surface">{formatPrice(total)}</span>
         </div>
-        <button
-          type="button"
-          disabled={!selectedDay || !slot}
-          className="rounded-xl bg-primary px-6 py-3 text-headline-sm text-on-primary shadow-sm transition-all hover:bg-primary-container active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          Ödemeye Geç
-        </button>
+        <BookingAction ready={ready} href={whatsappUrl} />
       </div>
     </div>
+  );
+}
+
+/**
+ * Rezervasyon aksiyonu.
+ *
+ * Pilot kanalı açıkken WhatsApp'a giden bir bağlantı, kapalıyken devre dışı bir
+ * buton çizer — böylece numara tanımlı değilken kullanıcı bozuk bir bağlantıya
+ * tıklamaz. Tarih ve saat seçilmeden de aktifleşmez.
+ */
+function BookingAction({
+  ready,
+  href,
+  className = '',
+}: {
+  ready: boolean;
+  href: string | null;
+  className?: string;
+}) {
+  const base =
+    'inline-flex items-center justify-center gap-2 rounded-xl px-6 py-3 text-center text-headline-sm shadow-sm transition-all';
+
+  if (!ready || !href) {
+    return (
+      <button
+        type="button"
+        disabled
+        title={
+          !isPilotBookingEnabled
+            ? 'Rezervasyon kanalı henüz açık değil'
+            : 'Önce tarih ve saat seçin'
+        }
+        className={`${base} cursor-not-allowed bg-primary text-on-primary opacity-50 ${className}`}
+      >
+        {isPilotBookingEnabled ? 'Rezervasyon Talebi' : 'Yakında'}
+      </button>
+    );
+  }
+
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className={`${base} bg-primary text-on-primary hover:bg-primary-container active:scale-95 ${className}`}
+    >
+      Rezervasyon Talebi
+    </a>
   );
 }
 

@@ -74,6 +74,28 @@ const flooredTotal = await totalText();
 check('yetişkin 1’e kadar iniyor', flooredTotal.includes('1 Yetişkin'), flooredTotal.replace(/\n/g, ' '));
 check('minimumda azalt butonu kilitli', await dec.isDisabled());
 
+// --- Pilot rezervasyon kanalı ---
+// Numara tanımlıysa WhatsApp bağlantısı seçimlerle birlikte güncellenmeli;
+// tanımlı değilse aksiyon devre dışı kalmalı.
+const waLink = page.locator('a[href^="https://wa.me/"]').first();
+
+if (await waLink.count()) {
+  const decoded = decodeURIComponent((await waLink.getAttribute('href')) ?? '');
+  check(
+    'WhatsApp mesajı güncel seçimi taşıyor',
+    decoded.includes('1 yetişkin, 1 çocuk') && decoded.includes('1.200 TL'),
+    decoded.split('\n').filter((l) => l.startsWith('Katılımcı') || l.startsWith('Tahmini')).join(' | ')
+  );
+
+  await page.getByRole('button', { name: 'Yetişkin sayısını artır' }).click();
+  await page.waitForTimeout(200);
+  const updated = decodeURIComponent((await waLink.getAttribute('href')) ?? '');
+  check('bağlantı katılımcı değişimini yansıtıyor', updated.includes('2 yetişkin, 1 çocuk'));
+} else {
+  const disabled = page.getByRole('button', { name: 'Yakında' }).first();
+  check('numara tanımsızken aksiyon devre dışı', await disabled.isDisabled());
+}
+
 await browser.close();
 
 let failed = 0;
