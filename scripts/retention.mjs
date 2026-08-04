@@ -41,11 +41,25 @@ console.log(`  sınır tarihi : ${cutoff.slice(0, 10)}`);
 console.log(`  toplam kayıt : ${total}`);
 console.log(`  süresi dolan : ${expired}`);
 
+// Hız sınırı sayaçları: penceresi kapanmış satırlar. IP adresi içerdikleri
+// için de gereksiz yere tutulmamalı.
+const RATE_LIMIT_HOURS = Number(process.env.RATE_LIMIT_RETENTION_HOURS ?? 24);
+const rateCutoff = new Date(Date.now() - RATE_LIMIT_HOURS * 60 * 60 * 1000).toISOString();
+
+const staleLimits = db
+  .prepare('SELECT COUNT(*) AS n FROM rate_limits WHERE window_start < ?')
+  .get(rateCutoff).n;
+
+console.log(`\nHız sınırı sayaçları — ${RATE_LIMIT_HOURS} saatten eski`);
+console.log(`  toplam satır : ${db.prepare('SELECT COUNT(*) AS n FROM rate_limits').get().n}`);
+console.log(`  süresi dolan : ${staleLimits}`);
+
 if (!apply) {
   console.log('\nHiçbir şey silinmedi. Gerçekten silmek için: --uygula');
 } else {
   const deleted = db.prepare('DELETE FROM audit_log WHERE at < ?').run(cutoff).changes;
-  console.log(`\n${deleted} kayıt silindi.`);
+  const limits = db.prepare('DELETE FROM rate_limits WHERE window_start < ?').run(rateCutoff).changes;
+  console.log(`\n${deleted} günlük kaydı, ${limits} sayaç satırı silindi.`);
 
   // SQLite silinen alanı dosyaya iade etmez; imhanın diskte de gerçekleşmesi
   // için boşluk geri alınır.

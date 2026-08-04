@@ -255,6 +255,25 @@ CREATE TABLE IF NOT EXISTS audit_log (
   meta         TEXT
 );
 
+-- Hız sınırı sayaçları.
+--
+-- Sabit pencere sayacı: her kova (ör. "login:ip:1.2.3.4") bir pencere
+-- başlangıcı ve o pencerede kaç deneme yapıldığını tutar.
+--
+-- Sabit pencerenin bilinen zayıflığı, pencere sınırında iki katı denemeye
+-- izin vermesidir (bir pencerenin sonunda N, hemen ardından yenisinin
+-- başında N). Kayan pencere bunu çözerdi ama her denemenin zaman damgasını
+-- saklamayı gerektirirdi. Kaba kuvvete karşı bu fark önemsiz: 92 bit
+-- entropili bir parolayı denemek için 5 yerine 10 hakkın olması hiçbir şeyi
+-- değiştirmez. Basitlik ve tek ifadeyle atomiklik tercih edildi.
+CREATE TABLE IF NOT EXISTS rate_limits (
+  bucket        TEXT PRIMARY KEY,
+  window_start  TEXT NOT NULL,   -- ISO 8601
+  count         INTEGER NOT NULL CHECK (count >= 0)
+);
+
+CREATE INDEX IF NOT EXISTS idx_rate_limits_window ON rate_limits(window_start);
+
 CREATE INDEX IF NOT EXISTS idx_audit_at ON audit_log(at DESC);
 CREATE INDEX IF NOT EXISTS idx_audit_operator ON audit_log(operator_id, at DESC);
 CREATE INDEX IF NOT EXISTS idx_audit_actor ON audit_log(actor_type, actor_id, at DESC);

@@ -49,4 +49,3 @@ Metin yazmak uyum sağlamıyor; şunlar hâlâ eksik:
 
 - **Hesap silme akışı yok.** md. 11 kapsamındaki silme talebi elle karşılanıyor.
 - **Otomatik uyarı yok.** İşlem günlüğü var (`/isletme/gunluk`) ve kapsam tespiti artık mümkün, ama ihlali kendiliğinden fark edip haber veren bir mekanizma yok; günlük elle incelenir.
-- **Hız sınırı yok.** Kaba kuvvet denemeleri engellenmiyor.

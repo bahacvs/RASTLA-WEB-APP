@@ -153,6 +153,25 @@ npm run retention              # ne silineceğini gösterir
 npm run retention -- --uygula  # gerçekten siler
 ```
 
+### Hız sınırı
+
+Üç yer korunuyor, üçünün gerekçesi farklı:
+
+| Nerede | Sınır | Neden |
+| --- | --- | --- |
+| İşletme girişi (e-posta başına) | 15 dakikada **5 başarısız** | Kaba kuvvet |
+| İşletme girişi (IP başına) | 15 dakikada **20 başarısız** | E-posta gezen saldırgan |
+| Bilet onayı (personel başına) | 5 dakikada **20 başarısız** | Kod sondajı |
+| Rezervasyon (telefon başına) | Saatte **8** | Kötüye kullanım |
+| Rezervasyon (IP başına) | Saatte **40** | Betikle kötüye kullanım |
+
+İki tasarım kararı:
+
+- **Sayılan şey başarısızlıktır, deneme değil.** Günde yirmi kez giren personel saldırgan değildir; onu engellemek yalnızca işini durdururdu. Kaba kuvvetin tanımı arka arkaya başarısızlıktır ve ondan kaçış yoktur. Doğru parola girildiğinde o e-postanın sayacı sıfırlanır.
+- **IP sınırları bilinçli olarak gevşek.** Türkiye'de mobil operatörler CGNAT kullanır: yüzlerce kullanıcı tek bir genel IP'nin arkasından çıkar. Sıkı bir IP sınırı, aynı sahildeki müşterilerin birbirini engellemesi demek olurdu. Gerçek sınır telefon numarası ve e-posta bazında; IP yalnızca emniyet ağı.
+
+Karar, projenin geri kalanındaki desenle aynı biçimde **tek bir koşullu SQL ifadesinde** verilir. `verify-rate-limit.mjs` bunu 30 eşzamanlı süreçle sınar: 10'luk kotayı tam olarak 10 istek geçer.
+
 ### Bu fazın bilinen sınırları
 
 Aşağıdakiler **pilot seviyesindedir** ve üretime çıkmadan önce değişmelidir:
@@ -160,6 +179,7 @@ Aşağıdakiler **pilot seviyesindedir** ve üretime çıkmadan önce değişmel
 1. **SQLite kalıcı değildir.** Vercel'in sunucusuz ortamında dosya sistemi geçicidir; üretimde Postgres'e geçilmelidir. Etkilenen tek yer `lib/db/`.
 2. **Kimlik doğrulanmıyor.** Kullanıcı adını ve telefonunu beyan eder, doğrulanmaz; oturum imzalı çerezle aynı cihaza bağlıdır. SMS OTP gerekir.
 3. **Kimlik doğrulama tek katmanlıdır.** İşletme hesapları kişiye özeldir (e-posta + parola, scrypt özeti), ancak ikinci faktör (SMS/TOTP) yoktur.
+7. **İhlal uyarısı otomatik değil.** İşlem günlüğü ve hız sınırı var; ama şüpheli bir örüntü fark edildiğinde kimseye bildirim gitmiyor, günlük elle inceleniyor.
 4. **Ödeme yoktur.** Tutar hesaplanır ama tahsil edilmez; ödeme deneyim yerinde alınır.
 5. **Fotoğraf yükleme yoktur.** İşletme metin alanlarını ve takvimi yönetir; görselleri RASTLA ekler.
 6. **Harita karoları dış bağımlılıktır.** Uygulamanın tek dış isteği budur ve kaçışı yoktur. Sağlayıcı kullanıcı IP'lerini görür — KVKK aydınlatma metninde yer almalı.
@@ -177,6 +197,7 @@ node scripts/verify-ticket-flow.mjs   # rezervasyon -> bilet -> onay -> ikinci o
 node scripts/verify-offline-ticket.mjs # bağlantı kesikken bilet ve QR açılıyor mu
 node scripts/verify-offline.mjs       # harita karoları dışında dış istek var mı
 node scripts/verify-audit.mjs         # işlem günlüğü: ne kaydediliyor, ne KAYDEDİLMİYOR
+node scripts/verify-rate-limit.mjs    # hız sınırı ve 30 süreçli eşzamanlılık
 node scripts/verify-interactions.mjs  # görünüm geçişi, filtre paneli, tutar hesabı
 node scripts/screenshots.mjs [dizin]  # her rotanın mobil + masaüstü görüntüsü
 ```

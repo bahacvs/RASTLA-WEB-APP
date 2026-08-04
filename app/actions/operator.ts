@@ -16,6 +16,15 @@ import { clearOperatorSession, setOperatorSession } from '@/lib/session';
 import { getActivityBySlug } from '@/lib/db/activities';
 import { record } from '@/lib/db/audit';
 import { requestContext } from '@/lib/request-context';
+import {
+  bucketKey,
+  consume,
+  describeRetry,
+  LIMITS,
+  peek,
+  reset,
+  type LimitRule,
+} from '@/lib/db/rate-limit';
 
 export type LoginState = { error?: string };
 
@@ -25,11 +34,44 @@ export async function operatorLoginAction(
 ): Promise<LoginState> {
   const email = String(formData.get('email') ?? '');
   const password = String(formData.get('password') ?? '');
-
-  const result = authenticateOperatorUser(email, password);
   const context = await requestContext();
 
+  // Sayılan şey BAŞARISIZ denemedir, deneme değil: günde yirmi kez giren bir
+  // personel saldırgan değildir. Kaba kuvvetin tanımı ise arka arkaya
+  // başarısızlıktır ve ondan kaçış yok.
+  //
+  // Kontrol parola doğrulanmadan ÖNCE yapılır — sonra yapılsaydı her deneme
+  // yine bir scrypt hesabı yaptırır, saldırgan parolayı bulamasa bile
+  // sunucuyu meşgul edebilirdi.
+  //
+  // İki ayrı kova: IP değiştiren saldırgan e-posta kovasına, e-posta gezen
+  // saldırgan IP kovasına takılır.
+  const emailBucket = bucketKey('login:email', normalizeEmail(email));
+  const buckets: Array<[string, LimitRule]> = [[emailBucket, LIMITS.loginByEmail]];
+  if (context.ip) buckets.push([bucketKey('login:ip', context.ip), LIMITS.loginByIp]);
+
+  for (const [bucket, rule] of buckets) {
+    const gate = peek(bucket, rule);
+    if (!gate.allowed) {
+      record({
+        action: 'operator.login_failed',
+        actorType: 'anonymous',
+        outcome: 'denied',
+        ...context,
+        meta: { email: normalizeEmail(email), reason: 'rate_limited', bucket },
+      });
+
+      return {
+        error: `Çok fazla deneme yapıldı. ${describeRetry(gate.retryAfterSeconds)} sonra tekrar deneyin.`,
+      };
+    }
+  }
+
+  const result = authenticateOperatorUser(email, password);
+
   if (!result.ok) {
+    for (const [bucket, rule] of buckets) consume(bucket, rule);
+
     // Başarısız denemeler de kaydedilir: bir ihlali fark ettiren çoğunlukla
     // başarılı girişler değil, aynı kaynaktan gelen deneme yoğunluğudur.
     // Parola HİÇBİR koşulda günlüğe yazılmaz.
@@ -50,6 +92,11 @@ export async function operatorLoginAction(
     }
     return { error: 'E-posta veya parola hatalı.' };
   }
+
+  // Doğru parolayı girene ceza yok: unutkanlık saldırı değildir. IP kovası
+  // bilinçli olarak sıfırlanmaz — aynı adresin arkasındaki başka bir hesaba
+  // yapılan denemeler, buradan başarılı bir girişle silinmemeli.
+  reset(emailBucket);
 
   recordLogin(result.user.id);
   record({
@@ -131,17 +178,35 @@ export async function redeemAction(_prev: ScanState, formData: FormData): Promis
     ...context,
   } as const;
 
+  // Yalnızca BAŞARISIZ denemeler sayılır (aşağıda). Başarılı onaylar
+  // sınırlanmaz: yoğun bir günde arka arkaya elli bileti okutmak normaldir ve
+  // sınıra takılırsa misafirler kapıda bekler.
+  const failureBucket = bucketKey('redeem:user', session.user.id);
+
+  /** Başarısız denemeyi sayar; kota dolduysa mesaj döner. */
+  function countFailure(): string | null {
+    const gate = consume(failureBucket, LIMITS.redeemFailures);
+    return gate.allowed
+      ? null
+      : `Çok fazla başarısız deneme. ${describeRetry(gate.retryAfterSeconds)} sonra tekrar deneyin.`;
+  }
+
   const existing = getBookingByCode(code);
   if (!existing) {
+    const limited = countFailure();
     record({
       ...actor,
       action: 'booking.redeem_failed',
       outcome: 'failure',
-      meta: { reason: 'not_found' },
+      meta: { reason: limited ? 'not_found_rate_limited' : 'not_found' },
     });
-    return { status: 'error', message: 'Bilet bulunamadı. Kodu kontrol edin.' };
+    return {
+      status: 'error',
+      message: limited ?? 'Bilet bulunamadı. Kodu kontrol edin.',
+    };
   }
   if (existing.operatorId !== operatorId) {
+    const limited = countFailure();
     // Başka işletmenin biletini okutmaya çalışmak ya karışıklıktır ya da
     // sondaj; her iki hâlde de görülebilir olmalı.
     record({
@@ -152,7 +217,10 @@ export async function redeemAction(_prev: ScanState, formData: FormData): Promis
       targetId: existing.id,
       meta: { reason: 'wrong_operator', ownerOperatorId: existing.operatorId },
     });
-    return { status: 'error', message: 'Bu bilet başka bir işletmeye ait.' };
+    return {
+      status: 'error',
+      message: limited ?? 'Bu bilet başka bir işletmeye ait.',
+    };
   }
 
   // Onaylayan olarak işletme değil KİŞİ kaydedilir. Bilet onayı geri alınamaz;
@@ -162,6 +230,10 @@ export async function redeemAction(_prev: ScanState, formData: FormData): Promis
   const customerName = getUser(existing.userId)?.name ?? '—';
 
   if (result.ok) {
+    // Geçerli bir onay, o personelin başarısız deneme sayacını sıfırlar:
+    // gerçek iş yapıldığı belli.
+    reset(failureBucket);
+
     record({
       ...actor,
       action: 'booking.redeemed',

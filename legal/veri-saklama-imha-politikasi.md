@@ -31,6 +31,7 @@ Kişisel veri içeren **fiziksel/kâğıt ortam bulunmamaktadır.**
 | Oturum çerezi | 90 gün | Oluşturulma | Oturumun sürdürülmesi |
 | Sunucu günlükleri | [12 ay] | Kayıt anı | Sistem güvenliği |
 | İşlem günlüğü (IP ve tarayıcı bilgisi dahil) | [12 ay] | Kayıt anı | KVKK md. 12 güvenlik tedbiri; ihlal tespiti ve kapsam belirleme. Süresiz tutmak ayrıca ihlal olurdu. |
+| Hız sınırı sayaçları (IP, e-posta, telefon) | 24 saat | Sayaç penceresinin başlangıcı | Kaba kuvvet ve kötüye kullanımın engellenmesi; pencere kapandıktan sonra hiçbir işlevi kalmaz |
 | Ticari elektronik ileti izni / ret kaydı | Mevzuatın öngördüğü süre | İznin alınması / reddi | 6563 sayılı Kanun |
 
 > **[Hukukçu notu:** 10 yıllık süre TBK md. 146 genel zamanaşımı esas alınarak önerilmiştir. Vergi Usul Kanunu ve TTK'daki defter/belge saklama yükümlülükleriyle kesişimi ve ödeme altyapısı devreye girdiğinde değişip değişmeyeceği değerlendirilmelidir.]
@@ -41,7 +42,8 @@ Kişisel veri içeren **fiziksel/kâğıt ortam bulunmamaktadır.**
 | --- | --- |
 | Veritabanı kayıtları | Kaydın silinmesi; muhasebe/uyuşmazlık gereği tutulması gerekiyorsa kimlik ve iletişim alanlarının anonimleştirilmesi |
 | Sunucu günlükleri | Otomatik yaşlandırma ile silme |
-| İşlem günlüğü | Yaşlandırma ile toplu silme (`purgeAuditOlderThan`) |
+| İşlem günlüğü | Yaşlandırma ile toplu silme (`npm run retention -- --uygula`) |
+| Hız sınırı sayaçları | Aynı komutla silinir |
 | Yedekler | Yedek döngüsü tamamlandığında üzerine yazma |
 | Kullanıcı cihazındaki önbellek | Kullanıcının kontrolündedir; tarayıcı site verilerinin temizlenmesiyle kaldırılır |
 

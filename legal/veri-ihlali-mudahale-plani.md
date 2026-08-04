@@ -55,7 +55,7 @@ Genel bir liste değil — bu uygulamanın gerçek zayıf noktaları:
 | **Veritabanı dosyası/yedeği ifşa oldu** | Yetkisiz erişim kaydı, yanlış yapılandırılmış depolama | Erişimi kes, kimlik bilgilerini döndür | **Kritik** — tüm misafir ad, telefon ve rezervasyon geçmişi |
 | **Barındırma sağlayıcısında ihlal** | Sağlayıcı bildirimi | Sağlayıcıdan kapsam bilgisi iste, kendi anahtarlarını döndür | Kapsama göre |
 | **İşletme personeli misafir listesini dışarı çıkardı** | Misafir şikâyeti, beklenmeyen pazarlama iletisi | İşletme erişimini askıya al, sözleşme md. 4.1 ihlali | Orta-yüksek |
-| **Bilet kodu tahmin edildi** | Aynı IP'den çok sayıda başarısız kod denemesi | Hız sınırı uygula | Düşük — kod 160 bit rastgele; pratikte tahmin edilemez |
+| **Bilet kodu tahmin edilmeye çalışıldı** | `/isletme/gunluk` içinde yoğun "Bilet onayı reddedildi" kaydı | Hız sınırı zaten devrede (5 dakikada 20 başarısız deneme); ilgili personel hesabını inceleyin | Düşük — kod 160 bit rastgele; pratikte tahmin edilemez |
 | **Yanlış misafire bildirim gitti** | Misafir şikâyeti | Kaydı düzelt | Düşük-orta |
 
 > **Not:** Ödeme altyapısı henüz yok, kart verisi işlenmiyor. Ödeme devreye girdiğinde bu tablo yeniden yazılmalıdır.
@@ -172,9 +172,9 @@ Her kayıt şunları içerir:
 | Başarısız giriş denemeleri kayıtlı; günlük ekranı 24 saatte 10'u aşınca uyarı gösterir | ✅ var |
 | **Otomatik anormallik tespiti ve uyarı bildirimi** | ❌ yok — günlük elle incelenir |
 | **Otomatik yedekleme ve geri yükleme testi** | ❌ yok |
-| **Hız sınırı (brute force koruması)** | ❌ yok |
+| Hız sınırı: başarısız giriş, bilet onayı ve rezervasyon | ✅ var |
 
-> Sağ sütundaki ❌'ler bu planın kalan zayıf noktalarıdır. Adım 3'teki kapsam tespiti artık mümkün: işlem günlüğü "kim ne zaman neye erişti" sorusunu cevaplıyor. Eksik olan, ihlali **kendiliğinden** fark edip haber verecek mekanizma — günlük hâlâ elle inceleniyor. Öncelik sırası: hız sınırı → otomatik uyarı → OTP.
+> Sağ sütundaki ❌'ler bu planın kalan zayıf noktalarıdır. Adım 3'teki kapsam tespiti artık mümkün: işlem günlüğü "kim ne zaman neye erişti" sorusunu cevaplıyor. Eksik olan, ihlali **kendiliğinden** fark edip haber verecek mekanizma — günlük hâlâ elle inceleniyor. Öncelik sırası: otomatik uyarı → OTP.
 
 ## 8. Tatbikat
 

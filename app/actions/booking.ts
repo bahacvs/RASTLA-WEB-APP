@@ -3,12 +3,19 @@
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { cancelBooking, createBooking, getBookingByCode } from '@/lib/db/bookings';
-import { findOrCreateUser } from '@/lib/db/users';
+import { findOrCreateUser, normalizePhone } from '@/lib/db/users';
 import { getSlot, listSlots, releaseCapacity, reserveCapacity, type Slot } from '@/lib/db/slots';
 import { getUserId, setUserSession } from '@/lib/session';
 import { getActivityBySlug } from '@/lib/db/activities';
 import { record } from '@/lib/db/audit';
 import { requestContext } from '@/lib/request-context';
+import {
+  bucketKey,
+  consume,
+  describeRetry,
+  LIMITS,
+  type LimitRule,
+} from '@/lib/db/rate-limit';
 
 export type BookingFormState = { error?: string };
 
@@ -53,6 +60,28 @@ export async function createBookingAction(
   if (!slotId) return { error: 'Lütfen tarih ve saat seçin.' };
   if (!Number.isInteger(adults) || adults < 1) return { error: 'En az bir yetişkin gerekli.' };
   if (!Number.isInteger(children) || children < 0) return { error: 'Çocuk sayısı geçersiz.' };
+
+  // Sınır, kapasite düşülmeden önce uygulanır: sonra uygulansaydı reddedilen
+  // istek yine bir slotu doldurup geri vermiş olurdu.
+  //
+  // İki kova. Asıl sınır telefon numarasında — müşterinin kimliği odur.
+  // IP çok daha geniş bir emniyet ağı; sebebi CGNAT (bkz. lib/db/rate-limit.ts).
+  const context = await requestContext();
+  const gates: Array<[string, LimitRule]> = [
+    [bucketKey('booking:phone', normalizePhone(phone)), LIMITS.bookingByPhone],
+  ];
+  if (context.ip) gates.push([bucketKey('booking:ip', context.ip), LIMITS.bookingByIp]);
+
+  for (const [bucket, rule] of gates) {
+    const gate = consume(bucket, rule);
+    if (!gate.allowed) {
+      return {
+        error: `Kısa sürede çok fazla rezervasyon oluşturuldu. ${describeRetry(
+          gate.retryAfterSeconds
+        )} sonra tekrar deneyin.`,
+      };
+    }
+  }
 
   const slot = getSlot(slotId);
   if (!slot) return { error: 'Seçilen saat bulunamadı. Lütfen tekrar seçin.' };
@@ -99,7 +128,7 @@ export async function createBookingAction(
       operatorId: activity.operatorId,
       targetType: 'booking',
       targetId: booking.id,
-      ...(await requestContext()),
+      ...context,
       meta: { slotId: slot.id, units, party: adults + children },
     });
 
