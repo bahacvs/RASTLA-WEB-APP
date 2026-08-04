@@ -154,6 +154,17 @@ CREATE TABLE IF NOT EXISTS bookings (
   redeemed_at    TEXT,
   redeemed_by    TEXT,
 
+  -- İptalin kim/ne tarafından yapıldığı. Hava kaynaklı iptal ayrı tutulur:
+  -- müşteri kusurlu olmadığı için iade ve yeniden planlama politikası farklı
+  -- işler. Sonradan eklemek şema göçü gerektirirdi.
+  cancelled_at   TEXT,
+  cancel_reason  TEXT CHECK (cancel_reason IN ('customer', 'operator', 'weather')),
+
+  CHECK (
+    (status = 'cancelled' AND cancelled_at IS NOT NULL AND cancel_reason IS NOT NULL) OR
+    (status <> 'cancelled' AND cancelled_at IS NULL AND cancel_reason IS NULL)
+  ),
+
   -- Tek kullanım güvencesinin şema tarafındaki yarısı: onaylanmış bir kaydın
   -- zaman damgası olmak zorunda, onaylanmamışın olmamak zorunda.
   CHECK (

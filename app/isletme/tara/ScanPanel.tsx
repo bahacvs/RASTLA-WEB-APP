@@ -3,21 +3,7 @@
 import { useActionState, useEffect, useRef, useState } from 'react';
 import { Icon } from '@/components/Icon';
 import { redeemAction, type ScanState } from '@/app/actions/operator';
-
-/**
- * `BarcodeDetector` her tarayıcıda yok (özellikle iOS Safari'de).
- * Desteklenmediğinde kullanıcı bilgilendirilir; elle kod girişi her cihazda
- * çalışan asıl yoldur.
- */
-type BarcodeDetectorLike = {
-  detect: (source: CanvasImageSource) => Promise<{ rawValue: string }[]>;
-};
-
-declare global {
-  interface Window {
-    BarcodeDetector?: new (options?: { formats?: string[] }) => BarcodeDetectorLike;
-  }
-}
+import { createQrDecoder } from '@/lib/qr-scanner';
 
 export function ScanPanel() {
   const [state, action, pending] = useActionState<ScanState, FormData>(redeemAction, {
@@ -50,11 +36,6 @@ export function ScanPanel() {
   async function startCamera() {
     setCameraError(null);
 
-    if (typeof window === 'undefined' || !window.BarcodeDetector) {
-      setCameraError('Bu tarayıcı kamerayla QR okumayı desteklemiyor. Kodu elle girin.');
-      return;
-    }
-
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: 'environment' },
@@ -66,22 +47,21 @@ export function ScanPanel() {
       video.srcObject = stream;
       await video.play();
 
-      const detector = new window.BarcodeDetector({ formats: ['qr_code'] });
+      // Cihazda ne varsa onu kullanır: Chromium'da yerleşik çözücü,
+      // Safari'de jsQR. İkisi de yoksa buraya hiç gelinmez.
+      const decoder = createQrDecoder();
 
       const tick = async () => {
         if (!streamRef.current) return;
-        try {
-          const codes = await detector.detect(video);
-          if (codes.length > 0 && inputRef.current) {
-            inputRef.current.value = codes[0].rawValue;
-            // Okunan kod gönderilmeden önce kamera kapanır: aynı QR arka
-            // arkaya tekrar okunup gereksiz istek üretmesin.
-            closeCamera();
-            formRef.current?.requestSubmit();
-            return;
-          }
-        } catch {
-          // Tek bir karede okuma başarısız olabilir; döngü devam eder.
+
+        const value = await decoder.scan(video);
+        if (value && inputRef.current) {
+          inputRef.current.value = value;
+          // Okunan kod gönderilmeden önce kamera kapanır: aynı QR arka
+          // arkaya tekrar okunup gereksiz istek üretmesin.
+          closeCamera();
+          formRef.current?.requestSubmit();
+          return;
         }
         requestAnimationFrame(tick);
       };

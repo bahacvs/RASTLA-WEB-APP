@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { Icon } from '@/components/Icon';
 import { TicketQr } from '@/components/TicketQr';
+import { CancelButton } from './CancelButton';
 import { getBookingByCode } from '@/lib/db/bookings';
 import { getUser } from '@/lib/db/users';
 import { getActivityBySlug } from '@/lib/db/activities';
@@ -109,7 +110,21 @@ export default async function TicketPage({ params }: { params: Promise<{ code: s
                 value={new Date(booking.redeemedAt).toLocaleString('tr-TR')}
               />
             )}
+            {booking.cancelledAt && (
+              <Row
+                label="İptal"
+                value={`${new Date(booking.cancelledAt).toLocaleString('tr-TR')}${
+                  booking.cancelReason === 'weather' ? ' (hava koşulu)' : ''
+                }`}
+              />
+            )}
           </dl>
+
+          {booking.status === 'confirmed' && (
+            <div className="border-t border-dashed border-outline-variant p-lg">
+              <CancelButton code={booking.code} />
+            </div>
+          )}
         </div>
 
         <p className="mt-lg text-center text-label-sm text-on-surface-variant">

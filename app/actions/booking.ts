@@ -1,7 +1,8 @@
 'use server';
 
 import { redirect } from 'next/navigation';
-import { createBooking } from '@/lib/db/bookings';
+import { revalidatePath } from 'next/cache';
+import { cancelBooking, createBooking, getBookingByCode } from '@/lib/db/bookings';
 import { findOrCreateUser } from '@/lib/db/users';
 import { getSlot, listSlots, releaseCapacity, reserveCapacity, type Slot } from '@/lib/db/slots';
 import { getUserId, setUserSession } from '@/lib/session';
@@ -102,4 +103,42 @@ export async function createBookingAction(
   }
 
   return {};
+}
+
+export type CancelState = { error?: string; message?: string };
+
+/**
+ * Müşterinin kendi rezervasyonunu iptal etmesi.
+ *
+ * Yalnızca kendi kaydına dokunabilir; başkasının kodunu girmek işe yaramaz.
+ * Kapasite iadesi lib/db/bookings.ts içinde, tek bir koşullu UPDATE'in
+ * ardından yapılır — çift gönderim kapasiteyi şişirmez.
+ */
+export async function cancelBookingAction(
+  _prev: CancelState,
+  formData: FormData
+): Promise<CancelState> {
+  const code = String(formData.get('code') ?? '').trim();
+  if (!code) return { error: 'Bilet kodu eksik.' };
+
+  const userId = await getUserId();
+  if (!userId) return { error: 'Oturum bulunamadı. Rezervasyonu yapan cihazdan deneyin.' };
+
+  const booking = getBookingByCode(code);
+  if (!booking || booking.userId !== userId) {
+    return { error: 'Bu rezervasyona erişim yetkiniz yok.' };
+  }
+
+  const result = cancelBooking(code, 'customer');
+  if (!result.ok) {
+    if (result.reason === 'already_redeemed') {
+      return { error: 'Bu bilet kullanılmış, iptal edilemez.' };
+    }
+    if (result.reason === 'already_cancelled') return { error: 'Bu rezervasyon zaten iptal.' };
+    return { error: 'Rezervasyon bulunamadı.' };
+  }
+
+  revalidatePath('/rezervasyonlarim');
+  revalidatePath(`/bilet/${code}`);
+  return { message: 'Rezervasyonunuz iptal edildi.' };
 }

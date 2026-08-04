@@ -1,7 +1,11 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 import { db } from './index';
+import { releaseCapacity } from './slots';
 
 export type BookingStatus = 'confirmed' | 'redeemed' | 'cancelled';
+
+/** İptali kimin yaptığı. `weather` ayrı tutulur: müşteri kusurlu değildir. */
+export type CancelReason = 'customer' | 'operator' | 'weather';
 
 export type Booking = {
   id: string;
@@ -22,6 +26,8 @@ export type Booking = {
   createdAt: string;
   redeemedAt: string | null;
   redeemedBy: string | null;
+  cancelledAt: string | null;
+  cancelReason: CancelReason | null;
 };
 
 type Row = {
@@ -41,6 +47,8 @@ type Row = {
   created_at: string;
   redeemed_at: string | null;
   redeemed_by: string | null;
+  cancelled_at: string | null;
+  cancel_reason: CancelReason | null;
 };
 
 function toBooking(row: Row): Booking {
@@ -61,6 +69,8 @@ function toBooking(row: Row): Booking {
     createdAt: row.created_at,
     redeemedAt: row.redeemed_at,
     redeemedBy: row.redeemed_by,
+    cancelledAt: row.cancelled_at,
+    cancelReason: row.cancel_reason,
   };
 }
 
@@ -110,16 +120,20 @@ export function createBooking(input: {
     created_at: new Date().toISOString(),
     redeemed_at: null,
     redeemed_by: null,
+    cancelled_at: null,
+    cancel_reason: null,
   };
 
   db()
     .prepare(
       `INSERT INTO bookings
          (id, code, user_id, activity_slug, operator_id, slot_id, units, booking_date,
-          booking_time, adults, children, total_try, status, created_at, redeemed_at, redeemed_by)
+          booking_time, adults, children, total_try, status, created_at, redeemed_at, redeemed_by,
+          cancelled_at, cancel_reason)
        VALUES
          (@id, @code, @user_id, @activity_slug, @operator_id, @slot_id, @units, @booking_date,
-          @booking_time, @adults, @children, @total_try, @status, @created_at, @redeemed_at, @redeemed_by)`
+          @booking_time, @adults, @children, @total_try, @status, @created_at, @redeemed_at,
+          @redeemed_by, @cancelled_at, @cancel_reason)`
     )
     .run(row);
 
@@ -196,4 +210,70 @@ export function listBookingsForOperator(operatorId: string, date: string): Booki
     )
     .all(operatorId, date) as Row[];
   return rows.map(toBooking);
+}
+
+export type CancelResult =
+  | { ok: true; booking: Booking }
+  | { ok: false; reason: 'not_found' | 'already_redeemed' | 'already_cancelled' };
+
+/**
+ * Rezervasyonu iptal eder ve slot kapasitesini geri verir.
+ *
+ * İki şey aynı anda doğru olmalı: durum yalnızca bir kez 'cancelled' olmalı ve
+ * kapasite yalnızca bir kez iade edilmeli. Garanti yine koşullu UPDATE'te:
+ *
+ *   UPDATE bookings SET status='cancelled' WHERE code=? AND status='confirmed'
+ *
+ * Etkilenen satır 1 değilse iade yapılmaz. Aynı iptal isteği iki kez gelse
+ * (çift tıklama, tekrar gönderim) ikincisi 0 satır etkiler ve kapasite ikinci
+ * kez iade edilmez — aksi hâlde slot kapasitesinin üzerine çıkardı.
+ *
+ * Kullanılmış (redeemed) bir bilet iptal edilemez: hizmet zaten verilmiştir.
+ */
+export function cancelBooking(code: string, reason: CancelReason): CancelResult {
+  const normalized = code.trim().toUpperCase();
+
+  const result = db()
+    .prepare(
+      `UPDATE bookings
+          SET status = 'cancelled', cancelled_at = ?, cancel_reason = ?
+        WHERE code = ? AND status = 'confirmed'`
+    )
+    .run(new Date().toISOString(), reason, normalized);
+
+  if (result.changes !== 1) {
+    const existing = getBookingByCode(normalized);
+    if (!existing) return { ok: false, reason: 'not_found' };
+    if (existing.status === 'redeemed') return { ok: false, reason: 'already_redeemed' };
+    return { ok: false, reason: 'already_cancelled' };
+  }
+
+  const booking = getBookingByCode(normalized)!;
+  if (booking.slotId) releaseCapacity(booking.slotId, booking.units);
+
+  return { ok: true, booking };
+}
+
+/**
+ * Bir günün tüm rezervasyonlarını iptal eder — hava koşulu senaryosu.
+ * Her kayıt tek tek ve aynı korumayla iptal edilir.
+ */
+export function cancelDay(
+  operatorId: string,
+  date: string,
+  reason: CancelReason
+): { cancelled: number; skipped: number } {
+  const bookings = listBookingsForOperator(operatorId, date).filter(
+    (b) => b.status === 'confirmed'
+  );
+
+  let cancelled = 0;
+  let skipped = 0;
+
+  for (const booking of bookings) {
+    if (cancelBooking(booking.code, reason).ok) cancelled++;
+    else skipped++;
+  }
+
+  return { cancelled, skipped };
 }

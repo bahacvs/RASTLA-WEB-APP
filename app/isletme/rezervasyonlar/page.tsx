@@ -8,6 +8,7 @@ import { listBookingsForOperator } from '@/lib/db/bookings';
 import { getUser } from '@/lib/db/users';
 import { getActivityBySlug } from '@/lib/db/activities';
 import { formatPrice } from '@/lib/format';
+import { CancelBookingButton, CancelDayButton } from './CancelControls';
 
 export const metadata: Metadata = {
   title: 'Rezervasyonlar',
@@ -48,6 +49,8 @@ export default async function OperatorBookingsPage({
     .filter((b) => b.status !== 'cancelled')
     .reduce((sum, b) => sum + b.totalTRY, 0);
 
+  const activeCount = bookings.filter((b) => b.status === 'confirmed').length;
+
   return (
     <div className="min-h-screen">
       <OperatorNav operatorName={operator.name} />
@@ -76,6 +79,12 @@ export default async function OperatorBookingsPage({
           <Stat label="Misafir" value={String(guests)} />
           <Stat label="Ciro" value={formatPrice(revenue)} />
         </div>
+
+        {activeCount > 0 && (
+          <div className="mb-lg">
+            <CancelDayButton date={day} count={activeCount} />
+          </div>
+        )}
 
         {bookings.length === 0 ? (
           <div className="rounded-xl border border-outline-variant bg-surface-container-lowest p-lg text-center shadow-card">
@@ -124,6 +133,18 @@ export default async function OperatorBookingsPage({
                       </span>
                     </div>
                   </div>
+
+                  {booking.status === 'confirmed' && (
+                    <div className="mt-sm flex justify-end">
+                      <CancelBookingButton code={booking.code} />
+                    </div>
+                  )}
+
+                  {booking.cancelReason === 'weather' && (
+                    <p className="mt-sm text-label-sm text-on-surface-variant">
+                      Hava koşulu nedeniyle iptal edildi
+                    </p>
+                  )}
                 </li>
               );
             })}

@@ -169,6 +169,92 @@ check(
 );
 final.close();
 
+// --- 6. İptal kapasiteyi tam olarak bir kez iade etmeli ---
+// Çift tıklama ya da tekrar gönderim kapasiteyi şişirmemeli.
+const cancelDb = open();
+// `insertSlot` kapatılmış bağlantıya ait; bu bağlantı için yeniden hazırlanır.
+const insertSlot2 = cancelDb.prepare(
+  `INSERT INTO slots (id,activity_id,rule_id,slot_date,slot_time,capacity,booked,status,created_at)
+   VALUES (?,?,NULL,?,?,?,0,'open',?)
+   ON CONFLICT (activity_id, slot_date, slot_time) DO NOTHING`
+);
+
+cancelDb
+  .prepare("INSERT INTO users (id,name,phone,created_at) VALUES ('u2','İptal Test','905321112233',?)")
+  .run(new Date().toISOString());
+
+insertSlot2.run('cancel-slot', 'act-person', '2026-08-23', '12:00', 4, now);
+cancelDb
+  .prepare("UPDATE slots SET booked = 2 WHERE id = 'cancel-slot'")
+  .run();
+cancelDb
+  .prepare(
+    `INSERT INTO bookings (id, code, user_id, activity_slug, operator_id, slot_id, units,
+       booking_date, booking_time, adults, children, total_try, status, created_at)
+     VALUES ('bk-1','CANCEL-TEST','u2','grup-sup','op-1','cancel-slot',2,
+       '2026-08-23','12:00',2,0,800,'confirmed',?)`
+  )
+  .run(new Date().toISOString());
+cancelDb.close();
+
+const CANCEL_WORKERS = 12;
+const cancelWorker = `
+const Database = require('better-sqlite3');
+const conn = new Database(process.argv[1]);
+conn.pragma('busy_timeout = 5000');
+const n = conn.prepare("UPDATE bookings SET status='cancelled', cancelled_at=?, cancel_reason='customer' WHERE code='CANCEL-TEST' AND status='confirmed'").run(new Date().toISOString()).changes;
+// Kapasite yalnızca UPDATE gerçekten uygulandıysa iade edilir.
+if (n === 1) conn.prepare("UPDATE slots SET booked = booked - 2 WHERE id='cancel-slot' AND booked >= 2").run();
+process.stdout.write(String(n));
+`;
+
+const cancelResults = await Promise.all(
+  Array.from({ length: CANCEL_WORKERS }, (_, i) =>
+    Promise.resolve().then(() =>
+      execFileSync(process.execPath, ['-e', cancelWorker, DB, String(i)], { encoding: 'utf8' })
+    )
+  )
+);
+
+const cancelWins = cancelResults.filter((r) => r === '1').length;
+check(
+  `${CANCEL_WORKERS} eşzamanlı iptalden tam olarak 1'i geçiyor`,
+  cancelWins === 1,
+  `başarılı: ${cancelWins}`
+);
+
+const afterCancel = open();
+const cancelSlot = afterCancel.prepare("SELECT booked FROM slots WHERE id='cancel-slot'").get();
+check(
+  'kapasite tam olarak bir kez iade edildi',
+  cancelSlot.booked === 0,
+  `booked: ${cancelSlot.booked} (beklenen 0)`
+);
+
+// Kullanılmış bilet iptal edilememeli.
+afterCancel
+  .prepare(
+    `INSERT INTO slots (id,activity_id,rule_id,slot_date,slot_time,capacity,booked,status,created_at)
+     VALUES ('used-slot','act-person',NULL,'2026-08-24','12:00',4,0,'open',?)`
+  )
+  .run(now);
+afterCancel
+  .prepare(
+    `INSERT INTO bookings (id, code, user_id, activity_slug, operator_id, slot_id, units,
+       booking_date, booking_time, adults, children, total_try, status, created_at, redeemed_at, redeemed_by)
+     VALUES ('bk-2','USED-TEST','u2','grup-sup','op-1','used-slot',1,
+       '2026-08-24','12:00',1,0,400,'redeemed',?,?, 'op-1')`
+  )
+  .run(new Date().toISOString(), new Date().toISOString());
+
+const usedCancel = afterCancel
+  .prepare(
+    "UPDATE bookings SET status='cancelled', cancelled_at=?, cancel_reason='customer' WHERE code='USED-TEST' AND status='confirmed'"
+  )
+  .run(new Date().toISOString()).changes;
+check('kullanılmış bilet iptal edilemiyor', usedCancel === 0);
+afterCancel.close();
+
 rmSync(dir, { recursive: true, force: true });
 
 let failed = 0;

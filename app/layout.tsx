@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next';
 import { SITE_DESCRIPTION, SITE_NAME, SITE_URL } from '@/lib/site';
+import { ServiceWorker } from '@/components/ServiceWorker';
 
 // Inter, npm paketinden yerel olarak servis edilir; Google Fonts'a istek atılmaz.
 import '@fontsource/inter/400.css';
@@ -25,8 +26,11 @@ export const metadata: Metadata = {
     'İstanbul',
   ],
   icons: {
-    icon: '/brand/rastla-app-icon.png',
-    apple: '/brand/rastla-app-icon.png',
+    icon: [
+      { url: '/brand/icon-192.png', sizes: '192x192', type: 'image/png' },
+      { url: '/brand/icon-512.png', sizes: '512x512', type: 'image/png' },
+    ],
+    apple: '/brand/icon-192.png',
   },
   openGraph: {
     type: 'website',
@@ -55,7 +59,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         sayfa ve arama ekranında var. Detay ve rezervasyon ekranlarında onun
         yerine yapışkan rezervasyon çubuğu bulunur, ikisi üst üste binmemeli.
       */}
-      <body className="bg-background text-body-md text-on-background">{children}</body>
+      <body className="bg-background text-body-md text-on-background">
+        {children}
+        <ServiceWorker />
+      </body>
     </html>
   );
 }

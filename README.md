@@ -84,6 +84,18 @@ UPDATE slots SET booked = booked + :units
 
 Atomiktir; son yeri iki kişi aynı anda almaya çalıştığında yalnızca biri geçer. `scripts/verify-capacity.mjs` bunu 12 eşzamanlı süreçle sınar. Şemadaki `CHECK (booked <= capacity)` son savunma hattıdır.
 
+## İptal ve kapasite iadesi
+
+Rezervasyon hem müşteri hem işletme tarafından iptal edilebilir; iptal edilen yerin kapasitesi slota **tam olarak bir kez** geri verilir. Çift tıklama ya da tekrar gönderim kapasiteyi şişirmez — güvence yine koşullu güncellemede:
+
+```sql
+UPDATE bookings SET status='cancelled', ... WHERE code=? AND status='confirmed'
+```
+
+Etkilenen satır 1 değilse iade yapılmaz. Kullanılmış (`redeemed`) bir bilet iptal edilemez: hizmet zaten verilmiştir.
+
+**Hava koşulu ayrı tutulur.** Su sporlarında en sık iptal sebebi budur ve müşteri kusurlu değildir, bu yüzden `cancel_reason = 'weather'` olarak kaydedilir — iade politikası farklı işleyecektir. İşletme, tek tek uğraşmadan bir günün tüm rezervasyonlarını tek düğmeyle iptal edebilir.
+
 ## Rezervasyon ve bilet sistemi
 
 Rezervasyon oluşturulduğunda kullanıcıya **QR kodlu, tek kullanımlık bir bilet** üretilir. İşletme bu kodu kendi ekranından okutup onaylar.
@@ -107,6 +119,12 @@ Destekleyen önlemler:
 - Bilet ve rezervasyon sayfaları `noindex`; kod taşıdıkları için arama motorlarına kapalıdır.
 
 Kural `scripts/verify-redemption.mjs` ile sınanır — 12 ayrı süreç aynı anda aynı bileti onaylamayı dener, tam olarak biri geçer.
+
+### QR okuma her cihazda çalışır
+
+`BarcodeDetector` yalnızca Chromium tabanlı tarayıcılarda var; Safari'de yok. İşletme sahiplerinin bir kısmı iPhone kullanacağı için tek başına yeterli değildi — o cihazlarda 20 karakterlik kodu elle yazmak gerekiyordu.
+
+`lib/qr-scanner.ts` cihazda ne varsa onu seçer: yerleşik çözücü varsa o, yoksa **jsQR** ile yazılımsal çözme. jsQR bağımlılığı olmayan yerel bir paket, dışarı istek atmaz. `verify-ticket-flow.mjs` ürettiğimiz QR'ı jsQR ile gerçekten çözerek bu yolu doğrular.
 
 ### Yapılandırma
 
@@ -140,10 +158,19 @@ node scripts/verify-redemption.mjs    # tek kullanım güvencesi (eşzamanlılı
 node scripts/verify-capacity.mjs      # slot üretimi ve kapasite yarışı — sunucu gerekmez
 node scripts/verify-operator-flow.mjs # aktivite -> takvim -> yayın -> rezervasyon -> bilet
 node scripts/verify-ticket-flow.mjs   # rezervasyon -> bilet -> onay -> ikinci onay reddi
-node scripts/verify-offline.mjs       # hiçbir dış host'a istek atılmadığını doğrular
+node scripts/verify-offline-ticket.mjs # bağlantı kesikken bilet ve QR açılıyor mu
+node scripts/verify-offline.mjs       # harita karoları dışında dış istek var mı
 node scripts/verify-interactions.mjs  # görünüm geçişi, filtre paneli, tutar hesabı
 node scripts/screenshots.mjs [dizin]  # her rotanın mobil + masaüstü görüntüsü
 ```
+
+## Çevrimdışı çalışma (PWA)
+
+Uygulama service worker ile kurulabilir ("ana ekrana ekle") ve **daha önce açılmış bir bilet bağlantı kesikken de açılır.** Asıl mesele bu: müşteri sahilde, kapsama alanı zayıfken QR'ını göstermek zorunda.
+
+Sayfalarda "önce ağ, olmazsa önbellek" yaklaşımı kullanılır — doluluk sürekli değiştiği için bayat sayfa göstermek yanlış olurdu.
+
+**İşletme ekranları bilinçli olarak önbelleklenmez.** Bilet onayı çevrimdışı yapılamaz, çünkü tek kullanım güvencesi sunucudaki koşullu güncellemeye dayanır; çevrimdışı onay aynı biletin iki kez geçmesi demek olurdu. `verify-offline-ticket.mjs` hem biletin açıldığını hem de onay ekranının açılmadığını doğrular.
 
 ## Tasarım sistemi
 

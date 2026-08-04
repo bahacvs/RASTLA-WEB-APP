@@ -15,11 +15,16 @@ export default function manifest(): MetadataRoute.Manifest {
     background_color: '#fbf9f6',
     theme_color: '#0754b8',
     lang: 'tr',
+    // Kurulabilirlik için 192 ve 512 zorunlu; `maskable` Android'in ikonu
+    // kendi şekline kırpmasına izin verir, yoksa kenarları kesilir.
     icons: [
+      { src: '/brand/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+      { src: '/brand/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
       {
-        src: '/brand/rastla-app-icon.png',
-        sizes: 'any',
+        src: '/brand/icon-512-maskable.png',
+        sizes: '512x512',
         type: 'image/png',
+        purpose: 'maskable',
       },
     ],
   };

@@ -2,7 +2,13 @@
 
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
-import { getBookingByCode, redeemBooking, type Booking } from '@/lib/db/bookings';
+import {
+  cancelBooking,
+  cancelDay,
+  getBookingByCode,
+  redeemBooking,
+  type Booking,
+} from '@/lib/db/bookings';
 import { getUser } from '@/lib/db/users';
 import { authenticateOperator } from '@/lib/operators';
 import { clearOperatorSession, getOperatorId, setOperatorSession } from '@/lib/session';
@@ -103,4 +109,61 @@ export async function redeemAction(_prev: ScanState, formData: FormData): Promis
   }
 
   return { status: 'error', message: 'Bilet geçersiz ya da iptal edilmiş.' };
+}
+
+export type OperatorCancelState = { error?: string; message?: string };
+
+/** İşletmenin tek bir rezervasyonu iptal etmesi. */
+export async function operatorCancelAction(
+  _prev: OperatorCancelState,
+  formData: FormData
+): Promise<OperatorCancelState> {
+  const operatorId = await getOperatorId();
+  if (!operatorId) return { error: 'Oturum sona ermiş.' };
+
+  const code = String(formData.get('code') ?? '').trim();
+  const reason = formData.get('reason') === 'weather' ? 'weather' : 'operator';
+
+  const booking = getBookingByCode(code);
+  if (!booking || booking.operatorId !== operatorId) {
+    return { error: 'Bu rezervasyona erişim yetkiniz yok.' };
+  }
+
+  const result = cancelBooking(code, reason);
+  if (!result.ok) {
+    if (result.reason === 'already_redeemed') {
+      return { error: 'Bilet kullanılmış, iptal edilemez.' };
+    }
+    return { error: 'Rezervasyon zaten iptal edilmiş.' };
+  }
+
+  revalidatePath('/isletme/rezervasyonlar');
+  return { message: 'Rezervasyon iptal edildi ve slot kapasitesi geri verildi.' };
+}
+
+/**
+ * Hava koşulu nedeniyle bir günün tüm rezervasyonlarını iptal eder.
+ *
+ * Su sporlarında en sık iptal sebebi budur ve müşteri kusurlu değildir; bu
+ * yüzden ayrı bir sebep koduyla kaydedilir — iade politikası farklı işler.
+ */
+export async function cancelDayAction(
+  _prev: OperatorCancelState,
+  formData: FormData
+): Promise<OperatorCancelState> {
+  const operatorId = await getOperatorId();
+  if (!operatorId) return { error: 'Oturum sona ermiş.' };
+
+  const date = String(formData.get('date') ?? '');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return { error: 'Gün geçersiz.' };
+
+  const { cancelled, skipped } = cancelDay(operatorId, date, 'weather');
+
+  revalidatePath('/isletme/rezervasyonlar');
+  return {
+    message:
+      cancelled === 0
+        ? 'İptal edilecek aktif rezervasyon yoktu.'
+        : `${cancelled} rezervasyon iptal edildi${skipped > 0 ? `, ${skipped} tanesi atlandı` : ''}. Misafirleri bilgilendirmeyi unutmayın.`,
+  };
 }
