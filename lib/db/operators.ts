@@ -155,7 +155,17 @@ export function createOperatorUser(input: {
 
 export type AuthResult =
   | { ok: true; user: OperatorUser; operator: Operator }
-  | { ok: false; reason: 'bad_credentials' | 'suspended' };
+  | {
+      ok: false;
+      reason: 'bad_credentials' | 'suspended';
+      /**
+       * E-posta gerçek bir hesaba aitse o hesabın işletmesi. Başarısız giriş
+       * denemesini doğru işletmenin günlüğüne yazmak için gerekir — aksi hâlde
+       * her işletme başkasına yapılan denemeleri de görürdü. Kullanıcıya
+       * DÖNDÜRÜLMEZ; yalnızca sunucu tarafında kullanılır.
+       */
+      matchedOperatorId: string | null;
+    };
 
 /**
  * E-posta ve parolayı doğrular.
@@ -170,14 +180,16 @@ export function authenticateOperatorUser(email: string, password: string): AuthR
 
   if (!row) {
     verifyPassword(password, dummyHash());
-    return { ok: false, reason: 'bad_credentials' };
+    return { ok: false, reason: 'bad_credentials', matchedOperatorId: null };
   }
 
   if (!verifyPassword(password, row.password_hash)) {
-    return { ok: false, reason: 'bad_credentials' };
+    return { ok: false, reason: 'bad_credentials', matchedOperatorId: row.operator_id };
   }
 
-  if (row.status !== 'active') return { ok: false, reason: 'suspended' };
+  if (row.status !== 'active') {
+    return { ok: false, reason: 'suspended', matchedOperatorId: row.operator_id };
+  }
 
   return { ok: true, user: toUser(row), operator: getOperator(row.operator_id)! };
 }

@@ -137,6 +137,22 @@ Kural `scripts/verify-redemption.mjs` ile sınanır — 12 ayrı süreç aynı a
 | `DATABASE_PATH` | SQLite dosyası (varsayılan `data/rastla.db`). |
 | `NEXT_PUBLIC_MAPTILER_KEY` | Harita karo sağlayıcısı anahtarı. Tanımsızsa harita yerine yapılandırma uyarısı gösterilir. |
 
+### İşlem günlüğü
+
+Bilet onayı, iptal ve fiyat değişikliği geri alınamaz işlemlerdir. `audit_log` tablosu bunları kim yaptı, ne zaman, hangi IP'den sorularını cevaplar; sahip `/isletme/gunluk` üzerinden okur.
+
+İki kural koda gömülü:
+
+- **Günlük yazımı asıl işlemi engellemez.** Günlük yazılamazsa rezervasyon geri alınmaz; hata konsola düşer.
+- **Kişisel veri günlüğe kopyalanmaz.** Misafirin adı, telefonu ve bilet kodu `meta` alanına yazılmaz — kayıt zaten hangi rezervasyonu işaret ettiğini biliyor. Kopyalamak aynı veriyi ikinci bir yerde çoğaltmak, yani bir ihlalde kapsamı büyütmek olurdu. `verify-audit.mjs` bunu her koşumda tüm tabloyu tarayarak doğrular.
+
+IP ve tarayıcı bilgisi kişisel veridir; 12 ay sonunda silinir:
+
+```bash
+npm run retention              # ne silineceğini gösterir
+npm run retention -- --uygula  # gerçekten siler
+```
+
 ### Bu fazın bilinen sınırları
 
 Aşağıdakiler **pilot seviyesindedir** ve üretime çıkmadan önce değişmelidir:
@@ -160,6 +176,7 @@ node scripts/verify-operator-flow.mjs # aktivite -> takvim -> yayın -> rezervas
 node scripts/verify-ticket-flow.mjs   # rezervasyon -> bilet -> onay -> ikinci onay reddi
 node scripts/verify-offline-ticket.mjs # bağlantı kesikken bilet ve QR açılıyor mu
 node scripts/verify-offline.mjs       # harita karoları dışında dış istek var mı
+node scripts/verify-audit.mjs         # işlem günlüğü: ne kaydediliyor, ne KAYDEDİLMİYOR
 node scripts/verify-interactions.mjs  # görünüm geçişi, filtre paneli, tutar hesabı
 node scripts/screenshots.mjs [dizin]  # her rotanın mobil + masaüstü görüntüsü
 ```

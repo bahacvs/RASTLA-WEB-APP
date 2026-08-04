@@ -11,6 +11,9 @@ import {
   type OperatorRole,
 } from '@/lib/db/operators';
 import { generatePassword, passwordProblem } from '@/lib/password.mjs';
+import { record, type AuditAction } from '@/lib/db/audit';
+import { requestContext } from '@/lib/request-context';
+import type { OperatorSession } from '@/lib/auth';
 
 /**
  * İşletme sahibinin ekip yönetimi.
@@ -30,6 +33,25 @@ export type TeamState = {
    */
   password?: string;
 };
+
+/** Ekip değişikliklerini günlüğe yazar. */
+async function log(
+  session: OperatorSession,
+  action: AuditAction,
+  targetUserId: string,
+  meta?: Record<string, unknown>
+) {
+  record({
+    action,
+    actorType: 'operator',
+    actorId: session.user.id,
+    operatorId: session.operator.id,
+    targetType: 'operator_user',
+    targetId: targetUserId,
+    ...(await requestContext()),
+    meta: meta ?? null,
+  });
+}
 
 async function requireOwner() {
   const session = await currentOperator();
@@ -79,6 +101,12 @@ export async function createTeamMemberAction(
       : { error: 'İşletme bulunamadı.' };
   }
 
+  // Üretilen parola günlüğe YAZILMAZ; yalnızca hesabın açıldığı kaydedilir.
+  await log(session, 'operator_user.created', result.user.id, {
+    email: result.user.email,
+    role: result.user.role,
+  });
+
   revalidatePath('/isletme/ekip');
   return {
     message: `${result.user.name} eklendi. Parolayı kişiye iletin — bu ekran kapandığında bir daha gösterilemez.`,
@@ -95,6 +123,9 @@ export async function resetTeamPasswordAction(
 
   const password = generatePassword();
   setPassword(owned.target.id, password);
+  await log(owned.session, 'operator_user.password_reset', owned.target.id, {
+    email: owned.target.email,
+  });
 
   revalidatePath('/isletme/ekip');
   return {
@@ -123,6 +154,13 @@ export async function setTeamStatusAction(
       ? { error: 'İşletmenin son etkin sahibi askıya alınamaz.' }
       : { error: 'Hesap bulunamadı.' };
   }
+
+  await log(
+    owned.session,
+    status === 'suspended' ? 'operator_user.suspended' : 'operator_user.reactivated',
+    owned.target.id,
+    { email: owned.target.email }
+  );
 
   revalidatePath('/isletme/ekip');
   return {
@@ -159,5 +197,15 @@ export async function changeOwnPasswordAction(
   if (problem) return { error: problem };
 
   setPassword(session.user.id, password);
+  record({
+    action: 'operator.password_changed',
+    actorType: 'operator',
+    actorId: session.user.id,
+    operatorId: session.operator.id,
+    targetType: 'operator_user',
+    targetId: session.user.id,
+    ...(await requestContext()),
+  });
+
   return { message: 'Parolanız değiştirildi.' };
 }

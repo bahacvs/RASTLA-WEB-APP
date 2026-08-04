@@ -55,6 +55,7 @@ const ICONS = [
   { name: 'surfing' },
   { name: 'tune' },
   { name: 'verified', fill: true },
+  { name: 'warning' },
   { name: 'water' },
 ];
 

@@ -10,10 +10,12 @@ import {
   type Booking,
 } from '@/lib/db/bookings';
 import { getUser } from '@/lib/db/users';
-import { authenticateOperatorUser, recordLogin } from '@/lib/db/operators';
-import { currentOperator, currentOperatorId } from '@/lib/auth';
+import { authenticateOperatorUser, normalizeEmail, recordLogin } from '@/lib/db/operators';
+import { currentOperator } from '@/lib/auth';
 import { clearOperatorSession, setOperatorSession } from '@/lib/session';
 import { getActivityBySlug } from '@/lib/db/activities';
+import { record } from '@/lib/db/audit';
+import { requestContext } from '@/lib/request-context';
 
 export type LoginState = { error?: string };
 
@@ -25,8 +27,21 @@ export async function operatorLoginAction(
   const password = String(formData.get('password') ?? '');
 
   const result = authenticateOperatorUser(email, password);
+  const context = await requestContext();
 
   if (!result.ok) {
+    // Başarısız denemeler de kaydedilir: bir ihlali fark ettiren çoğunlukla
+    // başarılı girişler değil, aynı kaynaktan gelen deneme yoğunluğudur.
+    // Parola HİÇBİR koşulda günlüğe yazılmaz.
+    record({
+      action: 'operator.login_failed',
+      actorType: 'anonymous',
+      operatorId: result.matchedOperatorId,
+      outcome: 'failure',
+      ...context,
+      meta: { email: normalizeEmail(email), reason: result.reason },
+    });
+
     // Askıya alınmış hesap ayrı mesaj alır: kişi parolasını doğru girmiştir,
     // "hatalı parola" demek onu boşuna uğraştırırdı. Hesabın varlığı zaten
     // doğru parolayı bilen kişiye ifşa olmuş sayılır.
@@ -37,11 +52,30 @@ export async function operatorLoginAction(
   }
 
   recordLogin(result.user.id);
+  record({
+    action: 'operator.login',
+    actorType: 'operator',
+    actorId: result.user.id,
+    operatorId: result.operator.id,
+    ...context,
+  });
+
   await setOperatorSession(result.user.id);
   redirect('/isletme/tara');
 }
 
 export async function operatorLogoutAction() {
+  const session = await currentOperator();
+  if (session) {
+    record({
+      action: 'operator.logout',
+      actorType: 'operator',
+      actorId: session.user.id,
+      operatorId: session.operator.id,
+      ...(await requestContext()),
+    });
+  }
+
   await clearOperatorSession();
   redirect('/isletme');
 }
@@ -89,11 +123,35 @@ export async function redeemAction(_prev: ScanState, formData: FormData): Promis
   // QR bir URL taşır; kamerayla okunduğunda son yol parçası koddur.
   const code = raw.includes('/') ? decodeURIComponent(raw.split('/').filter(Boolean).pop()!) : raw;
 
+  const context = await requestContext();
+  const actor = {
+    actorType: 'operator',
+    actorId: session.user.id,
+    operatorId,
+    ...context,
+  } as const;
+
   const existing = getBookingByCode(code);
   if (!existing) {
+    record({
+      ...actor,
+      action: 'booking.redeem_failed',
+      outcome: 'failure',
+      meta: { reason: 'not_found' },
+    });
     return { status: 'error', message: 'Bilet bulunamadı. Kodu kontrol edin.' };
   }
   if (existing.operatorId !== operatorId) {
+    // Başka işletmenin biletini okutmaya çalışmak ya karışıklıktır ya da
+    // sondaj; her iki hâlde de görülebilir olmalı.
+    record({
+      ...actor,
+      action: 'booking.redeem_failed',
+      outcome: 'denied',
+      targetType: 'booking',
+      targetId: existing.id,
+      meta: { reason: 'wrong_operator', ownerOperatorId: existing.operatorId },
+    });
     return { status: 'error', message: 'Bu bilet başka bir işletmeye ait.' };
   }
 
@@ -104,6 +162,13 @@ export async function redeemAction(_prev: ScanState, formData: FormData): Promis
   const customerName = getUser(existing.userId)?.name ?? '—';
 
   if (result.ok) {
+    record({
+      ...actor,
+      action: 'booking.redeemed',
+      targetType: 'booking',
+      targetId: result.booking.id,
+    });
+
     revalidatePath('/rezervasyonlarim');
     return {
       status: 'success',
@@ -111,6 +176,15 @@ export async function redeemAction(_prev: ScanState, formData: FormData): Promis
       booking: describe(result.booking, customerName),
     };
   }
+
+  record({
+    ...actor,
+    action: 'booking.redeem_failed',
+    outcome: 'failure',
+    targetType: 'booking',
+    targetId: existing.id,
+    meta: { reason: result.reason },
+  });
 
   if (result.reason === 'already_redeemed' && result.booking) {
     return {
@@ -133,8 +207,9 @@ export async function operatorCancelAction(
   _prev: OperatorCancelState,
   formData: FormData
 ): Promise<OperatorCancelState> {
-  const operatorId = await currentOperatorId();
-  if (!operatorId) return { error: 'Oturum sona ermiş.' };
+  const session = await currentOperator();
+  if (!session) return { error: 'Oturum sona ermiş.' };
+  const operatorId = session.operator.id;
 
   const code = String(formData.get('code') ?? '').trim();
   const reason = formData.get('reason') === 'weather' ? 'weather' : 'operator';
@@ -152,6 +227,17 @@ export async function operatorCancelAction(
     return { error: 'Rezervasyon zaten iptal edilmiş.' };
   }
 
+  record({
+    action: 'booking.cancelled',
+    actorType: 'operator',
+    actorId: session.user.id,
+    operatorId,
+    targetType: 'booking',
+    targetId: booking.id,
+    ...(await requestContext()),
+    meta: { reason },
+  });
+
   revalidatePath('/isletme/rezervasyonlar');
   return { message: 'Rezervasyon iptal edildi ve slot kapasitesi geri verildi.' };
 }
@@ -166,13 +252,25 @@ export async function cancelDayAction(
   _prev: OperatorCancelState,
   formData: FormData
 ): Promise<OperatorCancelState> {
-  const operatorId = await currentOperatorId();
-  if (!operatorId) return { error: 'Oturum sona ermiş.' };
+  const session = await currentOperator();
+  if (!session) return { error: 'Oturum sona ermiş.' };
+  const operatorId = session.operator.id;
 
   const date = String(formData.get('date') ?? '');
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return { error: 'Gün geçersiz.' };
 
   const { cancelled, skipped } = cancelDay(operatorId, date, 'weather');
+
+  // Toplu iptal tek satırda kaydedilir: kaç rezervasyonun etkilendiği
+  // meta'da durur, tek tek kayıt açmak günlüğü okunmaz hâle getirirdi.
+  record({
+    action: 'booking.day_cancelled',
+    actorType: 'operator',
+    actorId: session.user.id,
+    operatorId,
+    ...(await requestContext()),
+    meta: { date, cancelled, skipped, reason: 'weather' },
+  });
 
   revalidatePath('/isletme/rezervasyonlar');
   return {

@@ -146,6 +146,32 @@ await op.waitForTimeout(1200);
 check('ilk onay başarılı', await op.getByText('Onaylandı', { exact: true }).isVisible());
 check('misafir adı gösteriliyor', await op.getByText('Deniz Yılmaz').isVisible());
 
+// Aynı numaradan farklı adla yeni rezervasyon: işletme ekranında GÜNCEL ad
+// görünmeli. Kimlik telefondur, ad değil; eski adı göstermek misafiri yanlış
+// karşılamak olurdu.
+const renameCtx = await browser.newContext({ viewport: { width: 390, height: 844 } });
+const rp = await renameCtx.newPage();
+await rp.goto(`${BASE}/rezervasyon/elektrikli-sup-deneyimi`, { waitUntil: 'networkidle' });
+await rp.waitForTimeout(400);
+if (await pickAvailableSlot(rp)) {
+  await rp.getByLabel('Ad Soyad').fill('Deniz Yılmaz Kaya');
+  await rp.getByLabel('Telefon').fill('0532 111 22 33');
+  await rp.getByRole('button', { name: 'Rezervasyonu Tamamla' }).first().click();
+  await rp.waitForURL(/\/bilet\//, { timeout: 15000 });
+  const renamedCode = decodeURIComponent(new URL(rp.url()).pathname.split('/').pop());
+
+  await op.fill('#code', renamedCode);
+  await op.getByRole('button', { name: 'Onayla' }).click();
+  await op.waitForTimeout(1200);
+  check(
+    'aynı numaradan gelen güncel ad gösteriliyor',
+    await op.getByText('Deniz Yılmaz Kaya').isVisible()
+  );
+} else {
+  check('aynı numaradan gelen güncel ad gösteriliyor', false, 'boş slot bulunamadı');
+}
+await renameCtx.close();
+
 // ---------- İKİNCİ onay reddedilmeli ----------
 await op.fill('#code', code);
 await op.getByRole('button', { name: 'Onayla' }).click();

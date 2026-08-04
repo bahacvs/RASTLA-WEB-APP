@@ -213,3 +213,49 @@ CREATE TABLE IF NOT EXISTS bookings (
 
 CREATE INDEX IF NOT EXISTS idx_bookings_user ON bookings(user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_bookings_operator ON bookings(operator_id, booking_date);
+
+-- İşlem günlüğü.
+--
+-- Veri ihlali müdahale planının 3. adımı "hangi veriler, kaç kişi, gerçekten
+-- erişildi mi" sorularını sorar. Bu tablo olmadan o adım tahmine kalır.
+-- Ayrıca uyuşmazlıklarda "bileti kim onayladı", "aktiviteyi kim yayından
+-- kaldırdı" gibi sorulara cevap verir.
+--
+-- Bilinçli olarak yalnızca EKLEME yapılır: kayıt güncellenmez, silinmez.
+-- Silme yalnızca saklama süresi dolan kayıtların toplu imhasıyla olur.
+CREATE TABLE IF NOT EXISTS audit_log (
+  id           TEXT PRIMARY KEY,
+  at           TEXT NOT NULL,   -- ISO 8601, UTC
+
+  -- Eylemi kim yaptı.
+  --   operator -> operator_users.id
+  --   customer -> users.id
+  --   system   -> otomatik iş (aktör kimliği yok)
+  --   anonymous-> oturum açmamış istek (başarısız giriş denemesi)
+  actor_type   TEXT NOT NULL CHECK (actor_type IN ('operator', 'customer', 'system', 'anonymous')),
+  actor_id     TEXT,
+  operator_id  TEXT,            -- işletme bağlamı; işletme kendi günlüğünü görebilsin
+
+  action       TEXT NOT NULL,   -- 'booking.redeem', 'operator.login_failed' …
+  target_type  TEXT,            -- 'booking' | 'activity' | 'operator_user' | 'slot'
+  target_id    TEXT,
+
+  -- Sonuç: başarısız denemeler de kaydedilir. İhlali fark ettiren çoğunlukla
+  -- başarılı işlemler değil, başarısız denemelerin yoğunluğudur.
+  outcome      TEXT NOT NULL DEFAULT 'success'
+               CHECK (outcome IN ('success', 'failure', 'denied')),
+
+  -- IP ve tarayıcı bilgisi de kişisel veridir; saklama süresi
+  -- veri-saklama-imha-politikasi.md ile sınırlıdır.
+  ip           TEXT,
+  user_agent   TEXT,
+
+  -- Eyleme özgü ek bilgi (JSON). Misafir adı, telefon gibi kişisel veriler
+  -- BURAYA YAZILMAZ — günlük zaten hangi kaydı işaret ettiğini biliyor.
+  meta         TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_audit_at ON audit_log(at DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_operator ON audit_log(operator_id, at DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_actor ON audit_log(actor_type, actor_id, at DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_action ON audit_log(action, at DESC);

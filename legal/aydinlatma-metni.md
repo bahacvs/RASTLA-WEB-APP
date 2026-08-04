@@ -34,6 +34,9 @@ Katılımcı sayısı yalnızca **sayı** olarak tutulur; yanınızdaki kişiler
 | Veri kategorisi | İşlenen veri |
 | --- | --- |
 | İşlem güvenliği | Oturum çerezi (imzalı kullanıcı kimliği) |
+| İşlem güvenliği | Rezervasyon oluşturma ve iptal gibi işlemlerde: işlem zamanı, **IP adresiniz** ve tarayıcı bilgisi |
+
+**İşlem güvenliği kaydı ne için tutuluyor?** Bilet onayı geri alınamayan bir işlemdir. Bir uyuşmazlıkta ya da yetkisiz erişim şüphesinde hangi işlemin ne zaman ve nereden yapıldığının belirlenebilmesi gerekir. Bu kayıtlar yalnızca güvenlik amacıyla tutulur, **pazarlama veya profilleme için kullanılmaz** ve 12 ay sonunda silinir.
 
 Ziyaretçi davranışını izleyen analitik ya da reklam aracı **kullanılmamaktadır**.
 
@@ -90,6 +93,7 @@ Barındırma ve harita hizmetleri yurt dışında bulunan sağlayıcılardan al�
 | Rezervasyon ve bilet kayıtları | Rezervasyon tarihinden itibaren **10 yıl** | Genel zamanaşımı süresi boyunca hak tesisi ve savunma |
 | Ad, soyad, telefon | Son rezervasyonunuzdan itibaren **10 yıl** | Aynı |
 | Oturum çerezi | **90 gün** | Oturumun sürdürülmesi |
+| İşlem güvenliği kayıtları (IP, tarayıcı bilgisi, işlem zamanı) | **12 ay** | Yetkisiz erişimin tespiti ve kapsamının belirlenmesi (KVKK md. 12) |
 
 Süre dolduğunda verileriniz silinir, yok edilir veya anonim hâle getirilir. Ayrıntı için Veri Saklama ve İmha Politikamıza bakabilirsiniz.
 

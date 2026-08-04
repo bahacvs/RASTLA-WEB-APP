@@ -22,6 +22,16 @@ export function findOrCreateUser(name: string, phone: string): User {
     | undefined;
 
   if (existing) {
+    // Ad, kaydın kimliği değil; kimlik telefondur. Aynı numaradan gelen yeni
+    // bir rezervasyonda farklı bir ad yazılmışsa güncellenir — yoksa işletme
+    // misafiri karşılarken ekranda eski adı görür. (Yazım düzeltmesi ya da
+    // aynı hattan rezervasyon yapan bir aile üyesi.)
+    const name_ = name.trim();
+    if (name_.length > 0 && name_ !== existing.name) {
+      db().prepare('UPDATE users SET name = ? WHERE id = ?').run(name_, existing.id);
+      existing.name = name_;
+    }
+
     return {
       id: existing.id,
       name: existing.name,

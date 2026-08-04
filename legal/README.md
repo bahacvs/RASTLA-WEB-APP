@@ -48,5 +48,5 @@ Hukukçu onayı geldiğinde markdown'ın başındaki uyarı bloğunu silmeniz ye
 Metin yazmak uyum sağlamıyor; şunlar hâlâ eksik:
 
 - **Hesap silme akışı yok.** md. 11 kapsamındaki silme talebi elle karşılanıyor.
-- **Erişim günlüğü yok.** İhlal müdahale planının en zayıf noktası: ihlali fark edecek ve kapsamını tespit edecek mekanizma yok.
+- **Otomatik uyarı yok.** İşlem günlüğü var (`/isletme/gunluk`) ve kapsam tespiti artık mümkün, ama ihlali kendiliğinden fark edip haber veren bir mekanizma yok; günlük elle incelenir.
 - **Hız sınırı yok.** Kaba kuvvet denemeleri engellenmiyor.

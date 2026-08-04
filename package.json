@@ -10,7 +10,8 @@
     "generate:icons": "node scripts/generate-icons.mjs",
     "fetch:images": "node scripts/fetch-images.mjs",
     "seed": "node scripts/seed.mjs",
-    "operator:create": "node scripts/operator-account.mjs"
+    "operator:create": "node scripts/operator-account.mjs",
+    "retention": "node scripts/retention.mjs"
   },
   "dependencies": {
     "@fontsource/inter": "^5.3.0",

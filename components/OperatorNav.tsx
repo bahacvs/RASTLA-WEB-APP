@@ -13,6 +13,7 @@ const LINKS = [
 const OWNER_LINKS = [
   { href: '/isletme/aktiviteler', label: 'Aktiviteler' },
   { href: '/isletme/ekip', label: 'Ekip' },
+  { href: '/isletme/gunluk', label: 'İşlem Günlüğü' },
 ];
 
 /** İşletme panelinin ortak üst çubuğu. */

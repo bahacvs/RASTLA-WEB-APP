@@ -8,7 +8,7 @@
 
 Bir ihlalden şüphelendiyseniz:
 
-1. **Kanamayı durdurun.** Sızıntının kaynağını kapatın (erişimi iptal et, anahtarı değiştir, sunucuyu kapat). Kanıtları silmeyin.
+1. **Kanamayı durdurun.** Sızıntının kaynağını kapatın (şüpheli hesabı `/isletme/ekip` üzerinden askıya alın — oturumu anında düşer; anahtarı değiştirin; gerekirse sunucuyu kapatın). Kanıtları silmeyin.
 2. **Saati not edin.** 72 saatlik bildirim süresi, ihlali **öğrendiğiniz an** başlar. Bu anı yazın.
 3. **[İhlal sorumlusu]'nu arayın:** [telefon]. Tek başınıza karar vermeyin.
 4. **Hiçbir şeyi silmeyin, kimseye duyurmayın.** Günlükler ve yedekler delildir.
@@ -68,6 +68,8 @@ Genel bir liste değil — bu uygulamanın gerçek zayıf noktaları:
 
 Kaydedin: kim fark etti, nasıl fark edildi, ilk belirtiler neler.
 
+**İlk bakılacak yer `/isletme/gunluk`.** Şüpheli hesabın son işlemleri, beklenmeyen saatlerdeki girişler ve başarısız giriş yoğunluğu buradadır. Ekranı sayfa sayfa kaydedin (ekran görüntüsü) — bu kayıtların saklama süresi 12 aydır.
+
 ### Adım 2 — Sınırlama (ilk 1 saat)
 
 - Sızıntı kaynağını kapatın
@@ -78,7 +80,7 @@ Kaydedin: kim fark etti, nasıl fark edildi, ilk belirtiler neler.
 
 Şu soruları yanıtlayın:
 
-1. Hangi **veri kategorileri** etkilendi? (ad, telefon, rezervasyon geçmişi)
+1. Hangi **veri kategorileri** etkilendi? (ad, telefon, rezervasyon geçmişi; işlem günlüğünde ayrıca IP ve tarayıcı bilgisi)
 2. Kaç **kişi** ve kaç **kayıt**?
 3. Veriler gerçekten **ele geçirildi mi**, yoksa yalnızca erişim mi mümkündü?
 4. İlgili kişiler için **olası sonuçlar** neler? (istenmeyen iletişim, kimlik avı, rahatsız edilme)
@@ -166,11 +168,13 @@ Her kayıt şunları içerir:
 | Askıya alınan hesabın oturumu anında geçersizleşir | ✅ var |
 | Bileti onaylayan **kişi** kayıtlı (işletme değil) | ✅ var |
 | **SMS ile kimlik doğrulama (OTP)** | ❌ yok — oturum cihaza bağlı |
-| **Erişim günlüğü ve anormallik tespiti** | ❌ yok |
+| İşlem günlüğü: giriş, bilet onayı, iptal, katalog değişikliği kişi bazında kayıtlı | ✅ var — `/isletme/gunluk` |
+| Başarısız giriş denemeleri kayıtlı; günlük ekranı 24 saatte 10'u aşınca uyarı gösterir | ✅ var |
+| **Otomatik anormallik tespiti ve uyarı bildirimi** | ❌ yok — günlük elle incelenir |
 | **Otomatik yedekleme ve geri yükleme testi** | ❌ yok |
 | **Hız sınırı (brute force koruması)** | ❌ yok |
 
-> Sağ sütundaki ❌'ler bu planın en zayıf noktalarıdır: **ihlali fark edecek mekanizma yok.** Erişim günlüğü olmadan "kim ne zaman neye erişti" sorusuna cevap verilemez, bu da Adım 3'teki kapsam tespitini imkânsıza yakın kılar. Öncelik sırası: erişim günlüğü → hız sınırı → OTP.
+> Sağ sütundaki ❌'ler bu planın kalan zayıf noktalarıdır. Adım 3'teki kapsam tespiti artık mümkün: işlem günlüğü "kim ne zaman neye erişti" sorusunu cevaplıyor. Eksik olan, ihlali **kendiliğinden** fark edip haber verecek mekanizma — günlük hâlâ elle inceleniyor. Öncelik sırası: hız sınırı → otomatik uyarı → OTP.
 
 ## 8. Tatbikat
 

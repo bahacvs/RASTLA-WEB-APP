@@ -7,6 +7,8 @@ import { findOrCreateUser } from '@/lib/db/users';
 import { getSlot, listSlots, releaseCapacity, reserveCapacity, type Slot } from '@/lib/db/slots';
 import { getUserId, setUserSession } from '@/lib/session';
 import { getActivityBySlug } from '@/lib/db/activities';
+import { record } from '@/lib/db/audit';
+import { requestContext } from '@/lib/request-context';
 
 export type BookingFormState = { error?: string };
 
@@ -88,6 +90,19 @@ export async function createBookingAction(
       totalTRY: (adults + children) * activity.priceTRY,
     });
 
+    // Misafirin adı ve telefonu günlüğe KOPYALANMAZ; kayıt zaten hangi
+    // rezervasyonu işaret ettiğini biliyor.
+    record({
+      action: 'booking.created',
+      actorType: 'customer',
+      actorId: user.id,
+      operatorId: activity.operatorId,
+      targetType: 'booking',
+      targetId: booking.id,
+      ...(await requestContext()),
+      meta: { slotId: slot.id, units, party: adults + children },
+    });
+
     redirect(`/bilet/${booking.code}`);
   } catch (error) {
     // redirect() içeride bir hata fırlatarak çalışır; onu yutmamak gerekir.
@@ -137,6 +152,17 @@ export async function cancelBookingAction(
     if (result.reason === 'already_cancelled') return { error: 'Bu rezervasyon zaten iptal.' };
     return { error: 'Rezervasyon bulunamadı.' };
   }
+
+  record({
+    action: 'booking.cancelled',
+    actorType: 'customer',
+    actorId: userId,
+    operatorId: booking.operatorId,
+    targetType: 'booking',
+    targetId: booking.id,
+    ...(await requestContext()),
+    meta: { reason: 'customer' },
+  });
 
   revalidatePath('/rezervasyonlarim');
   revalidatePath(`/bilet/${code}`);

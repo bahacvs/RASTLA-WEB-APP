@@ -11,10 +11,32 @@ import {
   type ActivityInput,
 } from '@/lib/db/activities';
 import { createRule, setRuleActive, setSlotStatus, syncSlots, getSlot } from '@/lib/db/slots';
-import { currentOperator } from '@/lib/auth';
+import { currentOperator, type OperatorSession } from '@/lib/auth';
 import { isActivityCategory, type CapacityMode } from '@/lib/catalog';
+import { record, type AuditAction } from '@/lib/db/audit';
+import { requestContext } from '@/lib/request-context';
 
 export type ActivityFormState = { error?: string };
+
+/** Katalog değişikliklerini günlüğe yazar — hepsi aynı biçimde. */
+async function log(
+  session: OperatorSession,
+  action: AuditAction,
+  targetType: string,
+  targetId: string,
+  meta?: Record<string, unknown>
+) {
+  record({
+    action,
+    actorType: 'operator',
+    actorId: session.user.id,
+    operatorId: session.operator.id,
+    targetType,
+    targetId,
+    ...(await requestContext()),
+    meta: meta ?? null,
+  });
+}
 
 /**
  * Aktivite yönetimi sahiplere ayrılmıştır.
@@ -36,7 +58,7 @@ async function assertOwnership(activityId: string) {
 
   const activity = getActivityById(activityId);
   if (!activity || activity.operatorId !== session.operator.id) return null;
-  return { operatorId: session.operator.id, activity };
+  return { operatorId: session.operator.id, activity, session };
 }
 
 function readForm(formData: FormData, operatorId: string): ActivityInput | string {
@@ -99,6 +121,7 @@ export async function createActivityAction(
   if (typeof input === 'string') return { error: input };
 
   const activity = createActivity({ ...input, slug: uniqueSlug(input.title) });
+  await log(session, 'activity.created', 'activity', activity.id, { slug: activity.slug });
 
   revalidatePath('/isletme/aktiviteler');
   redirect(`/isletme/aktiviteler/${activity.id}/takvim`);
@@ -129,6 +152,13 @@ export async function updateActivityAction(
     status: owned.activity.status,
   });
 
+  await log(owned.session, 'activity.updated', 'activity', id, {
+    // Fiyat değişikliği uyuşmazlıkta en çok sorulan şey; eski ve yeni değer
+    // birlikte tutulur.
+    priceBefore: owned.activity.priceTRY,
+    priceAfter: input.priceTRY,
+  });
+
   revalidatePath('/isletme/aktiviteler');
   revalidatePath(`/aktivite/${owned.activity.slug}`);
   return {};
@@ -139,7 +169,16 @@ export async function toggleActivityStatusAction(formData: FormData) {
   const owned = await assertOwnership(id);
   if (!owned) return;
 
-  setActivityStatus(id, owned.activity.status === 'published' ? 'draft' : 'published');
+  const publishing = owned.activity.status !== 'published';
+  setActivityStatus(id, publishing ? 'published' : 'draft');
+  await log(
+    owned.session,
+    publishing ? 'activity.published' : 'activity.unpublished',
+    'activity',
+    id,
+    { slug: owned.activity.slug }
+  );
+
   revalidatePath('/isletme/aktiviteler');
   revalidatePath('/');
 }
@@ -200,6 +239,17 @@ export async function createRuleAction(
 
   const { added, closed, keptWithBookings } = syncSlots(activityId);
 
+  await log(owned.session, 'schedule.rule_created', 'activity', activityId, {
+    startTime,
+    endTime,
+    intervalMinutes,
+    capacity,
+    weekdays,
+    added,
+    closed,
+    keptWithBookings: keptWithBookings.length,
+  });
+
   revalidatePath(`/isletme/aktiviteler/${activityId}/takvim`);
   return {
     message: `${added} slot eklendi${closed > 0 ? `, ${closed} slot kapatıldı` : ''}.`,
@@ -216,7 +266,14 @@ export async function toggleRuleAction(formData: FormData) {
   if (!owned) return;
 
   setRuleActive(ruleId, active);
-  syncSlots(activityId);
+  const { added, closed } = syncSlots(activityId);
+  await log(owned.session, 'schedule.rule_toggled', 'schedule_rule', ruleId, {
+    activityId,
+    active,
+    added,
+    closed,
+  });
+
   revalidatePath(`/isletme/aktiviteler/${activityId}/takvim`);
 }
 
@@ -231,6 +288,14 @@ export async function toggleSlotAction(formData: FormData) {
   const slot = getSlot(slotId);
   if (!slot || slot.activityId !== activityId) return;
 
-  setSlotStatus(slotId, slot.status === 'open' ? 'closed' : 'open');
+  const next = slot.status === 'open' ? 'closed' : 'open';
+  setSlotStatus(slotId, next);
+  await log(owned.session, 'schedule.slot_toggled', 'slot', slotId, {
+    activityId,
+    date: slot.date,
+    time: slot.time,
+    status: next,
+  });
+
   revalidatePath(`/isletme/aktiviteler/${activityId}/takvim`);
 }
