@@ -26,6 +26,8 @@ export type Activity = {
   slug: string;
   title: string;
   category: ActivityCategory;
+  /** Aktiviteyi yürüten işletme (lib/operators.ts). Bilet onayı buna göre yetkilendirilir. */
+  operatorId: string;
   /** Kişi başı fiyat (TL). Biçimlendirme için lib/format.ts kullanılır. */
   priceTRY: number;
   durationLabel: string;
@@ -53,6 +55,7 @@ export type Activity = {
 export const ACTIVITIES: Activity[] = [
   {
     slug: 'elektrikli-sup-deneyimi',
+    operatorId: 'buyukcekmece-wsc',
     title: 'RASTLA Elektrikli SUP Deneyimi',
     category: 'elektrikli-sup',
     priceTRY: 600,
@@ -106,6 +109,7 @@ export const ACTIVITIES: Activity[] = [
   },
   {
     slug: 'premium-jet-ski',
+    operatorId: 'buyukcekmece-wsc',
     title: 'Premium Jet Ski Kiralama',
     category: 'jet-ski',
     priceTRY: 1200,
@@ -121,6 +125,7 @@ export const ACTIVITIES: Activity[] = [
   },
   {
     slug: 'gun-batimi-sup-turu',
+    operatorId: 'mimarsinan-marina',
     title: 'Gün Batımı SUP Turu',
     category: 'sup',
     priceTRY: 450,
@@ -136,6 +141,7 @@ export const ACTIVITIES: Activity[] = [
   },
   {
     slug: 'ruzgar-sorfu-baslangic',
+    operatorId: 'mimarsinan-marina',
     title: 'Başlangıç Seviyesi Rüzgar Sörfü',
     category: 'ruzgar-sorfu',
     priceTRY: 1200,
@@ -152,6 +158,7 @@ export const ACTIVITIES: Activity[] = [
   },
   {
     slug: 'tekli-kano-kiralama',
+    operatorId: 'buyukcekmece-wsc',
     title: 'Tekli Kano Kiralama',
     category: 'kano',
     priceTRY: 250,
@@ -167,6 +174,7 @@ export const ACTIVITIES: Activity[] = [
   },
   {
     slug: 'ozel-tekne-turu',
+    operatorId: 'mimarsinan-marina',
     title: 'Özel Tekne Turu (2 Saat)',
     category: 'tekne',
     priceTRY: 3500,

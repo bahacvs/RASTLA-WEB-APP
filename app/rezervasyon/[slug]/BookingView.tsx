@@ -1,10 +1,10 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useActionState, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Icon } from '@/components/Icon';
 import { formatPrice } from '@/lib/format';
-import { activityUrl, buildWhatsAppUrl, isPilotBookingEnabled } from '@/lib/whatsapp';
+import { createBookingAction, type BookingFormState } from '@/app/actions/booking';
 import type { Activity } from '@/lib/data';
 
 const WEEKDAYS = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz'];
@@ -54,15 +54,15 @@ export function BookingView({ activity }: { activity: Activity }) {
   const timeLabel = slot ? `${slot}${selectedSlot?.note ? ` (${selectedSlot.note})` : ''}` : null;
   const ready = Boolean(selectedDay && slot);
 
-  const whatsappUrl = buildWhatsAppUrl({
-    activityTitle: activity.title,
-    activityUrl: activityUrl(activity.slug),
-    dateLabel,
-    timeLabel,
-    adults,
-    children,
-    totalLabel: formatPrice(total),
-  });
+  // Sunucuya gönderilen makine-okunur tarih.
+  const isoDate = selectedDay
+    ? `${year}-${String(month + 1).padStart(2, '0')}-${String(selectedDay).padStart(2, '0')}`
+    : '';
+
+  const [state, formAction, pending] = useActionState<BookingFormState, FormData>(
+    createBookingAction,
+    {}
+  );
 
   function shiftMonth(delta: number) {
     const next = new Date(year, month + delta, 1);
@@ -89,6 +89,14 @@ export function BookingView({ activity }: { activity: Activity }) {
 
       {/* max-w-[32rem]: `max-w-lg` kullanılamıyor — @theme'deki --spacing-lg
           tokenı Tailwind'in --container-lg değerini gölgeliyor. */}
+      <form action={formAction}>
+        {/* Seçimler sunucuya gizli alanlarla taşınır; tutar sunucuda yeniden hesaplanır. */}
+        <input type="hidden" name="slug" value={activity.slug} />
+        <input type="hidden" name="date" value={isoDate} />
+        <input type="hidden" name="time" value={slot} />
+        <input type="hidden" name="adults" value={adults} />
+        <input type="hidden" name="children" value={children} />
+
       <main className="mx-auto mt-20 max-w-[32rem] space-y-lg px-container-margin">
         {/* Adım 1 — tarih ve saat */}
         <section className="rounded-xl border border-outline-variant bg-surface-container-lowest p-md shadow-card">
@@ -239,16 +247,61 @@ export function BookingView({ activity }: { activity: Activity }) {
             <span className="text-title-price text-primary">{formatPrice(total)}</span>
           </div>
 
+        </section>
+
+        {/* Adım 4 — iletişim */}
+        <section className="rounded-xl border border-outline-variant bg-surface-container-lowest p-md shadow-card">
+          <h2 className="mb-md text-headline-sm text-on-surface">İletişim Bilgileri</h2>
+
+          <div className="flex flex-col gap-sm">
+            <div>
+              <label htmlFor="name" className="mb-1 block text-label-bold text-on-surface-variant">
+                Ad Soyad
+              </label>
+              <input
+                id="name"
+                name="name"
+                required
+                minLength={2}
+                autoComplete="name"
+                className="h-12 w-full rounded-lg border border-outline-variant bg-surface px-3 text-body-md text-on-surface focus:ring-2 focus:ring-primary focus:outline-none"
+              />
+            </div>
+
+            <div>
+              <label htmlFor="phone" className="mb-1 block text-label-bold text-on-surface-variant">
+                Telefon
+              </label>
+              <input
+                id="phone"
+                name="phone"
+                type="tel"
+                required
+                autoComplete="tel"
+                placeholder="05XX XXX XX XX"
+                className="h-12 w-full rounded-lg border border-outline-variant bg-surface px-3 text-body-md text-on-surface focus:ring-2 focus:ring-primary focus:outline-none"
+              />
+            </div>
+          </div>
+
+          {state.error && (
+            <p
+              role="alert"
+              className="mt-md rounded-lg bg-error-container px-3 py-2 text-body-md text-on-error-container"
+            >
+              {state.error}
+            </p>
+          )}
+
           {/* Masaüstünde yapışkan çubuk gizli olduğu için aksiyon burada durur. */}
           <div className="mt-md hidden md:block">
-            <BookingAction ready={ready} href={whatsappUrl} className="w-full" />
+            <BookingAction ready={ready} pending={pending} className="w-full" />
           </div>
         </section>
 
         <p className="pb-4 text-label-sm text-on-surface-variant">
-          {isPilotBookingEnabled
-            ? 'Rezervasyon talebiniz WhatsApp üzerinden iletilir ve işletme tarafından teyit edilir. Online ödeme henüz devrede değildir.'
-            : 'Bu bir arayüz prototipidir. Ödeme altyapısı ve rezervasyon kaydı henüz bağlı değildir.'}
+          Rezervasyonunuz oluşturulduğunda QR kodlu biletiniz hazırlanır. Ödeme deneyim yerinde
+          alınır; online ödeme henüz devrede değildir.
         </p>
       </main>
 
@@ -258,57 +311,39 @@ export function BookingView({ activity }: { activity: Activity }) {
           <span className="block text-label-sm text-on-surface-variant">Toplam Tutar</span>
           <span className="text-title-price text-on-surface">{formatPrice(total)}</span>
         </div>
-        <BookingAction ready={ready} href={whatsappUrl} />
+        <BookingAction ready={ready} pending={pending} />
       </div>
+      </form>
     </div>
   );
 }
 
 /**
- * Rezervasyon aksiyonu.
+ * Rezervasyon gönderme butonu.
  *
- * Pilot kanalı açıkken WhatsApp'a giden bir bağlantı, kapalıyken devre dışı bir
- * buton çizer — böylece numara tanımlı değilken kullanıcı bozuk bir bağlantıya
- * tıklamaz. Tarih ve saat seçilmeden de aktifleşmez.
+ * Tarih ve saat seçilmeden aktifleşmez; gönderim sırasında kilitlenir ki
+ * çift tıklama iki rezervasyon oluşturmasın.
  */
 function BookingAction({
   ready,
-  href,
+  pending,
   className = '',
 }: {
   ready: boolean;
-  href: string | null;
+  pending: boolean;
   className?: string;
 }) {
-  const base =
-    'inline-flex items-center justify-center gap-2 rounded-xl px-6 py-3 text-center text-headline-sm shadow-sm transition-all';
-
-  if (!ready || !href) {
-    return (
-      <button
-        type="button"
-        disabled
-        title={
-          !isPilotBookingEnabled
-            ? 'Rezervasyon kanalı henüz açık değil'
-            : 'Önce tarih ve saat seçin'
-        }
-        className={`${base} cursor-not-allowed bg-primary text-on-primary opacity-50 ${className}`}
-      >
-        {isPilotBookingEnabled ? 'Rezervasyon Talebi' : 'Yakında'}
-      </button>
-    );
-  }
+  const disabled = !ready || pending;
 
   return (
-    <a
-      href={href}
-      target="_blank"
-      rel="noopener noreferrer"
-      className={`${base} bg-primary text-on-primary hover:bg-primary-container active:scale-95 ${className}`}
+    <button
+      type="submit"
+      disabled={disabled}
+      title={ready ? undefined : 'Önce tarih ve saat seçin'}
+      className={`inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-6 py-3 text-center text-headline-sm text-on-primary shadow-sm transition-all hover:bg-primary-container active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 ${className}`}
     >
-      Rezervasyon Talebi
-    </a>
+      {pending ? 'Oluşturuluyor…' : 'Rezervasyonu Tamamla'}
+    </button>
   );
 }
 

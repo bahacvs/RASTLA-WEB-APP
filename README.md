@@ -13,6 +13,7 @@ RASTLA, Türkiye'deki su sporları ve yerel turistik aktiviteleri tek platformda
 
 - **Next.js 16** (App Router) + **React 19** + **TypeScript**
 - **Tailwind CSS v4** — tasarım tokenları `app/globals.css` içindeki `@theme` bloğunda
+- **SQLite** (pilot) — rezervasyon ve bilet kayıtları
 - Yerel **Inter** fontu (`@fontsource/inter`) ve yerel SVG ikonlar
 - Dış çalışma zamanı bağımlılığı yok
 
@@ -23,7 +24,11 @@ RASTLA, Türkiye'deki su sporları ve yerel turistik aktiviteleri tek platformda
 | `/` | Ana sayfa — arama formu, kategoriler, popüler ve bugün müsait deneyimler |
 | `/ara` | Arama — metin ve kategori filtresi, liste/harita geçişi, filtre paneli |
 | `/aktivite/[slug]` | Aktivite detayı — galeri, bilgiler, harita, değerlendirmeler |
-| `/rezervasyon/[slug]` | Rezervasyon — tarih, saat, katılımcı seçimi ve tutar hesabı |
+| `/rezervasyon/[slug]` | Rezervasyon — tarih, saat, katılımcı seçimi, iletişim ve tutar hesabı |
+| `/bilet/[code]` | QR kodlu bilet |
+| `/rezervasyonlarim` | Kullanıcının kendi rezervasyonları |
+| `/isletme` | İşletme girişi |
+| `/isletme/tara` | Bilet okutma ve onaylama |
 
 Arama `?q=` ve `?kategori=` parametrelerini kabul eder; ana sayfadaki form ve kategori çipleri buraya bağlanır. Arama Türkçe'ye duyarlıdır: aksan ve büyük/küçük harf farkı yok sayılır (`buyukcekmece` → `Büyükçekmece`).
 
@@ -48,26 +53,58 @@ npm run generate:icons   # ikon SVG'lerini yeniden üretir
 npm run fetch:images     # prototip görsellerini yeniden indirir (kaynak kaydı)
 ```
 
-## Pilot rezervasyon kanalı
+## Rezervasyon ve bilet sistemi
 
-Ödeme altyapısı ve rezervasyon veritabanı devreye girene kadar rezervasyon talepleri **WhatsApp üzerinden, elle** karşılanır. Kullanıcının seçtiği tarih, saat, katılımcı sayısı ve tutar hazır bir mesaja dönüşür.
+Rezervasyon oluşturulduğunda kullanıcıya **QR kodlu, tek kullanımlık bir bilet** üretilir. İşletme bu kodu kendi ekranından okutup onaylar.
+
+### Tek kullanım güvencesi
+
+Ürünün en kritik kuralı: **bir bilet yalnızca bir kez onaylanabilir.** Garanti tek bir koşullu güncellemeye dayanır (`lib/db/bookings.ts`):
+
+```sql
+UPDATE bookings SET status='redeemed', redeemed_at=?, redeemed_by=?
+ WHERE code=? AND status='confirmed'
+```
+
+Bu ifade atomiktir. İki kişi aynı bileti aynı anda okutsa bile güncellemeler sırayla işlenir; ilki satırı `redeemed` yapar, ikincisinin `WHERE` koşulu artık tutmaz ve **0 satır** etkiler. Bu yüzden hiçbir yerde "önce oku, sonra yaz" biçiminde — yarış durumuna açık — bir kontrol yapılmaz.
+
+Destekleyen önlemler:
+
+- **Bilet kodu tahmin edilemez.** 160 bit kriptografik rastgelelik, Crockford Base32 ile yazılır (`I/L/O/U` yok, elle girilirken karışmaz).
+- **Şema kısıtı**, `redeemed` bir kaydın zaman damgasız olmasını engeller.
+- **Yetkilendirme**, onaylamadan önce yapılır: bir işletme yalnızca kendi aktivitesinin biletini onaylayabilir.
+- Bilet ve rezervasyon sayfaları `noindex`; kod taşıdıkları için arama motorlarına kapalıdır.
+
+Kural `scripts/verify-redemption.mjs` ile sınanır — 12 ayrı süreç aynı anda aynı bileti onaylamayı dener, tam olarak biri geçer.
+
+### Yapılandırma
 
 `.env.example` dosyasını `.env.local` olarak kopyalayıp doldurun:
 
 | Değişken | Etkisi |
 | --- | --- |
-| `NEXT_PUBLIC_WHATSAPP_NUMBER` | Operasyonun numarası (uluslararası biçim, yalnızca rakam: `905321234567`). **Tanımlı değilse** rezervasyon butonu "Yakında" olarak devre dışı kalır — bozuk bağlantı üretilmez. |
-| `NEXT_PUBLIC_SITE_URL` | Sitenin genel adresi. Sitemap, robots, canonical ve Open Graph etiketleri ile WhatsApp mesajındaki bağlantı bunu kullanır. Vercel'de tanımsızsa dağıtımın kendi adresine düşer. |
+| `SESSION_SECRET` | Oturum çerezlerini imzalar. Üretimde rastgele ve gizli olmalı (`openssl rand -base64 32`). |
+| `OPERATOR_ACCESS_CODES` | `isletme:kod` çiftleri, virgülle ayrılır. Tanımsızsa işletme girişi kapalıdır. |
+| `NEXT_PUBLIC_SITE_URL` | Sitenin genel adresi. Sitemap, robots, canonical, Open Graph ve bilet QR'ının işaret ettiği adres. |
+| `DATABASE_PATH` | SQLite dosyası (varsayılan `data/rastla.db`). |
 
-Bunlar `NEXT_PUBLIC_*` oldukları için **derleme anında** gömülür; değiştirdikten sonra yeniden derleyin.
+### Bu fazın bilinen sınırları
 
-Bu kanal geçicidir: gerçek rezervasyon kaydı, ödeme ve müsaitlik yönetimi devreye girdiğinde `lib/whatsapp.ts` ve `BookingAction` bileşeni kaldırılacaktır.
+Aşağıdakiler **pilot seviyesindedir** ve üretime çıkmadan önce değişmelidir:
+
+1. **SQLite kalıcı değildir.** Vercel'in sunucusuz ortamında dosya sistemi geçicidir; üretimde Postgres'e geçilmelidir. Etkilenen tek yer `lib/db/`.
+2. **Kimlik doğrulanmıyor.** Kullanıcı adını ve telefonunu beyan eder, doğrulanmaz; oturum imzalı çerezle aynı cihaza bağlıdır. SMS OTP gerekir.
+3. **İşletme girişi paylaşılan koddur.** Kişi bazında hesap ve rol yönetimi yoktur.
+4. **Ödeme yoktur.** Tutar hesaplanır ama tahsil edilmez; ödeme deneyim yerinde alınır.
+5. **Müsaitlik kontrolü yoktur.** Aynı slota sınırsız rezervasyon alınabilir — kapasite yönetimi bir sonraki fazın işi.
 
 ## Doğrulama betikleri
 
 Sunucu ayaktayken (`npm start`) çalıştırılır:
 
 ```bash
+node scripts/verify-redemption.mjs    # tek kullanım güvencesi (eşzamanlılık dahil) — sunucu gerekmez
+node scripts/verify-ticket-flow.mjs   # rezervasyon -> bilet -> onay -> ikinci onay reddi
 node scripts/verify-offline.mjs       # hiçbir dış host'a istek atılmadığını doğrular
 node scripts/verify-interactions.mjs  # görünüm geçişi, filtre paneli, tutar hesabı
 node scripts/screenshots.mjs [dizin]  # her rotanın mobil + masaüstü görüntüsü
@@ -85,11 +122,11 @@ Bu çalışma tam bir üretim uygulaması değildir; veri katmanı henüz sahted
 
 1. ~~Tasarım React/Next.js bileşenlerine ayrılmalı.~~ **Tamamlandı.**
 2. ~~Görseller kalıcı dosyalarla değiştirilmeli.~~ **Kısmen tamamlandı** — görseller repoya alındı, ancak lisans durumu hâlâ açık (aşağıya bakın).
-3. Kimlik doğrulama, ödeme, rezervasyon ve işletme yönetimi geliştirilmelidir.
+3. Rezervasyon kaydı ve işletme onay akışı **çalışıyor**; kimlik doğrulama (SMS OTP), ödeme ve müsaitlik yönetimi eksik.
 4. Harita sağlayıcısı ve konum altyapısı seçilmelidir — şu an harita statik bir görseldir.
 5. KVKK, mesafeli satış, iptal/iade ve işletme sözleşmeleri hazırlanmalıdır.
 
-Rezervasyon akışı arayüz seviyesinde çalışır (tarih, saat, katılımcı ve tutar hesabı gerçek state'e bağlıdır) ancak veritabanına hiçbir kayıt yazmaz — talepler yukarıdaki pilot kanaldan elle karşılanır.
+Rezervasyon artık veritabanına yazılır ve QR kodlu bilet üretir; işletme bileti okutup onaylayabilir. Ödeme ve müsaitlik kontrolü hâlâ yoktur.
 
 ### Görsel lisansı — açık madde
 
@@ -113,7 +150,8 @@ Marka varlıkları (`public/brand/`) ve ikonlar bu kapsamda değildir — ikonla
 app/                  rotalar ve global stiller
 components/           paylaşılan bileşenler (Icon, kartlar, navigasyon)
 components/icons/     üretilmiş SVG ikon verisi — elle düzenlenmez
-lib/                  veri modeli ve biçimlendirme yardımcıları
+lib/                  veri modeli, oturum ve biçimlendirme yardımcıları
+lib/db/               veritabanı şeması ve rezervasyon/kullanıcı depoları
 public/               görseller ve marka varlıkları
 scripts/              varlık üretimi ve doğrulama betikleri
 reference/prototypes/ özgün statik Stitch ekranları (build'e dahil değil)

@@ -17,3 +17,6 @@ Thumbs.db
 # Ortam değişkenleri
 .env
 .env*.local
+
+# Pilot dönemi SQLite veritabanı
+data/

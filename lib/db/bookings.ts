@@ -1,0 +1,175 @@
+import { randomBytes, randomUUID } from 'node:crypto';
+import { db } from './index';
+
+export type BookingStatus = 'confirmed' | 'redeemed' | 'cancelled';
+
+export type Booking = {
+  id: string;
+  code: string;
+  userId: string;
+  activitySlug: string;
+  operatorId: string;
+  bookingDate: string;
+  bookingTime: string;
+  adults: number;
+  children: number;
+  totalTRY: number;
+  status: BookingStatus;
+  createdAt: string;
+  redeemedAt: string | null;
+  redeemedBy: string | null;
+};
+
+type Row = {
+  id: string;
+  code: string;
+  user_id: string;
+  activity_slug: string;
+  operator_id: string;
+  booking_date: string;
+  booking_time: string;
+  adults: number;
+  children: number;
+  total_try: number;
+  status: BookingStatus;
+  created_at: string;
+  redeemed_at: string | null;
+  redeemed_by: string | null;
+};
+
+function toBooking(row: Row): Booking {
+  return {
+    id: row.id,
+    code: row.code,
+    userId: row.user_id,
+    activitySlug: row.activity_slug,
+    operatorId: row.operator_id,
+    bookingDate: row.booking_date,
+    bookingTime: row.booking_time,
+    adults: row.adults,
+    children: row.children,
+    totalTRY: row.total_try,
+    status: row.status,
+    createdAt: row.created_at,
+    redeemedAt: row.redeemed_at,
+    redeemedBy: row.redeemed_by,
+  };
+}
+
+/**
+ * Bilet kodu üretir.
+ *
+ * 20 bayt (160 bit) kriptografik rastgelelik, Crockford Base32 ile yazılır —
+ * okunaklıdır (I/L/O/U yok, elle girilirken karışmaz) ve tahmin edilemez.
+ * Kodun tahmin edilemez olması, biletin sahteciliğe karşı tek savunmasıdır.
+ */
+const ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
+
+export function generateCode(): string {
+  const bytes = randomBytes(20);
+  let out = '';
+  for (const byte of bytes) out += ALPHABET[byte % ALPHABET.length];
+  // 4'erli gruplar elle okunmayı ve telefonda söylemeyi kolaylaştırır.
+  return out.match(/.{1,4}/g)!.join('-');
+}
+
+export function createBooking(input: {
+  userId: string;
+  activitySlug: string;
+  operatorId: string;
+  bookingDate: string;
+  bookingTime: string;
+  adults: number;
+  children: number;
+  totalTRY: number;
+}): Booking {
+  const row: Row = {
+    id: randomUUID(),
+    code: generateCode(),
+    user_id: input.userId,
+    activity_slug: input.activitySlug,
+    operator_id: input.operatorId,
+    booking_date: input.bookingDate,
+    booking_time: input.bookingTime,
+    adults: input.adults,
+    children: input.children,
+    total_try: input.totalTRY,
+    status: 'confirmed',
+    created_at: new Date().toISOString(),
+    redeemed_at: null,
+    redeemed_by: null,
+  };
+
+  db()
+    .prepare(
+      `INSERT INTO bookings
+         (id, code, user_id, activity_slug, operator_id, booking_date, booking_time,
+          adults, children, total_try, status, created_at, redeemed_at, redeemed_by)
+       VALUES
+         (@id, @code, @user_id, @activity_slug, @operator_id, @booking_date, @booking_time,
+          @adults, @children, @total_try, @status, @created_at, @redeemed_at, @redeemed_by)`
+    )
+    .run(row);
+
+  return toBooking(row);
+}
+
+export function getBookingByCode(code: string): Booking | null {
+  const row = db()
+    .prepare('SELECT * FROM bookings WHERE code = ?')
+    .get(code.trim().toUpperCase()) as Row | undefined;
+  return row ? toBooking(row) : null;
+}
+
+export function listBookingsForUser(userId: string): Booking[] {
+  const rows = db()
+    .prepare('SELECT * FROM bookings WHERE user_id = ? ORDER BY created_at DESC')
+    .all(userId) as Row[];
+  return rows.map(toBooking);
+}
+
+export type RedeemResult =
+  | { ok: true; booking: Booking }
+  | {
+      ok: false;
+      reason: 'not_found' | 'already_redeemed' | 'cancelled' | 'wrong_operator';
+      booking: Booking | null;
+    };
+
+/**
+ * Bileti kullanılmış olarak işaretler. Bir bilet yalnızca BİR KEZ onaylanabilir.
+ *
+ * Garantinin dayandığı yer tek bir koşullu UPDATE'tir:
+ *
+ *   UPDATE ... SET status='redeemed' WHERE code=? AND status='confirmed'
+ *
+ * Bu ifade atomiktir. İki kişi aynı bileti aynı anda okutsa bile ikisinin
+ * UPDATE'i sırayla çalışır; ilki satırı 'redeemed' yapar, ikincisinin WHERE
+ * koşulu artık tutmaz ve 0 satır etkiler. Dolayısıyla "önce oku, sonra yaz"
+ * biçimindeki bir kontrol (ki yarış durumuna açıktır) hiçbir yerde yapılmaz.
+ *
+ * Başarısızlığın sebebi, kullanıcıya doğru mesajı gösterebilmek için UPDATE
+ * sonrasında ayrıca sorgulanır — bu sorgu kararı etkilemez, yalnızca açıklar.
+ */
+export function redeemBooking(code: string, redeemedBy: string): RedeemResult {
+  const normalized = code.trim().toUpperCase();
+
+  const result = db()
+    .prepare(
+      `UPDATE bookings
+          SET status = 'redeemed', redeemed_at = ?, redeemed_by = ?
+        WHERE code = ? AND status = 'confirmed'`
+    )
+    .run(new Date().toISOString(), redeemedBy, normalized);
+
+  if (result.changes === 1) {
+    return { ok: true, booking: getBookingByCode(normalized)! };
+  }
+
+  const existing = getBookingByCode(normalized);
+  if (!existing) return { ok: false, reason: 'not_found', booking: null };
+  if (existing.status === 'redeemed') {
+    return { ok: false, reason: 'already_redeemed', booking: existing };
+  }
+  return { ok: false, reason: 'cancelled', booking: existing };
+}
