@@ -16,9 +16,16 @@ const ROUTES = [
   '/ara',
   '/aktivite/elektrikli-sup-deneyimi',
   '/rezervasyon/elektrikli-sup-deneyimi',
+  '/rezervasyonlarim',
 ];
 
-const ALLOWED_HOSTS = new Set(['127.0.0.1', 'localhost']);
+/**
+ * Harita karoları tek istisnadır: gerçek bir harita için karolar bir
+ * sağlayıcıdan gelmek zorunda ve bunun kaçışı yok. Font, ikon ve görsellerin
+ * hepsi hâlâ repoda; başka hiçbir dış host'a izin verilmez.
+ */
+const TILE_HOST = 'api.maptiler.com';
+const ALLOWED_HOSTS = new Set(['127.0.0.1', 'localhost', TILE_HOST]);
 
 // Ortamda hazır kurulu Chromium kullanılır; playwright paketinin beklediği
 // sürümle eşleşmediği için yol açıkça verilir (indirme yapılmaz).
@@ -72,4 +79,9 @@ if (external.size) {
   process.exit(1);
 }
 
-console.log('Dış host isteği yok — uygulama tamamen yerel kaynaklarla çalışıyor.');
+const tileRequests = [...external].length;
+console.log(
+  tileRequests === 0
+    ? 'Dış host isteği yok — harita bu gezinmede açılmadı, geri kalan her şey yerel.'
+    : 'Yalnızca harita karoları dışarı çıkıyor; diğer tüm kaynaklar yerel.'
+);

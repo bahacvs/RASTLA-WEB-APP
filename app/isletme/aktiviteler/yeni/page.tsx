@@ -1,16 +1,16 @@
 import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
-import { ScanPanel } from './ScanPanel';
+import { OperatorNav } from '@/components/OperatorNav';
+import { ActivityForm } from '../ActivityForm';
 import { getOperatorId } from '@/lib/session';
 import { getOperator } from '@/lib/operators';
-import { OperatorNav } from '@/components/OperatorNav';
 
 export const metadata: Metadata = {
-  title: 'Bilet Okut',
+  title: 'Yeni Aktivite',
   robots: { index: false, follow: false },
 };
 
-export default async function ScanPage() {
+export default async function NewActivityPage() {
   const operatorId = await getOperatorId();
   if (!operatorId) redirect('/isletme');
 
@@ -20,9 +20,9 @@ export default async function ScanPage() {
   return (
     <div className="min-h-screen">
       <OperatorNav operatorName={operator.name} />
-
-      <main className="mx-auto max-w-[32rem] px-container-margin py-lg">
-        <ScanPanel />
+      <main className="mx-auto max-w-[48rem] px-container-margin py-lg">
+        <h1 className="mb-lg text-headline-md text-on-background">Yeni Aktivite</h1>
+        <ActivityForm />
       </main>
     </div>
   );

@@ -1,24 +1,24 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import Image from 'next/image';
 import { Icon } from '@/components/Icon';
+import { ActivityMap } from '@/components/ActivityMap';
 import { SearchResultCard } from '@/components/SearchResultCard';
 import { BottomNavBar } from '@/components/BottomNavBar';
 import { FilterModal } from './FilterModal';
 import {
   CATEGORIES,
-  MAP_IMAGE,
-  MAP_PINS,
-  searchActivities,
+  filterActivities,
+  type Activity,
   type ActivityCategory,
-} from '@/lib/data';
-import { formatPrice } from '@/lib/format';
+} from '@/lib/catalog';
 
 export function SearchView({
+  activities,
   initialQuery = '',
   initialCategory,
 }: {
+  activities: Activity[];
   initialQuery?: string;
   initialCategory?: ActivityCategory;
 }) {
@@ -27,7 +27,28 @@ export function SearchView({
   const [query, setQuery] = useState(initialQuery);
   const [category, setCategory] = useState<ActivityCategory | undefined>(initialCategory);
 
-  const results = useMemo(() => searchActivities({ query, category }), [query, category]);
+  // Haritada "Bu alanda ara" ile seçilen görünüm sınırları.
+  const [bounds, setBounds] = useState<{
+    north: number;
+    south: number;
+    east: number;
+    west: number;
+  } | null>(null);
+
+  const results = useMemo(() => {
+    const matched = filterActivities(activities, { query, category });
+    if (!bounds) return matched;
+
+    return matched.filter(
+      (a) =>
+        a.lat !== null &&
+        a.lng !== null &&
+        a.lat <= bounds.north &&
+        a.lat >= bounds.south &&
+        a.lng <= bounds.east &&
+        a.lng >= bounds.west
+    );
+  }, [activities, query, category, bounds]);
 
   return (
     <div className="pb-[80px]">
@@ -143,6 +164,7 @@ export function SearchView({
                   onClick={() => {
                     setQuery('');
                     setCategory(undefined);
+                    setBounds(null);
                   }}
                   className="rounded-lg bg-primary px-4 py-2 text-label-bold text-on-primary transition-transform active:scale-95"
                 >
@@ -153,35 +175,12 @@ export function SearchView({
           </div>
         ) : (
           <div className="absolute inset-0 h-full w-full">
-            <div className="relative h-full w-full">
-              <Image src={MAP_IMAGE.src} alt={MAP_IMAGE.alt} fill className="object-cover" />
-
-              {/*
-                Konumlar temsilî (gerçek harita sağlayıcısı henüz bağlı değil),
-                ama fiyatlar filtrelenmiş sonuçlardan gelir — böylece harita ile
-                liste birbiriyle çelişmez.
-              */}
-              {results.slice(0, MAP_PINS.length).map((activity, i) => (
-                <div
-                  key={activity.slug}
-                  style={{ top: MAP_PINS[i].top, left: MAP_PINS[i].left }}
-                  className={`absolute flex items-center gap-1 rounded-lg px-2 py-1 text-label-sm font-semibold shadow-md ${
-                    MAP_PINS[i].highlighted
-                      ? 'z-10 scale-110 bg-primary text-on-primary'
-                      : 'border border-outline-variant bg-surface-container-lowest text-on-surface'
-                  }`}
-                >
-                  {formatPrice(activity.priceTRY)}
-                </div>
-              ))}
-
-              <button
-                type="button"
-                className="absolute top-sm left-1/2 -translate-x-1/2 rounded-full border border-outline-variant bg-surface-container-lowest px-4 py-2 text-label-bold whitespace-nowrap text-primary shadow-md transition-transform active:scale-95"
-              >
-                Bu alanda ara
-              </button>
-            </div>
+            <ActivityMap
+              activities={results}
+              onBoundsChange={setBounds}
+              onReset={() => setBounds(null)}
+              filtered={bounds !== null}
+            />
           </div>
         )}
       </main>

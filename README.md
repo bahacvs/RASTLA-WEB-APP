@@ -13,7 +13,8 @@ RASTLA, Türkiye'deki su sporları ve yerel turistik aktiviteleri tek platformda
 
 - **Next.js 16** (App Router) + **React 19** + **TypeScript**
 - **Tailwind CSS v4** — tasarım tokenları `app/globals.css` içindeki `@theme` bloğunda
-- **SQLite** (pilot) — rezervasyon ve bilet kayıtları
+- **SQLite** (pilot) — aktiviteler, takvim, slotlar, rezervasyon ve biletler
+- **MapLibre GL** + karo sağlayıcısı — gerçek harita
 - Yerel **Inter** fontu (`@fontsource/inter`) ve yerel SVG ikonlar
 - Dış çalışma zamanı bağımlılığı yok
 
@@ -29,6 +30,9 @@ RASTLA, Türkiye'deki su sporları ve yerel turistik aktiviteleri tek platformda
 | `/rezervasyonlarim` | Kullanıcının kendi rezervasyonları |
 | `/isletme` | İşletme girişi |
 | `/isletme/tara` | Bilet okutma ve onaylama |
+| `/isletme/aktiviteler` | Aktivite ekleme, düzenleme, yayına alma |
+| `/isletme/aktiviteler/[id]/takvim` | Takvim kuralı ve slot yönetimi |
+| `/isletme/rezervasyonlar` | Güne göre rezervasyonlar ve doluluk |
 
 Arama `?q=` ve `?kategori=` parametrelerini kabul eder; ana sayfadaki form ve kategori çipleri buraya bağlanır. Arama Türkçe'ye duyarlıdır: aksan ve büyük/küçük harf farkı yok sayılır (`buyukcekmece` → `Büyükçekmece`).
 
@@ -49,9 +53,36 @@ Diğer komutlar:
 npm run build            # üretim derlemesi
 npm start                # derlenmiş uygulamayı servis eder
 npm run lint             # ESLint
+npm run seed             # başlangıç aktivitelerini ve takvimlerini yazar
 npm run generate:icons   # ikon SVG'lerini yeniden üretir
 npm run fetch:images     # prototip görsellerini yeniden indirir (kaynak kaydı)
 ```
+
+## Müsaitlik ve kapasite
+
+İşletme her aktivite için tekrarlayan bir takvim kuralı tanımlar — örneğin **08:00'dan 18:00'e, 15 dakikada bir, her slotta 4 kişi**. Kuraldan günde 40 slot üretilir (08:00 … 17:45).
+
+Kurallar tek gerçek kaynaktır; slotlar onlardan maddeleştirilir. Üretim idempotenttir, tekrar çalıştırmak kopya oluşturmaz. Kapasite slota üretim anında **kopyalanır**: kural sonradan değişse de mevcut rezervasyonların dayandığı kapasite geriye dönük bozulmaz. Kural değiştiğinde rezervasyonu olan slotlar korunur, yalnızca boş ve kuralsız kalanlar kapatılır.
+
+### Kapasite neyi sayar?
+
+Aktivite bazında işletme seçer — hangi araca kaç kişi güvenli sığar, bunu işletme bilir:
+
+| Mod | Davranış | Uygun olduğu yer |
+| --- | --- | --- |
+| `per_person` | 4 kapasiteli slot 4 **kişi** alır; 2 kişilik rezervasyon 2 yer düşürür | Grup turu, SUP |
+| `per_booking` | 4 kapasiteli slot 4 **rezervasyon** alır; 2 kişilik rezervasyon 1 yer düşürür | Her müşteriye bir araç düşen jet ski |
+
+### Aşırı rezervasyon güvencesi
+
+Bilet onayındaki desenin aynısı:
+
+```sql
+UPDATE slots SET booked = booked + :units
+ WHERE id = :id AND status = 'open' AND booked + :units <= capacity
+```
+
+Atomiktir; son yeri iki kişi aynı anda almaya çalıştığında yalnızca biri geçer. `scripts/verify-capacity.mjs` bunu 12 eşzamanlı süreçle sınar. Şemadaki `CHECK (booked <= capacity)` son savunma hattıdır.
 
 ## Rezervasyon ve bilet sistemi
 
@@ -87,6 +118,7 @@ Kural `scripts/verify-redemption.mjs` ile sınanır — 12 ayrı süreç aynı a
 | `OPERATOR_ACCESS_CODES` | `isletme:kod` çiftleri, virgülle ayrılır. Tanımsızsa işletme girişi kapalıdır. |
 | `NEXT_PUBLIC_SITE_URL` | Sitenin genel adresi. Sitemap, robots, canonical, Open Graph ve bilet QR'ının işaret ettiği adres. |
 | `DATABASE_PATH` | SQLite dosyası (varsayılan `data/rastla.db`). |
+| `NEXT_PUBLIC_MAPTILER_KEY` | Harita karo sağlayıcısı anahtarı. Tanımsızsa harita yerine yapılandırma uyarısı gösterilir. |
 
 ### Bu fazın bilinen sınırları
 
@@ -96,7 +128,8 @@ Aşağıdakiler **pilot seviyesindedir** ve üretime çıkmadan önce değişmel
 2. **Kimlik doğrulanmıyor.** Kullanıcı adını ve telefonunu beyan eder, doğrulanmaz; oturum imzalı çerezle aynı cihaza bağlıdır. SMS OTP gerekir.
 3. **İşletme girişi paylaşılan koddur.** Kişi bazında hesap ve rol yönetimi yoktur.
 4. **Ödeme yoktur.** Tutar hesaplanır ama tahsil edilmez; ödeme deneyim yerinde alınır.
-5. **Müsaitlik kontrolü yoktur.** Aynı slota sınırsız rezervasyon alınabilir — kapasite yönetimi bir sonraki fazın işi.
+5. **Fotoğraf yükleme yoktur.** İşletme metin alanlarını ve takvimi yönetir; görselleri RASTLA ekler.
+6. **Harita karoları dış bağımlılıktır.** Uygulamanın tek dış isteği budur ve kaçışı yoktur. Sağlayıcı kullanıcı IP'lerini görür — KVKK aydınlatma metninde yer almalı.
 
 ## Doğrulama betikleri
 
@@ -104,6 +137,8 @@ Sunucu ayaktayken (`npm start`) çalıştırılır:
 
 ```bash
 node scripts/verify-redemption.mjs    # tek kullanım güvencesi (eşzamanlılık dahil) — sunucu gerekmez
+node scripts/verify-capacity.mjs      # slot üretimi ve kapasite yarışı — sunucu gerekmez
+node scripts/verify-operator-flow.mjs # aktivite -> takvim -> yayın -> rezervasyon -> bilet
 node scripts/verify-ticket-flow.mjs   # rezervasyon -> bilet -> onay -> ikinci onay reddi
 node scripts/verify-offline.mjs       # hiçbir dış host'a istek atılmadığını doğrular
 node scripts/verify-interactions.mjs  # görünüm geçişi, filtre paneli, tutar hesabı
@@ -123,10 +158,10 @@ Bu çalışma tam bir üretim uygulaması değildir; veri katmanı henüz sahted
 1. ~~Tasarım React/Next.js bileşenlerine ayrılmalı.~~ **Tamamlandı.**
 2. ~~Görseller kalıcı dosyalarla değiştirilmeli.~~ **Kısmen tamamlandı** — görseller repoya alındı, ancak lisans durumu hâlâ açık (aşağıya bakın).
 3. Rezervasyon kaydı ve işletme onay akışı **çalışıyor**; kimlik doğrulama (SMS OTP), ödeme ve müsaitlik yönetimi eksik.
-4. Harita sağlayıcısı ve konum altyapısı seçilmelidir — şu an harita statik bir görseldir.
+4. ~~Harita sağlayıcısı seçilmeli.~~ **Tamamlandı** — MapLibre + karo sağlayıcısı; işletme konumu koordinat olarak girer.
 5. KVKK, mesafeli satış, iptal/iade ve işletme sözleşmeleri hazırlanmalıdır.
 
-Rezervasyon artık veritabanına yazılır ve QR kodlu bilet üretir; işletme bileti okutup onaylayabilir. Ödeme ve müsaitlik kontrolü hâlâ yoktur.
+İşletme kendi aktivitelerini ekleyip takvimini tanımlayabilir; rezervasyon slot kapasitesinden düşer ve QR kodlu bilet üretir. Ödeme hâlâ yoktur.
 
 ### Görsel lisansı — açık madde
 
@@ -151,7 +186,7 @@ app/                  rotalar ve global stiller
 components/           paylaşılan bileşenler (Icon, kartlar, navigasyon)
 components/icons/     üretilmiş SVG ikon verisi — elle düzenlenmez
 lib/                  veri modeli, oturum ve biçimlendirme yardımcıları
-lib/db/               veritabanı şeması ve rezervasyon/kullanıcı depoları
+lib/db/               şema; aktivite, slot, rezervasyon ve kullanıcı depoları
 public/               görseller ve marka varlıkları
 scripts/              varlık üretimi ve doğrulama betikleri
 reference/prototypes/ özgün statik Stitch ekranları (build'e dahil değil)

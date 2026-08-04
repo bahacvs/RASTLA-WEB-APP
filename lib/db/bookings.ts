@@ -9,6 +9,10 @@ export type Booking = {
   userId: string;
   activitySlug: string;
   operatorId: string;
+  /** Kapasitenin düşüldüğü slot. */
+  slotId: string | null;
+  /** Slottan düşen miktar; iptalde aynı miktar geri verilir. */
+  units: number;
   bookingDate: string;
   bookingTime: string;
   adults: number;
@@ -26,6 +30,8 @@ type Row = {
   user_id: string;
   activity_slug: string;
   operator_id: string;
+  slot_id: string | null;
+  units: number;
   booking_date: string;
   booking_time: string;
   adults: number;
@@ -44,6 +50,8 @@ function toBooking(row: Row): Booking {
     userId: row.user_id,
     activitySlug: row.activity_slug,
     operatorId: row.operator_id,
+    slotId: row.slot_id,
+    units: row.units,
     bookingDate: row.booking_date,
     bookingTime: row.booking_time,
     adults: row.adults,
@@ -77,6 +85,8 @@ export function createBooking(input: {
   userId: string;
   activitySlug: string;
   operatorId: string;
+  slotId: string | null;
+  units: number;
   bookingDate: string;
   bookingTime: string;
   adults: number;
@@ -89,6 +99,8 @@ export function createBooking(input: {
     user_id: input.userId,
     activity_slug: input.activitySlug,
     operator_id: input.operatorId,
+    slot_id: input.slotId,
+    units: input.units,
     booking_date: input.bookingDate,
     booking_time: input.bookingTime,
     adults: input.adults,
@@ -103,11 +115,11 @@ export function createBooking(input: {
   db()
     .prepare(
       `INSERT INTO bookings
-         (id, code, user_id, activity_slug, operator_id, booking_date, booking_time,
-          adults, children, total_try, status, created_at, redeemed_at, redeemed_by)
+         (id, code, user_id, activity_slug, operator_id, slot_id, units, booking_date,
+          booking_time, adults, children, total_try, status, created_at, redeemed_at, redeemed_by)
        VALUES
-         (@id, @code, @user_id, @activity_slug, @operator_id, @booking_date, @booking_time,
-          @adults, @children, @total_try, @status, @created_at, @redeemed_at, @redeemed_by)`
+         (@id, @code, @user_id, @activity_slug, @operator_id, @slot_id, @units, @booking_date,
+          @booking_time, @adults, @children, @total_try, @status, @created_at, @redeemed_at, @redeemed_by)`
     )
     .run(row);
 
@@ -172,4 +184,16 @@ export function redeemBooking(code: string, redeemedBy: string): RedeemResult {
     return { ok: false, reason: 'already_redeemed', booking: existing };
   }
   return { ok: false, reason: 'cancelled', booking: existing };
+}
+
+/** İşletmenin belirli bir gündeki rezervasyonları. */
+export function listBookingsForOperator(operatorId: string, date: string): Booking[] {
+  const rows = db()
+    .prepare(
+      `SELECT * FROM bookings
+        WHERE operator_id = ? AND booking_date = ?
+        ORDER BY booking_time, created_at`
+    )
+    .all(operatorId, date) as Row[];
+  return rows.map(toBooking);
 }

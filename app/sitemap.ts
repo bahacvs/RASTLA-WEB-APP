@@ -1,5 +1,5 @@
 import type { MetadataRoute } from 'next';
-import { ACTIVITIES } from '@/lib/data';
+import { listPublishedActivities } from '@/lib/db/activities';
 import { SITE_URL } from '@/lib/site';
 
 export default function sitemap(): MetadataRoute.Sitemap {
@@ -9,7 +9,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { url: SITE_URL, lastModified: now, changeFrequency: 'daily', priority: 1 },
     { url: `${SITE_URL}/ara`, lastModified: now, changeFrequency: 'daily', priority: 0.8 },
     // Aktivite sayfaları organik aramanın asıl giriş noktası.
-    ...ACTIVITIES.map((activity) => ({
+    ...listPublishedActivities().map((activity) => ({
       url: `${SITE_URL}/aktivite/${activity.slug}`,
       lastModified: now,
       changeFrequency: 'weekly' as const,

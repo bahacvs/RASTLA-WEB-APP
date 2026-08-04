@@ -5,7 +5,7 @@ import { Icon } from '@/components/Icon';
 import { TicketQr } from '@/components/TicketQr';
 import { getBookingByCode } from '@/lib/db/bookings';
 import { getUser } from '@/lib/db/users';
-import { getActivity } from '@/lib/data';
+import { getActivityBySlug } from '@/lib/db/activities';
 import { getOperator } from '@/lib/operators';
 import { formatPrice } from '@/lib/format';
 import { SITE_URL } from '@/lib/site';
@@ -39,7 +39,7 @@ export default async function TicketPage({ params }: { params: Promise<{ code: s
   const booking = getBookingByCode(decodeURIComponent(code));
   if (!booking) notFound();
 
-  const activity = getActivity(booking.activitySlug);
+  const activity = getActivityBySlug(booking.activitySlug);
   const operator = getOperator(booking.operatorId);
   const user = getUser(booking.userId);
   const status = STATUS_STYLES[booking.status];

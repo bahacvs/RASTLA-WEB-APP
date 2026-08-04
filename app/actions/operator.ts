@@ -6,7 +6,7 @@ import { getBookingByCode, redeemBooking, type Booking } from '@/lib/db/bookings
 import { getUser } from '@/lib/db/users';
 import { authenticateOperator } from '@/lib/operators';
 import { clearOperatorSession, getOperatorId, setOperatorSession } from '@/lib/session';
-import { getActivity } from '@/lib/data';
+import { getActivityBySlug } from '@/lib/db/activities';
 
 export type LoginState = { error?: string };
 
@@ -46,7 +46,7 @@ export type ScanState = {
 function describe(booking: Booking, customerName: string) {
   return {
     code: booking.code,
-    activityTitle: getActivity(booking.activitySlug)?.title ?? booking.activitySlug,
+    activityTitle: getActivityBySlug(booking.activitySlug)?.title ?? booking.activitySlug,
     customerName,
     date: booking.bookingDate,
     time: booking.bookingTime,

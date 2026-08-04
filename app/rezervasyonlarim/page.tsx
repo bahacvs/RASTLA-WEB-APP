@@ -4,7 +4,7 @@ import { Icon } from '@/components/Icon';
 import { BottomNavBar } from '@/components/BottomNavBar';
 import { listBookingsForUser } from '@/lib/db/bookings';
 import { getUserId } from '@/lib/session';
-import { getActivity } from '@/lib/data';
+import { getActivityBySlug } from '@/lib/db/activities';
 import { formatPrice } from '@/lib/format';
 
 export const metadata: Metadata = {
@@ -46,7 +46,7 @@ export default async function MyBookingsPage() {
         ) : (
           <ul className="flex flex-col gap-md">
             {bookings.map((booking) => {
-              const activity = getActivity(booking.activitySlug);
+              const activity = getActivityBySlug(booking.activitySlug);
               const status = STATUS[booking.status];
 
               return (

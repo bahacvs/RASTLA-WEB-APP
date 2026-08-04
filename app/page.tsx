@@ -4,12 +4,19 @@ import { ActivityCard } from '@/components/ActivityCard';
 import { CompactActivityCard } from '@/components/CompactActivityCard';
 import { Icon } from '@/components/Icon';
 import { BottomNavBar } from '@/components/BottomNavBar';
-import { ACTIVITIES, CATEGORIES, POPULAR_SLUGS, AVAILABLE_TODAY_SLUGS } from '@/lib/data';
+import { CATEGORIES, POPULAR_SLUGS, AVAILABLE_TODAY_SLUGS } from '@/lib/catalog';
+import { listPublishedActivities } from '@/lib/db/activities';
 
-const popular = POPULAR_SLUGS.map((s) => ACTIVITIES.find((a) => a.slug === s)!);
-const availableToday = AVAILABLE_TODAY_SLUGS.map((s) => ACTIVITIES.find((a) => a.slug === s)!);
+// Aktiviteler işletme tarafından düzenlenebildiği için sayfa belirli aralıkla tazelenir.
+export const revalidate = 60;
 
 export default function HomePage() {
+  const activities = listPublishedActivities();
+  const bySlug = (slug: string) => activities.find((a) => a.slug === slug);
+
+  const popular = POPULAR_SLUGS.map(bySlug).filter((a) => a !== undefined);
+  const availableToday = AVAILABLE_TODAY_SLUGS.map(bySlug).filter((a) => a !== undefined);
+
   return (
     <div className="pb-24">
       <HomeTopBar />

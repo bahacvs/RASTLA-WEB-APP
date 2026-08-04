@@ -2,7 +2,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { Icon } from './Icon';
 import { formatPrice } from '@/lib/format';
-import type { Activity } from '@/lib/data';
+import type { Activity } from '@/lib/catalog';
 
 /**
  * Arama sonuçları listesindeki kart. Ana sayfa kartından farkı: konum ve süre
@@ -20,9 +20,12 @@ export function SearchResultCard({ activity }: { activity: Activity }) {
           className="object-cover"
         />
 
-        {activity.spotsLeft !== undefined ? (
+        {/* Bugün az yer kaldıysa aciliyet uyarısı; yoksa hemen onay rozeti. */}
+        {activity.remainingToday !== undefined &&
+        activity.remainingToday > 0 &&
+        activity.remainingToday <= 3 ? (
           <div className="absolute top-sm left-sm flex items-center gap-1 rounded bg-error-container px-2 py-1 text-label-sm font-semibold text-on-error-container shadow-sm">
-            Sadece {activity.spotsLeft} Kaldı
+            Bugün son {activity.remainingToday} yer
           </div>
         ) : (
           activity.instantConfirm && (

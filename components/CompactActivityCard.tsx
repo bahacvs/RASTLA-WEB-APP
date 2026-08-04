@@ -2,7 +2,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { Icon } from './Icon';
 import { formatPrice } from '@/lib/format';
-import type { Activity } from '@/lib/data';
+import type { Activity } from '@/lib/catalog';
 
 /**
  * Ana sayfadaki "Bugün Müsait" yatay şeridinde kullanılan dar kart:

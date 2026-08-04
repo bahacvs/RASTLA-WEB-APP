@@ -23,10 +23,19 @@ const listVisible = await page.getByRole('article').first().isVisible();
 check('liste görünümü varsayılan', listVisible);
 
 await page.getByRole('button', { name: 'Harita' }).click();
-await page.waitForTimeout(300);
-const mapPin = await page.getByText('1.200 TL').first().isVisible();
+await page.waitForTimeout(600);
+
+// Harita gerçek MapLibre; anahtar tanımlıysa tuval çizilir, tanımlı değilse
+// yapılandırma uyarısı görünür. İkisi de geçerli — asıl kontrol listenin
+// kapanıp harita alanının açılması.
+const canvas = await page.locator('.maplibregl-canvas').count();
+const notice = await page.getByText('Harita yapılandırılmamış').count();
 const listGone = (await page.getByRole('article').count()) === 0;
-check('harita görünümü açılıyor', mapPin && listGone);
+check(
+  'harita görünümü açılıyor',
+  listGone && (canvas > 0 || notice > 0),
+  canvas > 0 ? 'harita tuvali çizildi' : 'anahtar yok, uyarı gösterildi'
+);
 
 await page.getByRole('button', { name: 'Liste' }).click();
 await page.waitForTimeout(300);

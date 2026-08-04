@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { SearchView } from './SearchView';
-import { isActivityCategory } from '@/lib/data';
+import { isActivityCategory } from '@/lib/catalog';
+import { listPublishedActivities } from '@/lib/db/activities';
 
 export const metadata: Metadata = {
   title: 'Arama',
@@ -16,7 +17,12 @@ export default async function SearchPage({
   const { q, kategori } = await searchParams;
   const category = isActivityCategory(kategori) ? kategori : undefined;
 
+  // Katalogun tamamı istemciye verilir: arama kutusuna her harfte sunucuya
+  // gitmek yerine filtreleme anında yapılır. Pilot ölçeğinde uygun; katalog
+  // büyürse sunucu tarafı aramaya geçilmeli.
+  const activities = listPublishedActivities();
+
   return (
-    <SearchView initialQuery={q ?? ''} initialCategory={category} />
+    <SearchView activities={activities} initialQuery={q ?? ''} initialCategory={category} />
   );
 }

@@ -5,13 +5,19 @@ import Link from 'next/link';
 import { Icon } from '@/components/Icon';
 import { DetailHeader } from './DetailHeader';
 import { Gallery } from './Gallery';
-import { ACTIVITIES, getActivity, type Activity } from '@/lib/data';
+import { getActivityBySlug, listPublishedActivities } from '@/lib/db/activities';
+import type { Activity } from '@/lib/catalog';
 import { formatPrice } from '@/lib/format';
 import { SITE_URL } from '@/lib/site';
+import { getOperator } from '@/lib/operators';
 
 export function generateStaticParams() {
-  return ACTIVITIES.map((a) => ({ slug: a.slug }));
+  return listPublishedActivities().map((a) => ({ slug: a.slug }));
 }
+
+// Aktiviteler artık veritabanından geliyor; sayfalar önceden üretilir ama
+// işletme bir düzenleme yaptığında bir dakika içinde tazelenir.
+export const revalidate = 60;
 
 export async function generateMetadata({
   params,
@@ -19,7 +25,7 @@ export async function generateMetadata({
   params: Promise<{ slug: string }>;
 }): Promise<Metadata> {
   const { slug } = await params;
-  const activity = getActivity(slug);
+  const activity = getActivityBySlug(slug);
   if (!activity) return {};
 
   const description =
@@ -45,6 +51,7 @@ export async function generateMetadata({
  * yapılandırılmış veri. Yerel aramada zengin sonuç görünümü sağlar.
  */
 function activityJsonLd(activity: Activity) {
+  const operatorName = getOperator(activity.operatorId)?.name;
   return {
     '@context': 'https://schema.org',
     '@type': 'Product',
@@ -55,7 +62,7 @@ function activityJsonLd(activity: Activity) {
     image: `${SITE_URL}${activity.image}`,
     url: `${SITE_URL}/aktivite/${activity.slug}`,
     category: activity.category,
-    ...(activity.operator && { brand: { '@type': 'Organization', name: activity.operator } }),
+    ...(operatorName && { brand: { '@type': 'Organization', name: operatorName } }),
     offers: {
       '@type': 'Offer',
       price: activity.priceTRY,
@@ -77,10 +84,11 @@ export default async function ActivityDetailPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const activity = getActivity(slug);
+  const activity = getActivityBySlug(slug);
   if (!activity) notFound();
 
   const gallery = activity.gallery ?? [{ src: activity.image, alt: activity.imageAlt }];
+  const operatorName = getOperator(activity.operatorId)?.name;
 
   return (
     <div className="flex min-h-screen flex-col pb-24 md:pb-0">
@@ -101,11 +109,11 @@ export default async function ActivityDetailPage({
           <div className="md:sticky md:top-24">
             {/* Başlık ve doğrulanmış işletme */}
             <div className="mb-lg">
-              {activity.operator && (
+              {operatorName && (
                 <div className="mb-xs flex items-center gap-2">
                   <span className="inline-flex items-center gap-1 rounded-full border border-outline-variant bg-surface-container-low px-2 py-1 text-label-sm text-on-surface-variant">
                     <Icon name="verified" filled size={14} className="text-primary" />
-                    {activity.operator}
+                    {operatorName}
                   </span>
                 </div>
               )}
