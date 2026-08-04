@@ -97,6 +97,10 @@ Barındırma ve harita hizmetleri yurt dışında bulunan sağlayıcılardan al�
 
 Süre dolduğunda verileriniz silinir, yok edilir veya anonim hâle getirilir. Ayrıntı için Veri Saklama ve İmha Politikamıza bakabilirsiniz.
 
+**Beklemeden kullanabilecekleriniz:** verilerinizin tamamını dilediğiniz an **Hesabım** sayfasından dosya olarak indirebilir, hesabınızı yine oradan silebilirsiniz. Hesap silindiğinde adınız ve telefon numaranız geri döndürülemez biçimde kaldırılır; geçmiş rezervasyon kayıtları yukarıdaki yasal süre boyunca **anonim hâlde** saklanmaya devam eder ve artık sizi işaret etmez.
+
+Silme talebi, hizmeti almayı beklediğiniz aktif bir rezervasyonunuz varken karşılanamaz: işletmenin sizi karşılayabilmesi için adınıza ihtiyacı vardır. Bu durumda rezervasyonunuzu iptal etmeniz istenir.
+
 ## 8. Haklarınız (KVKK md. 11)
 
 Kişisel verilerinize ilişkin olarak;

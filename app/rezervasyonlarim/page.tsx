@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { Icon } from '@/components/Icon';
 import { BottomNavBar } from '@/components/BottomNavBar';
 import { listBookingsForUser } from '@/lib/db/bookings';
-import { getUserId } from '@/lib/session';
+import { currentUserId } from '@/lib/auth';
 import { getActivityBySlug } from '@/lib/db/activities';
 import { formatPrice } from '@/lib/format';
 
@@ -19,13 +19,22 @@ const STATUS = {
 };
 
 export default async function MyBookingsPage() {
-  const userId = await getUserId();
+  const userId = await currentUserId();
   const bookings = userId ? listBookingsForUser(userId) : [];
 
   return (
     <div className="min-h-screen pb-24">
-      <header className="mx-auto flex h-16 w-full max-w-7xl items-center border-b border-surface-variant bg-surface px-container-margin">
+      <header className="mx-auto flex h-16 w-full max-w-7xl items-center justify-between border-b border-surface-variant bg-surface px-container-margin">
         <h1 className="text-headline-sm text-primary">Rezervasyonlarım</h1>
+        {userId && (
+          <Link
+            href="/hesabim"
+            className="flex items-center gap-1 text-label-bold text-on-surface-variant hover:underline"
+          >
+            <Icon name="person" size={18} />
+            Hesabım
+          </Link>
+        )}
       </header>
 
       <main className="mx-auto max-w-[32rem] px-container-margin py-lg">

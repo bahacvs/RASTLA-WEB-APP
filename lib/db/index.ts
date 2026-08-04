@@ -23,7 +23,35 @@ export function db(): Database.Database {
   const connection = new Database(DB_PATH);
   const schema = readFileSync(join(process.cwd(), 'lib', 'db', 'schema.sql'), 'utf8');
   connection.exec(schema);
+  migrate(connection);
 
   instance = connection;
   return instance;
+}
+
+/**
+ * Var olan tablolara eklenen sütunlar.
+ *
+ * `CREATE TABLE IF NOT EXISTS` yalnızca yeni veritabanlarını kurar; tablo
+ * zaten varsa şemadaki yeni sütun sessizce uygulanmaz. Bu yüzden sonradan
+ * eklenen sütunlar burada, veri kaybetmeden ve tekrar çalıştırılabilir
+ * biçimde uygulanır.
+ *
+ * Yeni sütun eklerken İKİ yere yazın: schema.sql (yeni kurulumlar için) ve
+ * buraya (mevcut kurulumlar için).
+ */
+function migrate(connection: Database.Database) {
+  ensureColumn(connection, 'users', 'deleted_at', 'TEXT');
+}
+
+function ensureColumn(
+  connection: Database.Database,
+  table: string,
+  column: string,
+  definition: string
+) {
+  const columns = connection.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
+  if (columns.some((c) => c.name === column)) return;
+
+  connection.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
 }

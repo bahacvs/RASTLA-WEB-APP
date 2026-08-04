@@ -5,7 +5,7 @@ import { Icon } from '@/components/Icon';
 import { currentOperator } from '@/lib/auth';
 import { listOperatorUsers } from '@/lib/db/operators';
 import { listBookingsForOperator } from '@/lib/db/bookings';
-import { getUser } from '@/lib/db/users';
+import { displayContact, getUser } from '@/lib/db/users';
 import { getActivityBySlug } from '@/lib/db/activities';
 import { formatPrice } from '@/lib/format';
 import { CancelBookingButton, CancelDayButton } from './CancelControls';
@@ -99,7 +99,7 @@ export default async function OperatorBookingsPage({
           <ul className="flex flex-col gap-sm">
             {bookings.map((booking) => {
               const activity = getActivityBySlug(booking.activitySlug);
-              const user = getUser(booking.userId);
+              const guest = displayContact(getUser(booking.userId));
               const status = STATUS[booking.status];
 
               return (
@@ -113,7 +113,7 @@ export default async function OperatorBookingsPage({
                         {booking.bookingTime} · {activity?.title}
                       </p>
                       <p className="text-body-md text-on-surface-variant">
-                        {user?.name ?? '—'} · {user?.phone ?? '—'}
+                        {guest.name} · {guest.phone}
                       </p>
                     </div>
                     <span

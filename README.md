@@ -153,6 +153,19 @@ npm run retention              # ne silineceğini gösterir
 npm run retention -- --uygula  # gerçekten siler
 ```
 
+### Kişisel veri hakları (KVKK md. 11)
+
+`/hesabim` üzerinden misafir kendi verisini indirebilir ve hesabını silebilir. İkisi de elle karşılanan talep olmaktan çıktı.
+
+**Silme, satırı silmez — anonimleştirir.** Rezervasyon ve bilet kayıtları 10 yıllık zamanaşımı boyunca saklanmak zorunda ve `bookings.user_id` kullanıcı satırına bağlı; satırı silmek ya geçmişi de silerdi ya da yetim kayıt bırakırdı. Bunun yerine ad ve telefon **geri döndürülemez** biçimde değiştirilir. Telefon yerine rastgele bir yer tutucu yazılır: numaranın özeti yazılsaydı, elinde numara olan biri kaydı yeniden eşleştirebilirdi — bu anonimleştirme değil, takma adlandırma olurdu.
+
+İki ayrıntı önemliydi:
+
+- **Aktif rezervasyon varken silme reddedilir.** İşletmenin misafiri karşılayabilmesi için adına ihtiyacı var. Kullanıcı isterse tek kutuyla "bunları da iptal et" der; sessizce iptal etmek, işletmenin beklediği bir misafiri ortadan kaldırmak olurdu.
+- **Silinen hesabın çerezi anında geçersizleşir.** Çerez 90 gün geçerli ve imzası silmeyle bozulmaz; yalnızca çereze bakılsaydı başka bir cihazda kalmış oturum geçmişi açmaya devam ederdi.
+
+`verify-account-rights.mjs` (33 kontrol) bunların hepsini gerçek tarayıcıyla ve veritabanını doğrudan okuyarak doğrular.
+
 ### Hız sınırı
 
 Üç yer korunuyor, üçünün gerekçesi farklı:
@@ -198,6 +211,7 @@ node scripts/verify-offline-ticket.mjs # bağlantı kesikken bilet ve QR açıl�
 node scripts/verify-offline.mjs       # harita karoları dışında dış istek var mı
 node scripts/verify-audit.mjs         # işlem günlüğü: ne kaydediliyor, ne KAYDEDİLMİYOR
 node scripts/verify-rate-limit.mjs    # hız sınırı ve 30 süreçli eşzamanlılık
+node scripts/verify-account-rights.mjs # veri indirme ve hesap silme (KVKK md. 11)
 node scripts/verify-interactions.mjs  # görünüm geçişi, filtre paneli, tutar hesabı
 node scripts/screenshots.mjs [dizin]  # her rotanın mobil + masaüstü görüntüsü
 ```

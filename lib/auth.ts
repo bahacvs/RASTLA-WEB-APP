@@ -1,5 +1,22 @@
-import { getOperatorUserId } from './session';
+import { getOperatorUserId, getUserId } from './session';
 import { getOperator, getOperatorUser, type Operator, type OperatorUser } from './db/operators';
+import { getUser } from './db/users';
+
+/**
+ * Oturumdaki misafirin kimliği — silinmiş hesaplar hariç.
+ *
+ * Çerez 90 gün geçerli ve imzası hesap silinince de bozulmaz. Yalnızca
+ * `getUserId()` kullanılsaydı, hesabını silen birinin başka bir cihazda kalmış
+ * çerezi rezervasyon geçmişini açmaya devam ederdi. Silme talebi karşılandıysa
+ * o oturum da bitmiş sayılır.
+ */
+export async function currentUserId(): Promise<string | null> {
+  const userId = await getUserId();
+  if (!userId) return null;
+
+  const user = getUser(userId);
+  return user && !user.deletedAt ? user.id : null;
+}
 
 /**
  * Oturumdaki işletme personelini çözer.

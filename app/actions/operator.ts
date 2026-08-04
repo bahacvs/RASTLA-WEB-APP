@@ -9,7 +9,7 @@ import {
   redeemBooking,
   type Booking,
 } from '@/lib/db/bookings';
-import { getUser } from '@/lib/db/users';
+import { displayContact, getUser } from '@/lib/db/users';
 import { authenticateOperatorUser, normalizeEmail, recordLogin } from '@/lib/db/operators';
 import { currentOperator } from '@/lib/auth';
 import { clearOperatorSession, setOperatorSession } from '@/lib/session';
@@ -227,7 +227,7 @@ export async function redeemAction(_prev: ScanState, formData: FormData): Promis
   // bir uyuşmazlıkta ya da ihlalde cevabı gereken soru "hangi işletme" değil,
   // "kim" sorusudur.
   const result = redeemBooking(code, session.user.id);
-  const customerName = getUser(existing.userId)?.name ?? '—';
+  const customerName = displayContact(getUser(existing.userId)).name;
 
   if (result.ok) {
     // Geçerli bir onay, o personelin başarısız deneme sayacını sıfırlar:

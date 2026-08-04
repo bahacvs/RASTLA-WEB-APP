@@ -6,6 +6,7 @@ import { cancelBooking, createBooking, getBookingByCode } from '@/lib/db/booking
 import { findOrCreateUser, normalizePhone } from '@/lib/db/users';
 import { getSlot, listSlots, releaseCapacity, reserveCapacity, type Slot } from '@/lib/db/slots';
 import { getUserId, setUserSession } from '@/lib/session';
+import { currentUserId } from '@/lib/auth';
 import { getActivityBySlug } from '@/lib/db/activities';
 import { record } from '@/lib/db/audit';
 import { requestContext } from '@/lib/request-context';
@@ -165,7 +166,7 @@ export async function cancelBookingAction(
   const code = String(formData.get('code') ?? '').trim();
   if (!code) return { error: 'Bilet kodu eksik.' };
 
-  const userId = await getUserId();
+  const userId = await currentUserId();
   if (!userId) return { error: 'Oturum bulunamadı. Rezervasyonu yapan cihazdan deneyin.' };
 
   const booking = getBookingByCode(code);

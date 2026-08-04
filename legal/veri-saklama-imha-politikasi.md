@@ -41,6 +41,7 @@ Kişisel veri içeren **fiziksel/kâğıt ortam bulunmamaktadır.**
 | Ortam | Yöntem |
 | --- | --- |
 | Veritabanı kayıtları | Kaydın silinmesi; muhasebe/uyuşmazlık gereği tutulması gerekiyorsa kimlik ve iletişim alanlarının anonimleştirilmesi |
+| İlgili kişinin kendi talebiyle hesap silme | Uygulamada (`/hesabim`) anında yapılır: ad ve telefon geri döndürülemez yer tutucularla değiştirilir. Rezervasyon kayıtları saklama süresi boyunca anonim hâlde kalır. |
 | Sunucu günlükleri | Otomatik yaşlandırma ile silme |
 | İşlem günlüğü | Yaşlandırma ile toplu silme (`npm run retention -- --uygula`) |
 | Hız sınırı sayaçları | Aynı komutla silinir |

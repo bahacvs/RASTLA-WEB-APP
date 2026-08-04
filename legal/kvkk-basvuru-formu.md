@@ -20,6 +20,17 @@ Başvurunuz, talebin niteliğine göre **en geç otuz gün** içinde ücretsiz o
 
 E-posta konusuna **"KVKK Bilgi Talebi"** yazmanız işlemi hızlandırır.
 
+## Form doldurmadan yapabilecekleriniz
+
+İki talep için bu formu doldurmanıza gerek yok; uygulamadaki **Hesabım** sayfasından anında karşılanır:
+
+| Talep | Nerede |
+| --- | --- |
+| Verilerimin bir kopyasını istiyorum (md. 11/b-c) | Hesabım → **Verilerimi İndir** |
+| Hesabımın silinmesini istiyorum (md. 11/e) | Hesabım → **Hesabımı Sil** |
+
+Hesabım sayfasına, rezervasyonu yaptığınız cihazdan **Rezervasyonlarım** ekranı üzerinden ulaşabilirsiniz. Bu cihaza erişiminiz yoksa aşağıdaki formu kullanın.
+
 ---
 
 ## A. Başvuru sahibi bilgileri

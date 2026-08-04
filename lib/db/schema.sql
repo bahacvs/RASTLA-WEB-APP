@@ -10,7 +10,14 @@ CREATE TABLE IF NOT EXISTS users (
   id          TEXT PRIMARY KEY,
   name        TEXT NOT NULL,
   phone       TEXT NOT NULL UNIQUE,
-  created_at  TEXT NOT NULL
+  created_at  TEXT NOT NULL,
+
+  -- Hesap silindiğinde doldurulur. Satır SİLİNMEZ, anonimleştirilir: rezervasyon
+  -- kayıtları 10 yıllık zamanaşımı boyunca saklanmak zorunda ve bookings.user_id
+  -- bu satıra bağlı. Ad ve telefon yerine geri döndürülemez yer tutucular yazılır;
+  -- kalan satır artık hiçbir kişiye işaret etmez.
+  -- (Sonradan eklendi — mevcut kurulumlar için bkz. lib/db/index.ts migrate().)
+  deleted_at  TEXT
 );
 
 -- Hizmeti veren işletme. Önceden lib/operators.ts içinde sabit bir diziydi.
