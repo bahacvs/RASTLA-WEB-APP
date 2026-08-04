@@ -14,7 +14,7 @@ export async function currentUserId(): Promise<string | null> {
   const userId = await getUserId();
   if (!userId) return null;
 
-  const user = getUser(userId);
+  const user = await getUser(userId);
   return user && !user.deletedAt ? user.id : null;
 }
 
@@ -33,10 +33,10 @@ export async function currentOperator(): Promise<OperatorSession | null> {
   const userId = await getOperatorUserId();
   if (!userId) return null;
 
-  const user = getOperatorUser(userId);
+  const user = await getOperatorUser(userId);
   if (!user || user.status !== 'active') return null;
 
-  const operator = getOperator(user.operatorId);
+  const operator = await getOperator(user.operatorId);
   if (!operator) return null;
 
   return { user, operator };

@@ -84,20 +84,20 @@ export default async function AuditLogPage({
   // Bir işletme yalnızca kendi bağlamındaki kayıtları görür.
   const operatorId = session.operator.id;
 
-  const entries = listAudit({
+  const entries = await listAudit({
     operatorId,
     action,
     limit: PAGE_SIZE,
     offset: (page - 1) * PAGE_SIZE,
   });
-  const total = countAudit({ operatorId, action });
+  const total = await countAudit({ operatorId, action });
   const pages = Math.max(Math.ceil(total / PAGE_SIZE), 1);
 
   // Son 24 saatte bu işletmeye yönelik kaç başarısız giriş denemesi oldu.
   // Bu sayının yükselmesi kaba kuvvet denemesinin ilk işaretidir.
-  const recentFailures = countRecentLoginFailures(operatorId);
+  const recentFailures = await countRecentLoginFailures(operatorId);
 
-  const staff = new Map(listOperatorUsers(operatorId).map((u) => [u.id, u.name]));
+  const staff = new Map((await listOperatorUsers(operatorId)).map((u) => [u.id, u.name] as const));
   const actorName = (entry: AuditRecord) => {
     if (entry.actorType === 'operator') {
       return entry.actorId ? (staff.get(entry.actorId) ?? 'Silinmiş hesap') : 'İşletme';

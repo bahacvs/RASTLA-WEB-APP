@@ -45,7 +45,7 @@ Kişisel veri içeren **fiziksel/kâğıt ortam bulunmamaktadır.**
 | Sunucu günlükleri | Otomatik yaşlandırma ile silme |
 | İşlem günlüğü | Yaşlandırma ile toplu silme (`npm run retention -- --uygula`) |
 | Hız sınırı sayaçları | Aynı komutla silinir |
-| Yedekler | Yedek döngüsü tamamlandığında üzerine yazma |
+| Yedekler | Yedek döngüsü tamamlandığında üzerine yazma. Yedekleme, barındırılan Postgres hizmetinin sorumluluğundadır; saklama süresi sağlayıcı ayarlarından bu politikaya uygun seçilmelidir. |
 | Kullanıcı cihazındaki önbellek | Kullanıcının kontrolündedir; tarayıcı site verilerinin temizlenmesiyle kaldırılır |
 
 **Anonimleştirme tercihi:** Bir rezervasyon kaydının istatistik veya mali kayıt olarak tutulması gerekiyorsa, kayıt silinmek yerine kişiyle ilişkilendirilebilir alanları (ad, telefon, kullanıcı kimliği) geri döndürülemez biçimde kaldırılır. Böylece işletme kendi doluluk geçmişini kaybetmez, veri ise kişisel olmaktan çıkar.

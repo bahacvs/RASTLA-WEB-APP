@@ -17,30 +17,24 @@
  *
  * Kullanım: npm start & node scripts/verify-audit.mjs
  */
-import { join } from 'node:path';
-import { createRequire } from 'node:module';
 import { chromium } from 'playwright';
 import { ensureTestAccounts, loginAs, TEST_PASSWORD, emailFor } from './lib/test-accounts.mjs';
-
-const require = createRequire(import.meta.url);
-const Database = require('better-sqlite3');
+import { db as connect, usingPostgres } from '../lib/db/index.mjs';
 
 const BASE = process.env.BASE_URL ?? 'http://127.0.0.1:3000';
-const DB_PATH = process.env.DATABASE_PATH ?? join(process.cwd(), 'data', 'rastla.db');
 
-ensureTestAccounts();
+// Uygulamayla aynı bağlantı: DATABASE_URL tanımlıysa bu betik de Postgres'i
+// okur, yani günlük iddiası her iki motorda da sınanır.
+const store = await connect();
+
+await ensureTestAccounts();
 
 const checks = [];
 const check = (name, pass, detail = '') => checks.push({ name, pass, detail });
 
 /** Günlüğü doğrudan veritabanından okur — uygulamanın yazdığına bakılıyor. */
-function audit(where = '', params = []) {
-  const db = new Database(DB_PATH, { readonly: true });
-  const rows = db
-    .prepare(`SELECT * FROM audit_log ${where} ORDER BY at DESC, id DESC LIMIT 200`)
-    .all(...params);
-  db.close();
-  return rows;
+async function audit(where = '', params = []) {
+  return store.all(`SELECT * FROM audit_log ${where} ORDER BY at DESC, id DESC LIMIT 200`, params);
 }
 
 const startedAt = new Date().toISOString();
@@ -62,7 +56,7 @@ await op.fill('#password', 'kesinlikle-yanlis-parola');
 await op.getByRole('button', { name: 'Giriş Yap' }).click();
 await op.waitForTimeout(1200);
 
-const failedLogins = audit(...since("action = 'operator.login_failed'"));
+const failedLogins = await audit(...since("action = 'operator.login_failed'"));
 check('başarısız giriş kaydedildi', failedLogins.length >= 1, `${failedLogins.length} kayıt`);
 check(
   'başarısız girişte sonuç failure',
@@ -76,7 +70,7 @@ check(
 );
 
 // PAROLA HİÇBİR YERDE OLMAMALI. Tüm günlük satırları taranıyor.
-const everything = JSON.stringify(audit());
+const everything = JSON.stringify(await audit());
 check(
   'yanlış girilen parola günlükte yok',
   !everything.includes('kesinlikle-yanlis-parola'),
@@ -86,7 +80,7 @@ check('test parolası günlükte yok', !everything.includes(TEST_PASSWORD));
 
 // Şimdi doğru parola.
 await loginAs(op, BASE, 'buyukcekmece-wsc');
-const logins = audit(...since("action = 'operator.login'"));
+const logins = await audit(...since("action = 'operator.login'"));
 check('başarılı giriş kaydedildi', logins.length >= 1, `${logins.length} kayıt`);
 check('girişte kişi kimliği var', Boolean(logins[0]?.actor_id));
 check('girişte aktör tipi operator', logins[0]?.actor_type === 'operator');
@@ -106,7 +100,7 @@ await op.getByRole('radio', { name: /Rezervasyon sayılır/ }).check();
 await op.getByRole('button', { name: /Oluştur ve Takvime Geç/ }).click();
 await op.waitForURL(/\/isletme\/aktiviteler\/.+\/takvim/, { timeout: 15000 });
 
-const created = audit(...since("action = 'activity.created'"));
+const created = await audit(...since("action = 'activity.created'"));
 check('aktivite oluşturma kaydedildi', created.length >= 1);
 
 await op.fill('#startTime', '09:00');
@@ -116,7 +110,7 @@ await op.fill('#capacity', '2');
 await op.getByRole('button', { name: /Kuralı Ekle/ }).click();
 await op.waitForTimeout(2500);
 
-const rules = audit(...since("action = 'schedule.rule_created'"));
+const rules = await audit(...since("action = 'schedule.rule_created'"));
 check('takvim kuralı kaydedildi', rules.length >= 1);
 check(
   'kural kaydı üretilen slot sayısını taşıyor',
@@ -129,7 +123,7 @@ const card = op.locator('li').filter({ hasText: TITLE });
 await card.getByRole('button', { name: 'Yayına Al' }).click();
 await op.waitForTimeout(1500);
 
-check('yayına alma kaydedildi', audit(...since("action = 'activity.published'")).length >= 1);
+check('yayına alma kaydedildi', (await audit(...since("action = 'activity.published'"))).length >= 1);
 
 // ---------- 3. Rezervasyon ----------
 
@@ -154,7 +148,7 @@ await cp.getByRole('button', { name: 'Rezervasyonu Tamamla' }).first().click();
 await cp.waitForURL(/\/bilet\//, { timeout: 15000 });
 const code = decodeURIComponent(new URL(cp.url()).pathname.split('/').pop());
 
-const bookings = audit(...since("action = 'booking.created'"));
+const bookings = await audit(...since("action = 'booking.created'"));
 check('rezervasyon oluşturma kaydedildi', bookings.length >= 1);
 check('rezervasyon kaydında misafir kimliği var', Boolean(bookings[0]?.actor_id));
 
@@ -162,7 +156,7 @@ check('rezervasyon kaydında misafir kimliği var', Boolean(bookings[0]?.actor_i
 //
 // Günlük hangi kaydı işaret ettiğini biliyor; adı ve telefonu ikinci kez
 // saklamak ihlalde kapsamı büyütmekten başka işe yaramaz.
-const all = JSON.stringify(audit());
+const all = JSON.stringify(await audit());
 check('misafir adı günlükte yok', !all.includes(GUEST_NAME), GUEST_NAME);
 check('misafir telefonu günlükte yok', !all.includes('05327778899') && !all.includes(GUEST_PHONE));
 check('bilet kodu günlükte yok', !all.includes(code), code);
@@ -178,7 +172,7 @@ await wrong.getByRole('button', { name: 'Onayla' }).click();
 await wrong.waitForTimeout(1200);
 await wrongCtx.close();
 
-const denied = audit(...since("action = 'booking.redeem_failed' AND outcome = 'denied'"));
+const denied = await audit(...since("action = 'booking.redeem_failed' AND outcome = 'denied'"));
 check('başka işletmenin onay denemesi kaydedildi', denied.length >= 1, `${denied.length} kayıt`);
 check(
   'reddedilen deneme yanlış işletmenin günlüğüne yazıldı',
@@ -192,7 +186,7 @@ await op.fill('#code', code);
 await op.getByRole('button', { name: 'Onayla' }).click();
 await op.waitForTimeout(1500);
 
-const redeemed = audit(...since("action = 'booking.redeemed'"));
+const redeemed = await audit(...since("action = 'booking.redeemed'"));
 check('bilet onayı kaydedildi', redeemed.length >= 1);
 check('onayı yapan kişi kayıtlı', Boolean(redeemed[0]?.actor_id));
 
@@ -201,7 +195,7 @@ await op.fill('#code', code);
 await op.getByRole('button', { name: 'Onayla' }).click();
 await op.waitForTimeout(1500);
 
-const secondTry = audit(...since("action = 'booking.redeem_failed' AND outcome = 'failure'"));
+const secondTry = await audit(...since("action = 'booking.redeem_failed' AND outcome = 'failure'"));
 check(
   'ikinci onay denemesi de kaydedildi',
   secondTry.some((r) => JSON.parse(r.meta ?? '{}').reason === 'already_redeemed'),
@@ -220,7 +214,7 @@ check(
 
 // Başka işletmenin kaydı SIZMAMALI. Mimarsinan'ın reddedilen denemesi
 // buyukcekmece'nin günlüğünde görünmemeli.
-const visibleIds = audit("WHERE operator_id = 'buyukcekmece-wsc'").map((r) => r.id);
+const visibleIds = (await audit("WHERE operator_id = 'buyukcekmece-wsc'")).map((r) => r.id);
 check(
   'başka işletmenin kaydı bu işletmenin günlüğünde yok',
   !visibleIds.includes(denied[0]?.id),
@@ -259,39 +253,38 @@ await cancelCtx.close();
 
 check(
   'müşteri iptali kaydedildi',
-  audit(...since("action = 'booking.cancelled'")).length >= 1,
-  `${audit(...since("action = 'booking.cancelled'")).length} kayıt`
+  (await audit(...since("action = 'booking.cancelled'"))).length >= 1,
+  `${(await audit(...since("action = 'booking.cancelled'"))).length} kayıt`
 );
 
 // ---------- 8. Saklama süresi ----------
 
-const write = new Database(DB_PATH);
 const old = new Date(Date.now() - 400 * 24 * 60 * 60 * 1000).toISOString();
-write
-  .prepare(
-    `INSERT INTO audit_log (id, at, actor_type, action, outcome)
-     VALUES ('eski-kayit-testi', ?, 'system', 'operator.login', 'success')`
-  )
-  .run(old);
+await store.run(
+  `INSERT INTO audit_log (id, at, actor_type, action, outcome)
+   VALUES ('eski-kayit-testi', ?, 'system', 'operator.login', 'success')`,
+  [old]
+);
 
 const cutoff = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString();
-const purged = write.prepare('DELETE FROM audit_log WHERE at < ?').run(cutoff).changes;
-const stillThere = write
-  .prepare(`SELECT COUNT(*) AS n FROM audit_log WHERE id = 'eski-kayit-testi'`)
-  .get().n;
-const recentKept = write
-  .prepare('SELECT COUNT(*) AS n FROM audit_log WHERE at >= ?')
-  .get(startedAt).n;
-write.close();
+const purged = (await store.run('DELETE FROM audit_log WHERE at < ?', [cutoff])).changes;
+const stillThere = Number(
+  (await store.get(`SELECT COUNT(*) AS n FROM audit_log WHERE id = 'eski-kayit-testi'`)).n
+);
+const recentKept = Number(
+  (await store.get('SELECT COUNT(*) AS n FROM audit_log WHERE at >= ?', [startedAt])).n
+);
 
 check('saklama süresi dolan kayıt siliniyor', purged >= 1 && stillThere === 0, `${purged} silindi`);
 check('güncel kayıtlar silinmiyor', recentKept > 0, `${recentKept} kayıt duruyor`);
+console.log(`(motor: ${usingPostgres ? 'Postgres' : 'SQLite'})\n`);
 
 // ---------- Sonuç ----------
 
 await ctx.close();
 await customerCtx.close();
 await browser.close();
+await store.close();
 
 let failed = 0;
 for (const c of checks) {

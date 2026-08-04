@@ -19,7 +19,7 @@ export default async function EditActivityPage({ params }: { params: Promise<{ i
   const operatorId = session.operator.id;
 
   const { id } = await params;
-  const activity = getActivityById(id);
+  const activity = await getActivityById(id);
   // Başka bir işletmenin aktivitesi hiç var olmamış gibi davranır.
   if (!activity || activity.operatorId !== operatorId) notFound();
 

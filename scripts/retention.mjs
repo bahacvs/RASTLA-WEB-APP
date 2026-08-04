@@ -12,18 +12,10 @@
  * Süreler ortam değişkeniyle değiştirilebilir; varsayılanlar politikadaki
  * değerlerdir.
  */
-import { readFileSync, mkdirSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { createRequire } from 'node:module';
+import { db as connect, toCount, usingPostgres } from '../lib/db/index.mjs';
 
-const require = createRequire(import.meta.url);
-const Database = require('better-sqlite3');
-
-const DB_PATH = process.env.DATABASE_PATH ?? join(process.cwd(), 'data', 'rastla.db');
-mkdirSync(dirname(DB_PATH), { recursive: true });
-
-const db = new Database(DB_PATH);
-db.exec(readFileSync(join(process.cwd(), 'lib', 'db', 'schema.sql'), 'utf8'));
+// Uygulamayla aynı bağlantı katmanı: DATABASE_URL varsa Postgres, yoksa SQLite.
+const db = await connect();
 
 const apply = process.argv.includes('--uygula');
 
@@ -33,8 +25,8 @@ const AUDIT_DAYS = Number(process.env.AUDIT_RETENTION_DAYS ?? 365);
 
 const cutoff = new Date(Date.now() - AUDIT_DAYS * 24 * 60 * 60 * 1000).toISOString();
 
-const expired = db.prepare('SELECT COUNT(*) AS n FROM audit_log WHERE at < ?').get(cutoff).n;
-const total = db.prepare('SELECT COUNT(*) AS n FROM audit_log').get().n;
+const expired = toCount((await db.get('SELECT COUNT(*) AS n FROM audit_log WHERE at < ?', [cutoff])).n);
+const total = toCount((await db.get('SELECT COUNT(*) AS n FROM audit_log')).n);
 
 console.log(`İşlem günlüğü — saklama süresi ${AUDIT_DAYS} gün`);
 console.log(`  sınır tarihi : ${cutoff.slice(0, 10)}`);
@@ -46,25 +38,29 @@ console.log(`  süresi dolan : ${expired}`);
 const RATE_LIMIT_HOURS = Number(process.env.RATE_LIMIT_RETENTION_HOURS ?? 24);
 const rateCutoff = new Date(Date.now() - RATE_LIMIT_HOURS * 60 * 60 * 1000).toISOString();
 
-const staleLimits = db
-  .prepare('SELECT COUNT(*) AS n FROM rate_limits WHERE window_start < ?')
-  .get(rateCutoff).n;
+const staleLimits = toCount(
+  (await db.get('SELECT COUNT(*) AS n FROM rate_limits WHERE window_start < ?', [rateCutoff])).n
+);
+const totalLimits = toCount((await db.get('SELECT COUNT(*) AS n FROM rate_limits')).n);
 
 console.log(`\nHız sınırı sayaçları — ${RATE_LIMIT_HOURS} saatten eski`);
-console.log(`  toplam satır : ${db.prepare('SELECT COUNT(*) AS n FROM rate_limits').get().n}`);
+console.log(`  toplam satır : ${totalLimits}`);
 console.log(`  süresi dolan : ${staleLimits}`);
 
 if (!apply) {
   console.log('\nHiçbir şey silinmedi. Gerçekten silmek için: --uygula');
 } else {
-  const deleted = db.prepare('DELETE FROM audit_log WHERE at < ?').run(cutoff).changes;
-  const limits = db.prepare('DELETE FROM rate_limits WHERE window_start < ?').run(rateCutoff).changes;
+  const deleted = (await db.run('DELETE FROM audit_log WHERE at < ?', [cutoff])).changes;
+  const limits = (await db.run('DELETE FROM rate_limits WHERE window_start < ?', [rateCutoff]))
+    .changes;
   console.log(`\n${deleted} günlük kaydı, ${limits} sayaç satırı silindi.`);
 
-  // SQLite silinen alanı dosyaya iade etmez; imhanın diskte de gerçekleşmesi
-  // için boşluk geri alınır.
-  db.exec('VACUUM');
+  // Silinen alan dosyaya/tabloya kendiliğinden iade edilmez; imhanın diskte de
+  // gerçekleşmesi için boşluk geri alınır. VACUUM her iki motorda da var ama
+  // Postgres'te işlem bloğu dışında çalışmalı — burada öyle çalışıyor.
+  await db.run(usingPostgres ? 'VACUUM (ANALYZE) audit_log' : 'VACUUM');
   console.log('Veritabanı sıkıştırıldı (VACUUM).');
 }
 
-db.close();
+console.log(`\nVeritabanı: ${usingPostgres ? 'Postgres (DATABASE_URL)' : 'SQLite dosyası'}`);
+await db.close();

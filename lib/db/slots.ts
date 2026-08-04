@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { db } from './index';
+import { db } from './index.mjs';
 
 /**
  * Müsaitlik motoru.
@@ -128,7 +128,9 @@ export function timesForRule(rule: Pick<ScheduleRule, 'startTime' | 'endTime' | 
 
 // ------------------------------------------------------------------- kurallar
 
-export function createRule(input: Omit<ScheduleRule, 'id' | 'active'> & { active?: boolean }): ScheduleRule {
+export async function createRule(
+  input: Omit<ScheduleRule, 'id' | 'active'> & { active?: boolean }
+): Promise<ScheduleRule> {
   const row: RuleRow = {
     id: randomUUID(),
     activity_id: input.activityId,
@@ -142,29 +144,34 @@ export function createRule(input: Omit<ScheduleRule, 'id' | 'active'> & { active
     active: input.active === false ? 0 : 1,
   };
 
-  db()
-    .prepare(
-      `INSERT INTO schedule_rules
-         (id, activity_id, weekdays, start_time, end_time, interval_minutes,
-          capacity, valid_from, valid_until, active, created_at)
-       VALUES
-         (@id, @activity_id, @weekdays, @start_time, @end_time, @interval_minutes,
-          @capacity, @valid_from, @valid_until, @active, @created_at)`
-    )
-    .run({ ...row, created_at: new Date().toISOString() });
+  await (
+    await db()
+  ).run(
+    `INSERT INTO schedule_rules
+       (id, activity_id, weekdays, start_time, end_time, interval_minutes,
+        capacity, valid_from, valid_until, active, created_at)
+     VALUES
+       (@id, @activity_id, @weekdays, @start_time, @end_time, @interval_minutes,
+        @capacity, @valid_from, @valid_until, @active, @created_at)`,
+    { ...row, created_at: new Date().toISOString() }
+  );
 
   return toRule(row);
 }
 
-export function listRules(activityId: string): ScheduleRule[] {
-  const rows = db()
-    .prepare('SELECT * FROM schedule_rules WHERE activity_id = ? ORDER BY start_time')
-    .all(activityId) as RuleRow[];
+export async function listRules(activityId: string): Promise<ScheduleRule[]> {
+  const rows = await (
+    await db()
+  ).all<RuleRow>('SELECT * FROM schedule_rules WHERE activity_id = ? ORDER BY start_time', [
+    activityId,
+  ]);
   return rows.map(toRule);
 }
 
-export function setRuleActive(ruleId: string, active: boolean) {
-  db().prepare('UPDATE schedule_rules SET active = ? WHERE id = ?').run(active ? 1 : 0, ruleId);
+export async function setRuleActive(ruleId: string, active: boolean) {
+  await (
+    await db()
+  ).run('UPDATE schedule_rules SET active = ? WHERE id = ?', [active ? 1 : 0, ruleId]);
 }
 
 // ------------------------------------------------------------- slot üretimi
@@ -177,17 +184,16 @@ export function setRuleActive(ruleId: string, active: boolean) {
  *
  * @returns eklenen slot sayısı
  */
-export function generateSlots(rule: ScheduleRule, horizonDays = 90): number {
+export async function generateSlots(rule: ScheduleRule, horizonDays = 90): Promise<number> {
   if (!rule.active) return 0;
 
   const times = timesForRule(rule);
   if (times.length === 0) return 0;
 
-  const insert = db().prepare(
-    `INSERT INTO slots (id, activity_id, rule_id, slot_date, slot_time, capacity, booked, status, created_at)
+  const client = await db();
+  const INSERT = `INSERT INTO slots (id, activity_id, rule_id, slot_date, slot_time, capacity, booked, status, created_at)
      VALUES (?, ?, ?, ?, ?, ?, 0, 'open', ?)
-     ON CONFLICT (activity_id, slot_date, slot_time) DO NOTHING`
-  );
+     ON CONFLICT (activity_id, slot_date, slot_time) DO NOTHING`;
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -203,19 +209,24 @@ export function generateSlots(rule: ScheduleRule, horizonDays = 90): number {
   const now = new Date().toISOString();
   let added = 0;
 
-  const run = db().transaction(() => {
-    for (const day = new Date(cursor); day <= end; day.setDate(day.getDate() + 1)) {
-      // Kuralın kapsamadığı günleri atla.
-      if ((rule.weekdays & (1 << weekdayIndex(day))) === 0) continue;
+  for (const day = new Date(cursor); day <= end; day.setDate(day.getDate() + 1)) {
+    // Kuralın kapsamadığı günleri atla.
+    if ((rule.weekdays & (1 << weekdayIndex(day))) === 0) continue;
 
-      const date = toIsoDate(day);
-      for (const time of times) {
-        const result = insert.run(randomUUID(), rule.activityId, rule.id, date, time, rule.capacity, now);
-        added += result.changes;
-      }
+    const date = toIsoDate(day);
+    for (const time of times) {
+      const result = await client.run(INSERT, [
+        randomUUID(),
+        rule.activityId,
+        rule.id,
+        date,
+        time,
+        rule.capacity,
+        now,
+      ]);
+      added += result.changes;
     }
-  });
-  run();
+  }
 
   return added;
 }
@@ -227,14 +238,15 @@ export function generateSlots(rule: ScheduleRule, horizonDays = 90): number {
  * **rezervasyonu olmayanlar** kapatılır; rezervasyonu olanlar korunur ve
  * çağırana bildirilir — dolu bir slotu sessizce silmek veri kaybıdır.
  */
-export function syncSlots(
+export async function syncSlots(
   activityId: string,
   horizonDays = 90
-): { added: number; closed: number; keptWithBookings: Slot[] } {
-  const rules = listRules(activityId).filter((r) => r.active);
+): Promise<{ added: number; closed: number; keptWithBookings: Slot[] }> {
+  const client = await db();
+  const rules = (await listRules(activityId)).filter((r) => r.active);
 
   let added = 0;
-  for (const rule of rules) added += generateSlots(rule, horizonDays);
+  for (const rule of rules) added += await generateSlots(rule, horizonDays);
 
   // Aktif kuralların kapsadığı (tarih, saat) çiftleri.
   const covered = new Set<string>();
@@ -258,11 +270,11 @@ export function syncSlots(
     }
   }
 
-  const future = db()
-    .prepare(`SELECT * FROM slots WHERE activity_id = ? AND slot_date >= ?`)
-    .all(activityId, toIsoDate(today)) as SlotRow[];
+  const future = await client.all<SlotRow>(
+    `SELECT * FROM slots WHERE activity_id = ? AND slot_date >= ?`,
+    [activityId, toIsoDate(today)]
+  );
 
-  const close = db().prepare(`UPDATE slots SET status = 'closed' WHERE id = ?`);
   const keptWithBookings: Slot[] = [];
   let closed = 0;
 
@@ -274,7 +286,7 @@ export function syncSlots(
       continue;
     }
     if (row.status === 'open') {
-      close.run(row.id);
+      await client.run(`UPDATE slots SET status = 'closed' WHERE id = ?`, [row.id]);
       closed++;
     }
   }
@@ -284,33 +296,41 @@ export function syncSlots(
 
 // --------------------------------------------------------------- sorgulama
 
-export function listSlots(activityId: string, date: string): Slot[] {
-  const rows = db()
-    .prepare('SELECT * FROM slots WHERE activity_id = ? AND slot_date = ? ORDER BY slot_time')
-    .all(activityId, date) as SlotRow[];
+export async function listSlots(activityId: string, date: string): Promise<Slot[]> {
+  const rows = await (
+    await db()
+  ).all<SlotRow>('SELECT * FROM slots WHERE activity_id = ? AND slot_date = ? ORDER BY slot_time', [
+    activityId,
+    date,
+  ]);
   return rows.map(toSlot);
 }
 
-export function getSlot(id: string): Slot | null {
-  const row = db().prepare('SELECT * FROM slots WHERE id = ?').get(id) as SlotRow | undefined;
+export async function getSlot(id: string): Promise<Slot | null> {
+  const row = await (await db()).get<SlotRow>('SELECT * FROM slots WHERE id = ?', [id]);
   return row ? toSlot(row) : null;
 }
 
 /** Müsait yeri olan günler — takvimde hangi günün seçilebilir olduğunu belirler. */
-export function datesWithAvailability(activityId: string, from: string, to: string): string[] {
-  const rows = db()
-    .prepare(
-      `SELECT DISTINCT slot_date FROM slots
-        WHERE activity_id = ? AND slot_date BETWEEN ? AND ?
-          AND status = 'open' AND booked < capacity
-        ORDER BY slot_date`
-    )
-    .all(activityId, from, to) as { slot_date: string }[];
+export async function datesWithAvailability(
+  activityId: string,
+  from: string,
+  to: string
+): Promise<string[]> {
+  const rows = await (
+    await db()
+  ).all<{ slot_date: string }>(
+    `SELECT DISTINCT slot_date FROM slots
+      WHERE activity_id = ? AND slot_date BETWEEN ? AND ?
+        AND status = 'open' AND booked < capacity
+      ORDER BY slot_date`,
+    [activityId, from, to]
+  );
   return rows.map((r) => r.slot_date);
 }
 
-export function setSlotStatus(slotId: string, status: 'open' | 'closed') {
-  db().prepare('UPDATE slots SET status = ? WHERE id = ?').run(status, slotId);
+export async function setSlotStatus(slotId: string, status: 'open' | 'closed') {
+  await (await db()).run('UPDATE slots SET status = ? WHERE id = ?', [status, slotId]);
 }
 
 // ------------------------------------------------------------ kapasite
@@ -332,26 +352,31 @@ export type ReserveResult =
  * koşulu artık tutmaz ve 0 satır etkiler. Hiçbir yerde "önce say, uygun mu
  * bak, sonra ekle" yapılmaz — o yaklaşım yarış durumuna açıktır.
  */
-export function reserveCapacity(slotId: string, units: number): ReserveResult {
-  const result = db()
-    .prepare(
-      `UPDATE slots
-          SET booked = booked + ?
-        WHERE id = ? AND status = 'open' AND booked + ? <= capacity`
-    )
-    .run(units, slotId, units);
+export async function reserveCapacity(slotId: string, units: number): Promise<ReserveResult> {
+  const result = await (
+    await db()
+  ).run(
+    `UPDATE slots
+        SET booked = booked + ?
+      WHERE id = ? AND status = 'open' AND booked + ? <= capacity`,
+    [units, slotId, units]
+  );
 
-  if (result.changes === 1) return { ok: true, slot: getSlot(slotId)! };
+  if (result.changes === 1) return { ok: true, slot: (await getSlot(slotId))! };
 
-  const slot = getSlot(slotId);
+  const slot = await getSlot(slotId);
   if (!slot) return { ok: false, reason: 'not_found' };
   if (slot.status === 'closed') return { ok: false, reason: 'closed' };
   return { ok: false, reason: 'full' };
 }
 
 /** İptalde kapasiteyi geri verir. Negatife düşmesi şema kısıtıyla da engellenir. */
-export function releaseCapacity(slotId: string, units: number) {
-  db()
-    .prepare('UPDATE slots SET booked = booked - ? WHERE id = ? AND booked >= ?')
-    .run(units, slotId, units);
+export async function releaseCapacity(slotId: string, units: number) {
+  await (
+    await db()
+  ).run('UPDATE slots SET booked = booked - ? WHERE id = ? AND booked >= ?', [
+    units,
+    slotId,
+    units,
+  ]);
 }

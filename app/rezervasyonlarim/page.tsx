@@ -20,7 +20,16 @@ const STATUS = {
 
 export default async function MyBookingsPage() {
   const userId = await currentUserId();
-  const bookings = userId ? listBookingsForUser(userId) : [];
+  const bookings = userId ? await listBookingsForUser(userId) : [];
+
+  // Aktiviteler JSX'ten ÖNCE toplanır: render sırasında veri çekilemez.
+  const activities = new Map(
+    await Promise.all(
+      [...new Set(bookings.map((b) => b.activitySlug))].map(
+        async (slug) => [slug, await getActivityBySlug(slug)] as const
+      )
+    )
+  );
 
   return (
     <div className="min-h-screen pb-24">
@@ -55,7 +64,7 @@ export default async function MyBookingsPage() {
         ) : (
           <ul className="flex flex-col gap-md">
             {bookings.map((booking) => {
-              const activity = getActivityBySlug(booking.activitySlug);
+              const activity = activities.get(booking.activitySlug);
               const status = STATUS[booking.status];
 
               return (

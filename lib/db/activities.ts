@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { db } from './index';
+import { db, toCount } from './index.mjs';
 import type { Activity, ActivityCategory, CapacityMode, Review } from '../catalog';
 
 /**
@@ -35,7 +35,11 @@ type Row = {
   rating: number;
   review_count: number;
   status: 'draft' | 'published';
-  remaining_today?: number;
+  /**
+   * SUM() sonucu. Postgres bunu bigint döndürür ve `pg` sürücüsü DİZGİ olarak
+   * verir; bu yüzden tip burada number değil ve toActivity içinde çevrilir.
+   */
+  remaining_today?: number | string;
 };
 
 function parseJson<T>(value: string | null): T | undefined {
@@ -81,7 +85,7 @@ function toActivity(row: Row): Activity {
     rating: row.rating,
     reviewCount: row.review_count,
     status: row.status,
-    remainingToday: row.remaining_today,
+    remainingToday: row.remaining_today === undefined ? undefined : toCount(row.remaining_today),
   };
 }
 
@@ -98,36 +102,37 @@ function todayIso(): string {
  * listedeki "son N yer" uyarısı böylece gerçek doluluğu yansıtır.
  * Tek sorguda alt sorguyla hesaplanır; aktivite başına ek sorgu yapılmaz.
  */
-export function listPublishedActivities(): Activity[] {
-  const rows = db()
-    .prepare(
-      `SELECT a.*,
-              (SELECT COALESCE(SUM(s.capacity - s.booked), 0)
-                 FROM slots s
-                WHERE s.activity_id = a.id AND s.slot_date = ? AND s.status = 'open'
-              ) AS remaining_today
-         FROM activities a
-        WHERE a.status = 'published'
-        ORDER BY a.created_at`
-    )
-    .all(todayIso()) as Row[];
+export async function listPublishedActivities(): Promise<Activity[]> {
+  const rows = await (
+    await db()
+  ).all<Row>(
+    `SELECT a.*,
+            (SELECT COALESCE(SUM(s.capacity - s.booked), 0)
+               FROM slots s
+              WHERE s.activity_id = a.id AND s.slot_date = ? AND s.status = 'open'
+            ) AS remaining_today
+       FROM activities a
+      WHERE a.status = 'published'
+      ORDER BY a.created_at`,
+    [todayIso()]
+  );
   return rows.map(toActivity);
 }
 
-export function listActivitiesForOperator(operatorId: string): Activity[] {
-  const rows = db()
-    .prepare(`${SELECT} WHERE operator_id = ? ORDER BY created_at DESC`)
-    .all(operatorId) as Row[];
+export async function listActivitiesForOperator(operatorId: string): Promise<Activity[]> {
+  const rows = await (
+    await db()
+  ).all<Row>(`${SELECT} WHERE operator_id = ? ORDER BY created_at DESC`, [operatorId]);
   return rows.map(toActivity);
 }
 
-export function getActivityBySlug(slug: string): Activity | null {
-  const row = db().prepare(`${SELECT} WHERE slug = ?`).get(slug) as Row | undefined;
+export async function getActivityBySlug(slug: string): Promise<Activity | null> {
+  const row = await (await db()).get<Row>(`${SELECT} WHERE slug = ?`, [slug]);
   return row ? toActivity(row) : null;
 }
 
-export function getActivityById(id: string): Activity | null {
-  const row = db().prepare(`${SELECT} WHERE id = ?`).get(id) as Row | undefined;
+export async function getActivityById(id: string): Promise<Activity | null> {
+  const row = await (await db()).get<Row>(`${SELECT} WHERE id = ?`, [id]);
   return row ? toActivity(row) : null;
 }
 
@@ -185,12 +190,13 @@ function toParams(input: ActivityInput) {
   };
 }
 
-export function createActivity(input: ActivityInput): Activity {
+export async function createActivity(input: ActivityInput): Promise<Activity> {
   const id = randomUUID();
 
-  db()
-    .prepare(
-      `INSERT INTO activities
+  await (
+    await db()
+  ).run(
+    `INSERT INTO activities
          (id, operator_id, slug, title, category, description, price_try, duration_minutes,
           location_name, lat, lng, capacity_mode, image, image_alt, included, safety,
           gallery, meeting_point, reviews, capacity_label, instant_confirm, rating, review_count,
@@ -199,17 +205,21 @@ export function createActivity(input: ActivityInput): Activity {
          (@id, @operator_id, @slug, @title, @category, @description, @price_try, @duration_minutes,
           @location_name, @lat, @lng, @capacity_mode, @image, @image_alt, @included, @safety,
           @gallery, @meeting_point, @reviews, @capacity_label, @instant_confirm, @rating, @review_count,
-          @status, @created_at)`
-    )
-    .run({ id, ...toParams(input), created_at: new Date().toISOString() });
+          @status, @created_at)`,
+    { id, ...toParams(input), created_at: new Date().toISOString() }
+  );
 
-  return getActivityById(id)!;
+  return (await getActivityById(id))!;
 }
 
-export function updateActivity(id: string, input: ActivityInput): Activity | null {
-  db()
-    .prepare(
-      `UPDATE activities SET
+export async function updateActivity(
+  id: string,
+  input: ActivityInput
+): Promise<Activity | null> {
+  await (
+    await db()
+  ).run(
+    `UPDATE activities SET
          slug = @slug, title = @title, category = @category, description = @description,
          price_try = @price_try, duration_minutes = @duration_minutes,
          location_name = @location_name, lat = @lat, lng = @lng,
@@ -218,19 +228,19 @@ export function updateActivity(id: string, input: ActivityInput): Activity | nul
          meeting_point = @meeting_point, reviews = @reviews, capacity_label = @capacity_label,
          instant_confirm = @instant_confirm, rating = @rating, review_count = @review_count,
          status = @status
-       WHERE id = @id`
-    )
-    .run({ id, ...toParams(input) });
+     WHERE id = @id`,
+    { id, ...toParams(input) }
+  );
 
   return getActivityById(id);
 }
 
-export function setActivityStatus(id: string, status: 'draft' | 'published') {
-  db().prepare('UPDATE activities SET status = ? WHERE id = ?').run(status, id);
+export async function setActivityStatus(id: string, status: 'draft' | 'published') {
+  await (await db()).run('UPDATE activities SET status = ? WHERE id = ?', [status, id]);
 }
 
 /** Başlıktan URL'e uygun bir slug türetir; çakışırsa sonuna sayı ekler. */
-export function uniqueSlug(title: string): string {
+export async function uniqueSlug(title: string): Promise<string> {
   const base =
     title
       .toLocaleLowerCase('tr-TR')
@@ -240,9 +250,10 @@ export function uniqueSlug(title: string): string {
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/^-+|-+$/g, '') || 'aktivite';
 
+  const client = await db();
   let slug = base;
   let n = 2;
-  while (db().prepare('SELECT 1 FROM activities WHERE slug = ?').get(slug)) {
+  while (await client.get('SELECT 1 FROM activities WHERE slug = ?', [slug])) {
     slug = `${base}-${n++}`;
   }
   return slug;

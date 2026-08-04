@@ -25,7 +25,7 @@ export async function deleteAccountAction(
   const userId = await currentUserId();
   if (!userId) return { error: 'Oturum bulunamadı. Rezervasyonu yaptığınız cihazdan deneyin.' };
 
-  const user = getUser(userId);
+  const user = await getUser(userId);
   if (!user || user.deletedAt) return { error: 'Hesap bulunamadı.' };
 
   // Yanlışlıkla tıklamaya karşı: kullanıcı adını yazarak onaylar. Silme geri
@@ -41,12 +41,12 @@ export async function deleteAccountAction(
     // Önce iptal, sonra silme. Ters sırada yapılsaydı iptal edilen
     // rezervasyonun sahibi zaten anonim olurdu ve işletme kimin iptal
     // ettiğini bilemezdi.
-    for (const booking of listBookingsForUser(userId)) {
-      if (booking.status === 'confirmed') cancelBooking(booking.code, 'customer');
+    for (const booking of await listBookingsForUser(userId)) {
+      if (booking.status === 'confirmed') await cancelBooking(booking.code, 'customer');
     }
   }
 
-  const result = deleteUser(userId);
+  const result = await deleteUser(userId);
 
   if (!result.ok) {
     if (result.reason === 'has_active_bookings') {
@@ -62,7 +62,7 @@ export async function deleteAccountAction(
 
   // Günlüğe silinen kişinin adı ya da telefonu YAZILMAZ; kaydın amacı
   // talebin karşılandığını göstermek, veriyi başka bir yerde yaşatmak değil.
-  record({
+  await record({
     action: 'account.deleted',
     actorType: 'customer',
     actorId: userId,

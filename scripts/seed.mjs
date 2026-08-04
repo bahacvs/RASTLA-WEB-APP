@@ -10,19 +10,12 @@
  * Kullanım: npm run seed
  */
 import { randomUUID } from 'node:crypto';
-import { readFileSync, mkdirSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { createRequire } from 'node:module';
 import { generatePassword, hashPassword } from '../lib/password.mjs';
+import { db as connect, usingPostgres } from '../lib/db/index.mjs';
 
-const require = createRequire(import.meta.url);
-const Database = require('better-sqlite3');
-
-const DB_PATH = process.env.DATABASE_PATH ?? join(process.cwd(), 'data', 'rastla.db');
-mkdirSync(dirname(DB_PATH), { recursive: true });
-
-const db = new Database(DB_PATH);
-db.exec(readFileSync(join(process.cwd(), 'lib', 'db', 'schema.sql'), 'utf8'));
+// Uygulamayla AYNI bağlantı katmanı: DATABASE_URL varsa Postgres, yoksa SQLite.
+// Betiğin kendi sürücüsünü kurması, üretimde çalışmamasına yol açardı.
+const db = await connect();
 
 const BUYUKCEKMECE = 'buyukcekmece-wsc';
 const MIMARSINAN = 'mimarsinan-marina';
@@ -182,16 +175,17 @@ const now = new Date().toISOString();
 // İşletmeler aktivitelerden önce yazılır: activities.operator_id bir yabancı
 // anahtardır ve foreign_keys açıktır.
 for (const o of OPERATORS) {
-  db.prepare(
+  await db.run(
     `INSERT INTO operators (id, name, created_at) VALUES (?, ?, ?)
-       ON CONFLICT (id) DO UPDATE SET name = excluded.name`
-  ).run(o.id, o.name, now);
+       ON CONFLICT (id) DO UPDATE SET name = excluded.name`,
+    [o.id, o.name, now]
+  );
 }
 
 const today = new Date();
 const isoToday = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
 
-const insertActivity = db.prepare(`
+const INSERT_ACTIVITY = `
   INSERT INTO activities
     (id, operator_id, slug, title, category, description, price_try, duration_minutes,
      location_name, lat, lng, capacity_mode, image, image_alt, included, safety,
@@ -201,21 +195,18 @@ const insertActivity = db.prepare(`
     (@id, @operator_id, @slug, @title, @category, @description, @price_try, @duration_minutes,
      @location_name, @lat, @lng, @capacity_mode, @image, @image_alt, @included, @safety,
      @gallery, @meeting_point, @reviews, @capacity_label, @instant_confirm, @rating, @review_count,
-     'published', @created_at)
-`);
+     'published', @created_at)`;
 
-const insertRule = db.prepare(`
+const INSERT_RULE = `
   INSERT INTO schedule_rules
     (id, activity_id, weekdays, start_time, end_time, interval_minutes, capacity,
      valid_from, valid_until, active, created_at)
-  VALUES (?, ?, 127, ?, ?, ?, ?, ?, NULL, 1, ?)
-`);
+  VALUES (?, ?, 127, ?, ?, ?, ?, ?, NULL, 1, ?)`;
 
-const insertSlot = db.prepare(`
+const INSERT_SLOT = `
   INSERT INTO slots (id, activity_id, rule_id, slot_date, slot_time, capacity, booked, status, created_at)
   VALUES (?, ?, ?, ?, ?, ?, 0, 'open', ?)
-  ON CONFLICT (activity_id, slot_date, slot_time) DO NOTHING
-`);
+  ON CONFLICT (activity_id, slot_date, slot_time) DO NOTHING`;
 
 function times(start, end, step) {
   const m = (t) => {
@@ -233,12 +224,11 @@ const HORIZON_DAYS = 60;
 let created = 0;
 let slotsCreated = 0;
 
-const run = db.transaction(() => {
-  for (const a of ACTIVITIES) {
-    if (db.prepare('SELECT 1 FROM activities WHERE slug = ?').get(a.slug)) continue;
+for (const a of ACTIVITIES) {
+  if (await db.get('SELECT 1 FROM activities WHERE slug = ?', [a.slug])) continue;
 
-    const id = randomUUID();
-    insertActivity.run({
+  const id = randomUUID();
+  await db.run(INSERT_ACTIVITY, {
       id,
       operator_id: a.operatorId,
       slug: a.slug,
@@ -262,26 +252,25 @@ const run = db.transaction(() => {
       instant_confirm: a.instantConfirm ? 1 : 0,
       rating: a.rating,
       review_count: a.reviewCount,
-      created_at: now,
-    });
-    created++;
+    created_at: now,
+  });
+  created++;
 
-    const ruleId = randomUUID();
-    const s = a.schedule;
-    insertRule.run(ruleId, id, s.start, s.end, s.interval, s.capacity, isoToday, now);
+  const ruleId = randomUUID();
+  const s = a.schedule;
+  await db.run(INSERT_RULE, [ruleId, id, s.start, s.end, s.interval, s.capacity, isoToday, now]);
 
-    const slotTimes = times(s.start, s.end, s.interval);
-    for (let d = 0; d < HORIZON_DAYS; d++) {
-      const day = new Date(today);
-      day.setDate(day.getDate() + d);
-      const date = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}`;
-      for (const t of slotTimes) {
-        slotsCreated += insertSlot.run(randomUUID(), id, ruleId, date, t, s.capacity, now).changes;
-      }
+  const slotTimes = times(s.start, s.end, s.interval);
+  for (let d = 0; d < HORIZON_DAYS; d++) {
+    const day = new Date(today);
+    day.setDate(day.getDate() + d);
+    const date = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}`;
+    for (const t of slotTimes) {
+      const result = await db.run(INSERT_SLOT, [randomUUID(), id, ruleId, date, t, s.capacity, now]);
+      slotsCreated += result.changes;
     }
   }
-});
-run();
+}
 
 console.log(`${created} aktivite eklendi (${ACTIVITIES.length - created} zaten vardı)`);
 console.log(`${slotsCreated} slot üretildi (${HORIZON_DAYS} günlük ufuk)`);
@@ -295,17 +284,18 @@ console.log(`${slotsCreated} slot üretildi (${HORIZON_DAYS} günlük ufuk)`);
  */
 const bootstrapped = [];
 for (const o of OPERATORS) {
-  const has = db.prepare('SELECT 1 FROM operator_users WHERE operator_id = ?').get(o.id);
+  const has = await db.get('SELECT 1 FROM operator_users WHERE operator_id = ?', [o.id]);
   if (has) continue;
 
   const email = `sahip@${o.id}.local`;
   const password = generatePassword();
 
-  db.prepare(
+  await db.run(
     `INSERT INTO operator_users
        (id, operator_id, email, name, password_hash, role, status, created_at)
-     VALUES (?, ?, ?, ?, ?, 'owner', 'active', ?)`
-  ).run(randomUUID(), o.id, email, `${o.name} Sahibi`, hashPassword(password), now);
+     VALUES (?, ?, ?, ?, ?, 'owner', 'active', ?)`,
+    [randomUUID(), o.id, email, `${o.name} Sahibi`, hashPassword(password), now]
+  );
 
   bootstrapped.push({ operator: o.name, email, password });
 }
@@ -320,3 +310,6 @@ if (bootstrapped.length > 0) {
   console.log('İlk girişten sonra /isletme/ekip üzerinden kendi parolanızı belirleyin.');
   console.log('Gerçek e-posta adreslerini de oradan ekleyip bu geçici hesapları askıya alın.');
 }
+
+console.log(`\nVeritabanı: ${usingPostgres ? 'Postgres (DATABASE_URL)' : 'SQLite dosyası'}`);
+await db.close();

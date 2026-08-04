@@ -1,4 +1,4 @@
-import { db } from './index';
+import { db } from './index.mjs';
 
 /**
  * Hız sınırı.
@@ -79,22 +79,29 @@ export type LimitResult =
  * Tek bir UPSERT: pencere dolmuşsa sayaç sıfırlanır, dolmamışsa artırılır.
  * `RETURNING` hem SQLite 3.35+ hem Postgres tarafından desteklenir.
  */
-export function consume(bucket: string, rule: LimitRule, now = new Date()): LimitResult {
+export async function consume(
+  bucket: string,
+  rule: LimitRule,
+  now = new Date()
+): Promise<LimitResult> {
   const nowIso = now.toISOString();
   const cutoff = new Date(now.getTime() - rule.windowSeconds * 1000).toISOString();
 
-  const row = db()
-    .prepare(
-      `INSERT INTO rate_limits (bucket, window_start, count)
-            VALUES (@bucket, @now, 1)
-       ON CONFLICT (bucket) DO UPDATE SET
-            window_start = CASE WHEN rate_limits.window_start <= @cutoff
-                                THEN @now ELSE rate_limits.window_start END,
-            count        = CASE WHEN rate_limits.window_start <= @cutoff
-                                THEN 1 ELSE rate_limits.count + 1 END
-       RETURNING count, window_start`
-    )
-    .get({ bucket, now: nowIso, cutoff }) as { count: number; window_start: string };
+  const row = await (
+    await db()
+  ).get<{ count: number; window_start: string }>(
+    `INSERT INTO rate_limits (bucket, window_start, count)
+          VALUES (@bucket, @now, 1)
+     ON CONFLICT (bucket) DO UPDATE SET
+          window_start = CASE WHEN rate_limits.window_start <= @cutoff
+                              THEN @now ELSE rate_limits.window_start END,
+          count        = CASE WHEN rate_limits.window_start <= @cutoff
+                              THEN 1 ELSE rate_limits.count + 1 END
+     RETURNING count, window_start`,
+    { bucket, now: nowIso, cutoff }
+  );
+
+  if (!row) return { allowed: true, remaining: rule.limit - 1 };
 
   if (row.count <= rule.limit) {
     return { allowed: true, remaining: rule.limit - row.count };
@@ -120,10 +127,17 @@ export function consume(bucket: string, rule: LimitRule, now = new Date()): Limi
  * aşılırken uçuşta olan birkaç isteğin geçmesi; bir kaba kuvvet saldırısında
  * beş yerine on deneme yapılabilmesi hiçbir şeyi değiştirmez.
  */
-export function peek(bucket: string, rule: LimitRule, now = new Date()): LimitResult {
-  const row = db()
-    .prepare('SELECT window_start, count FROM rate_limits WHERE bucket = ?')
-    .get(bucket) as { window_start: string; count: number } | undefined;
+export async function peek(
+  bucket: string,
+  rule: LimitRule,
+  now = new Date()
+): Promise<LimitResult> {
+  const row = await (
+    await db()
+  ).get<{ window_start: string; count: number }>(
+    'SELECT window_start, count FROM rate_limits WHERE bucket = ?',
+    [bucket]
+  );
 
   if (!row) return { allowed: true, remaining: rule.limit };
 
@@ -147,8 +161,8 @@ export function peek(bucket: string, rule: LimitRule, now = new Date()): LimitRe
  * yanlış giren biri, sonunda doğru girdiğinde cezalı kalmamalı. Sınır
  * saldırgan içindir, unutkan kullanıcı için değil.
  */
-export function reset(bucket: string): void {
-  db().prepare('DELETE FROM rate_limits WHERE bucket = ?').run(bucket);
+export async function reset(bucket: string): Promise<void> {
+  await (await db()).run('DELETE FROM rate_limits WHERE bucket = ?', [bucket]);
 }
 
 /**
@@ -158,9 +172,10 @@ export function reset(bucket: string): void {
  * hem gereksiz büyürdü hem de IP adresi kişisel veri olduğu için saklama
  * politikasına aykırı olurdu.
  */
-export function purgeExpired(olderThanSeconds = 24 * 60 * 60): number {
+export async function purgeExpired(olderThanSeconds = 24 * 60 * 60): Promise<number> {
   const cutoff = new Date(Date.now() - olderThanSeconds * 1000).toISOString();
-  return db().prepare('DELETE FROM rate_limits WHERE window_start < ?').run(cutoff).changes;
+  const result = await (await db()).run('DELETE FROM rate_limits WHERE window_start < ?', [cutoff]);
+  return result.changes;
 }
 
 /** Kova adı. Girdi ayracı içerse bile kovalar karışmasın diye kodlanır. */

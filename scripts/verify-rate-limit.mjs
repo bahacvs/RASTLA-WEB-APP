@@ -184,7 +184,7 @@ if (!serverUp) {
 } else {
   const { chromium } = await import('playwright');
   const { ensureTestAccounts } = await import('./lib/test-accounts.mjs');
-  ensureTestAccounts();
+  await ensureTestAccounts();
 
   const browser = await chromium.launch({
     executablePath:

@@ -52,7 +52,7 @@ Genel bir liste değil — bu uygulamanın gerçek zayıf noktaları:
 | --- | --- | --- | --- |
 | **İşletme personelinin parolası ele geçti** | Beklenmeyen saatte/konumda giriş; okutulmayan biletlerin onaylanması | İlgili hesabı `/isletme/ekip` üzerinden askıya al — oturumu anında düşer; ardından parolayı sıfırla | Yüksek — o işletmenin misafir ad ve telefonları görülmüş olabilir. Hangi hesabın kullanıldığı kayıtlıdır. |
 | **`SESSION_SECRET` sızdı** | Kod deposunda/ortam değişkeninde ifşa | Anahtarı değiştir; tüm oturumlar geçersizleşir | Yüksek — sahte oturum çerezi üretilip başkasının rezervasyonları görülebilir |
-| **Veritabanı dosyası/yedeği ifşa oldu** | Yetkisiz erişim kaydı, yanlış yapılandırılmış depolama | Erişimi kes, kimlik bilgilerini döndür | **Kritik** — tüm misafir ad, telefon ve rezervasyon geçmişi |
+| **Veritabanı bağlantı dizesi (`DATABASE_URL`) sızdı** | Beklenmeyen kaynaktan bağlantı, sağlayıcı uyarısı | Parolayı sağlayıcı panelinden değiştir, erişimi IP ile daralt | **Kritik** — tüm misafir ad, telefon ve rezervasyon geçmişi |
 | **Barındırma sağlayıcısında ihlal** | Sağlayıcı bildirimi | Sağlayıcıdan kapsam bilgisi iste, kendi anahtarlarını döndür | Kapsama göre |
 | **İşletme personeli misafir listesini dışarı çıkardı** | Misafir şikâyeti, beklenmeyen pazarlama iletisi | İşletme erişimini askıya al, sözleşme md. 4.1 ihlali | Orta-yüksek |
 | **Bilet kodu tahmin edilmeye çalışıldı** | `/isletme/gunluk` içinde yoğun "Bilet onayı reddedildi" kaydı | Hız sınırı zaten devrede (5 dakikada 20 başarısız deneme); ilgili personel hesabını inceleyin | Düşük — kod 160 bit rastgele; pratikte tahmin edilemez |

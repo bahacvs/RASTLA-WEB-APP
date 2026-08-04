@@ -41,7 +41,7 @@ async function log(
   targetUserId: string,
   meta?: Record<string, unknown>
 ) {
-  record({
+  await record({
     action,
     actorType: 'operator',
     actorId: session.user.id,
@@ -63,7 +63,7 @@ async function requireSameOperator(userId: string) {
   const session = await requireOwner();
   if (!session) return null;
 
-  const target = getOperatorUser(userId);
+  const target = await getOperatorUser(userId);
   if (!target || target.operatorId !== session.operator.id) return null;
 
   return { session, target };
@@ -87,7 +87,7 @@ export async function createTeamMemberAction(
   // olur hem de sahip tarafından bilinmeye devam ederdi; hesabın kişiye ait
   // olmasının anlamı kalmazdı.
   const password = generatePassword();
-  const result = createOperatorUser({
+  const result = await createOperatorUser({
     operatorId: session.operator.id,
     email,
     name,
@@ -122,7 +122,7 @@ export async function resetTeamPasswordAction(
   if (!owned) return { error: 'Bu hesaba erişim yetkiniz yok.' };
 
   const password = generatePassword();
-  setPassword(owned.target.id, password);
+  await setPassword(owned.target.id, password);
   await log(owned.session, 'operator_user.password_reset', owned.target.id, {
     email: owned.target.email,
   });
@@ -148,7 +148,7 @@ export async function setTeamStatusAction(
     return { error: 'Kendi hesabınızı askıya alamazsınız.' };
   }
 
-  const result = setOperatorUserStatus(owned.target.id, status);
+  const result = await setOperatorUserStatus(owned.target.id, status);
   if (!result.ok) {
     return result.reason === 'last_owner'
       ? { error: 'İşletmenin son etkin sahibi askıya alınamaz.' }
@@ -188,7 +188,7 @@ export async function changeOwnPasswordAction(
   const password = String(formData.get('password') ?? '');
   const repeat = String(formData.get('repeat') ?? '');
 
-  if (!checkPassword(session.user.id, current)) {
+  if (!await checkPassword(session.user.id, current)) {
     return { error: 'Mevcut parola hatalı.' };
   }
   if (password !== repeat) return { error: 'Yeni parolalar aynı değil.' };
@@ -196,8 +196,8 @@ export async function changeOwnPasswordAction(
   const problem = passwordProblem(password);
   if (problem) return { error: problem };
 
-  setPassword(session.user.id, password);
-  record({
+  await setPassword(session.user.id, password);
+  await record({
     action: 'operator.password_changed',
     actorType: 'operator',
     actorId: session.user.id,

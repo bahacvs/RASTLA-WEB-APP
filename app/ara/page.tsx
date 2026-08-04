@@ -20,7 +20,7 @@ export default async function SearchPage({
   // Katalogun tamamı istemciye verilir: arama kutusuna her harfte sunucuya
   // gitmek yerine filtreleme anında yapılır. Pilot ölçeğinde uygun; katalog
   // büyürse sunucu tarafı aramaya geçilmeli.
-  const activities = listPublishedActivities();
+  const activities = await listPublishedActivities();
 
   return (
     <SearchView activities={activities} initialQuery={q ?? ''} initialCategory={category} />

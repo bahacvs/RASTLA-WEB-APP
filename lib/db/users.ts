@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { db } from './index';
+import { db, toCount } from './index.mjs';
 
 export type User = {
   id: string;
@@ -37,22 +37,21 @@ export function normalizePhone(phone: string): string {
   return digits;
 }
 
-export function findOrCreateUser(name: string, phone: string): User {
+export async function findOrCreateUser(name: string, phone: string): Promise<User> {
   const normalized = normalizePhone(phone);
+  const client = await db();
 
-  const existing = db().prepare('SELECT * FROM users WHERE phone = ?').get(normalized) as
-    | Row
-    | undefined;
+  const existing = await client.get<Row>('SELECT * FROM users WHERE phone = ?', [normalized]);
 
   if (existing) {
     // Ad, kaydın kimliği değil; kimlik telefondur. Aynı numaradan gelen yeni
     // bir rezervasyonda farklı bir ad yazılmışsa güncellenir — yoksa işletme
     // misafiri karşılarken ekranda eski adı görür. (Yazım düzeltmesi ya da
     // aynı hattan rezervasyon yapan bir aile üyesi.)
-    const name_ = name.trim();
-    if (name_.length > 0 && name_ !== existing.name) {
-      db().prepare('UPDATE users SET name = ? WHERE id = ?').run(name_, existing.id);
-      existing.name = name_;
+    const trimmed = name.trim();
+    if (trimmed.length > 0 && trimmed !== existing.name) {
+      await client.run('UPDATE users SET name = ? WHERE id = ?', [trimmed, existing.id]);
+      existing.name = trimmed;
     }
 
     return toUser(existing);
@@ -66,17 +65,18 @@ export function findOrCreateUser(name: string, phone: string): User {
     deleted_at: null,
   };
 
-  db()
-    .prepare(
-      'INSERT INTO users (id, name, phone, created_at) VALUES (@id, @name, @phone, @created_at)'
-    )
-    .run({ id: row.id, name: row.name, phone: row.phone, created_at: row.created_at });
+  await client.run('INSERT INTO users (id, name, phone, created_at) VALUES (?, ?, ?, ?)', [
+    row.id,
+    row.name,
+    row.phone,
+    row.created_at,
+  ]);
 
   return toUser(row);
 }
 
-export function getUser(id: string): User | null {
-  const row = db().prepare('SELECT * FROM users WHERE id = ?').get(id) as Row | undefined;
+export async function getUser(id: string): Promise<User | null> {
+  const row = await (await db()).get<Row>('SELECT * FROM users WHERE id = ?', [id]);
   return row ? toUser(row) : null;
 }
 
@@ -102,7 +102,11 @@ export function displayContact(user: User | null): { name: string; phone: string
 
 export type DeleteResult =
   | { ok: true; anonymizedBookings: number }
-  | { ok: false; reason: 'not_found' | 'already_deleted' | 'has_active_bookings'; activeCodes?: string[] };
+  | {
+      ok: false;
+      reason: 'not_found' | 'already_deleted' | 'has_active_bookings';
+      activeCodes?: string[];
+    };
 
 /**
  * Hesabı siler — KVKK md. 7 / md. 11.
@@ -122,15 +126,21 @@ export type DeleteResult =
  * işletme misafiri kapıda karşılayamaz hâle gelirdi. Çağıran taraf isterse
  * önce iptal edip sonra siler.
  */
-export function deleteUser(userId: string, options: { force?: boolean } = {}): DeleteResult {
-  const user = getUser(userId);
+export async function deleteUser(
+  userId: string,
+  options: { force?: boolean } = {}
+): Promise<DeleteResult> {
+  const client = await db();
+
+  const user = await getUser(userId);
   if (!user) return { ok: false, reason: 'not_found' };
   if (user.deletedAt) return { ok: false, reason: 'already_deleted' };
 
   if (!options.force) {
-    const active = db()
-      .prepare(`SELECT code FROM bookings WHERE user_id = ? AND status = 'confirmed'`)
-      .all(userId) as { code: string }[];
+    const active = await client.all<{ code: string }>(
+      `SELECT code FROM bookings WHERE user_id = ? AND status = 'confirmed'`,
+      [userId]
+    );
 
     if (active.length > 0) {
       return {
@@ -141,26 +151,24 @@ export function deleteUser(userId: string, options: { force?: boolean } = {}): D
     }
   }
 
-  const now = new Date().toISOString();
-
   // Tek ifade ve koşullu: `deleted_at IS NULL` sayesinde iki eşzamanlı silme
   // isteğinden yalnızca biri geçer. İkincisi 0 satır etkiler ve
   // 'already_deleted' cevabı alır.
-  const result = db()
-    .prepare(
-      `UPDATE users
-          SET name = ?, phone = ?, deleted_at = ?
-        WHERE id = ? AND deleted_at IS NULL`
-    )
-    .run(DELETED_NAME, `silindi-${randomUUID()}`, now, userId);
+  const result = await client.run(
+    `UPDATE users
+        SET name = ?, phone = ?, deleted_at = ?
+      WHERE id = ? AND deleted_at IS NULL`,
+    [DELETED_NAME, `silindi-${randomUUID()}`, new Date().toISOString(), userId]
+  );
 
   if (result.changes !== 1) return { ok: false, reason: 'already_deleted' };
 
-  const bookings = db()
-    .prepare('SELECT COUNT(*) AS n FROM bookings WHERE user_id = ?')
-    .get(userId) as { n: number };
+  const bookings = await client.get<{ n: number | string }>(
+    'SELECT COUNT(*) AS n FROM bookings WHERE user_id = ?',
+    [userId]
+  );
 
-  return { ok: true, anonymizedBookings: bookings.n };
+  return { ok: true, anonymizedBookings: toCount(bookings?.n) };
 }
 
 export type UserExport = {
@@ -178,29 +186,29 @@ export type UserExport = {
  * bunlar da onun kişisel verisi. Dışarıda bırakmak "tüm verilerim" iddiasını
  * yanlış kılardı.
  */
-export function exportUserData(userId: string): UserExport | null {
-  const user = getUser(userId);
+export async function exportUserData(userId: string): Promise<UserExport | null> {
+  const client = await db();
+
+  const user = await getUser(userId);
   if (!user) return null;
 
-  const bookings = db()
-    .prepare(
-      `SELECT b.code, b.activity_slug, b.operator_id, b.booking_date, b.booking_time,
-              b.adults, b.children, b.total_try, b.status, b.created_at,
-              b.redeemed_at, b.cancelled_at, b.cancel_reason
-         FROM bookings b
-        WHERE b.user_id = ?
-        ORDER BY b.created_at DESC`
-    )
-    .all(userId);
+  const bookings = await client.all(
+    `SELECT code, activity_slug, operator_id, booking_date, booking_time,
+            adults, children, total_try, status, created_at,
+            redeemed_at, cancelled_at, cancel_reason
+       FROM bookings
+      WHERE user_id = ?
+      ORDER BY created_at DESC`,
+    [userId]
+  );
 
-  const audit = db()
-    .prepare(
-      `SELECT at, action, outcome, ip, user_agent, meta
-         FROM audit_log
-        WHERE actor_type = 'customer' AND actor_id = ?
-        ORDER BY at DESC`
-    )
-    .all(userId);
+  const audit = await client.all(
+    `SELECT at, action, outcome, ip, user_agent, meta
+       FROM audit_log
+      WHERE actor_type = 'customer' AND actor_id = ?
+      ORDER BY at DESC`,
+    [userId]
+  );
 
   return {
     disaAktarmaTarihi: new Date().toISOString(),

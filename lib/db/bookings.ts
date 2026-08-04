@@ -1,5 +1,5 @@
 import { randomBytes, randomUUID } from 'node:crypto';
-import { db } from './index';
+import { db } from './index.mjs';
 import { releaseCapacity } from './slots';
 
 export type BookingStatus = 'confirmed' | 'redeemed' | 'cancelled';
@@ -92,7 +92,7 @@ export function generateCode(): string {
   return out.match(/.{1,4}/g)!.join('-');
 }
 
-export function createBooking(input: {
+export async function createBooking(input: {
   userId: string;
   activitySlug: string;
   operatorId: string;
@@ -103,7 +103,7 @@ export function createBooking(input: {
   adults: number;
   children: number;
   totalTRY: number;
-}): Booking {
+}): Promise<Booking> {
   const row: Row = {
     id: randomUUID(),
     code: generateCode(),
@@ -125,33 +125,34 @@ export function createBooking(input: {
     cancel_reason: null,
   };
 
-  db()
-    .prepare(
-      `INSERT INTO bookings
-         (id, code, user_id, activity_slug, operator_id, slot_id, units, booking_date,
-          booking_time, adults, children, total_try, status, created_at, redeemed_at, redeemed_by,
-          cancelled_at, cancel_reason)
-       VALUES
-         (@id, @code, @user_id, @activity_slug, @operator_id, @slot_id, @units, @booking_date,
-          @booking_time, @adults, @children, @total_try, @status, @created_at, @redeemed_at,
-          @redeemed_by, @cancelled_at, @cancel_reason)`
-    )
-    .run(row);
+  await (
+    await db()
+  ).run(
+    `INSERT INTO bookings
+       (id, code, user_id, activity_slug, operator_id, slot_id, units, booking_date,
+        booking_time, adults, children, total_try, status, created_at, redeemed_at, redeemed_by,
+        cancelled_at, cancel_reason)
+     VALUES
+       (@id, @code, @user_id, @activity_slug, @operator_id, @slot_id, @units, @booking_date,
+        @booking_time, @adults, @children, @total_try, @status, @created_at, @redeemed_at,
+        @redeemed_by, @cancelled_at, @cancel_reason)`,
+    row
+  );
 
   return toBooking(row);
 }
 
-export function getBookingByCode(code: string): Booking | null {
-  const row = db()
-    .prepare('SELECT * FROM bookings WHERE code = ?')
-    .get(code.trim().toUpperCase()) as Row | undefined;
+export async function getBookingByCode(code: string): Promise<Booking | null> {
+  const row = await (
+    await db()
+  ).get<Row>('SELECT * FROM bookings WHERE code = ?', [code.trim().toUpperCase()]);
   return row ? toBooking(row) : null;
 }
 
-export function listBookingsForUser(userId: string): Booking[] {
-  const rows = db()
-    .prepare('SELECT * FROM bookings WHERE user_id = ? ORDER BY created_at DESC')
-    .all(userId) as Row[];
+export async function listBookingsForUser(userId: string): Promise<Booking[]> {
+  const rows = await (
+    await db()
+  ).all<Row>('SELECT * FROM bookings WHERE user_id = ? ORDER BY created_at DESC', [userId]);
   return rows.map(toBooking);
 }
 
@@ -178,22 +179,26 @@ export type RedeemResult =
  * Başarısızlığın sebebi, kullanıcıya doğru mesajı gösterebilmek için UPDATE
  * sonrasında ayrıca sorgulanır — bu sorgu kararı etkilemez, yalnızca açıklar.
  */
-export function redeemBooking(code: string, redeemedByUserId: string): RedeemResult {
+export async function redeemBooking(
+  code: string,
+  redeemedByUserId: string
+): Promise<RedeemResult> {
   const normalized = code.trim().toUpperCase();
 
-  const result = db()
-    .prepare(
-      `UPDATE bookings
-          SET status = 'redeemed', redeemed_at = ?, redeemed_by = ?
-        WHERE code = ? AND status = 'confirmed'`
-    )
-    .run(new Date().toISOString(), redeemedByUserId, normalized);
+  const result = await (
+    await db()
+  ).run(
+    `UPDATE bookings
+        SET status = 'redeemed', redeemed_at = ?, redeemed_by = ?
+      WHERE code = ? AND status = 'confirmed'`,
+    [new Date().toISOString(), redeemedByUserId, normalized]
+  );
 
   if (result.changes === 1) {
-    return { ok: true, booking: getBookingByCode(normalized)! };
+    return { ok: true, booking: (await getBookingByCode(normalized))! };
   }
 
-  const existing = getBookingByCode(normalized);
+  const existing = await getBookingByCode(normalized);
   if (!existing) return { ok: false, reason: 'not_found', booking: null };
   if (existing.status === 'redeemed') {
     return { ok: false, reason: 'already_redeemed', booking: existing };
@@ -202,14 +207,18 @@ export function redeemBooking(code: string, redeemedByUserId: string): RedeemRes
 }
 
 /** İşletmenin belirli bir gündeki rezervasyonları. */
-export function listBookingsForOperator(operatorId: string, date: string): Booking[] {
-  const rows = db()
-    .prepare(
-      `SELECT * FROM bookings
-        WHERE operator_id = ? AND booking_date = ?
-        ORDER BY booking_time, created_at`
-    )
-    .all(operatorId, date) as Row[];
+export async function listBookingsForOperator(
+  operatorId: string,
+  date: string
+): Promise<Booking[]> {
+  const rows = await (
+    await db()
+  ).all<Row>(
+    `SELECT * FROM bookings
+      WHERE operator_id = ? AND booking_date = ?
+      ORDER BY booking_time, created_at`,
+    [operatorId, date]
+  );
   return rows.map(toBooking);
 }
 
@@ -231,26 +240,27 @@ export type CancelResult =
  *
  * Kullanılmış (redeemed) bir bilet iptal edilemez: hizmet zaten verilmiştir.
  */
-export function cancelBooking(code: string, reason: CancelReason): CancelResult {
+export async function cancelBooking(code: string, reason: CancelReason): Promise<CancelResult> {
   const normalized = code.trim().toUpperCase();
 
-  const result = db()
-    .prepare(
-      `UPDATE bookings
-          SET status = 'cancelled', cancelled_at = ?, cancel_reason = ?
-        WHERE code = ? AND status = 'confirmed'`
-    )
-    .run(new Date().toISOString(), reason, normalized);
+  const result = await (
+    await db()
+  ).run(
+    `UPDATE bookings
+        SET status = 'cancelled', cancelled_at = ?, cancel_reason = ?
+      WHERE code = ? AND status = 'confirmed'`,
+    [new Date().toISOString(), reason, normalized]
+  );
 
   if (result.changes !== 1) {
-    const existing = getBookingByCode(normalized);
+    const existing = await getBookingByCode(normalized);
     if (!existing) return { ok: false, reason: 'not_found' };
     if (existing.status === 'redeemed') return { ok: false, reason: 'already_redeemed' };
     return { ok: false, reason: 'already_cancelled' };
   }
 
-  const booking = getBookingByCode(normalized)!;
-  if (booking.slotId) releaseCapacity(booking.slotId, booking.units);
+  const booking = (await getBookingByCode(normalized))!;
+  if (booking.slotId) await releaseCapacity(booking.slotId, booking.units);
 
   return { ok: true, booking };
 }
@@ -259,20 +269,19 @@ export function cancelBooking(code: string, reason: CancelReason): CancelResult 
  * Bir günün tüm rezervasyonlarını iptal eder — hava koşulu senaryosu.
  * Her kayıt tek tek ve aynı korumayla iptal edilir.
  */
-export function cancelDay(
+export async function cancelDay(
   operatorId: string,
   date: string,
   reason: CancelReason
-): { cancelled: number; skipped: number } {
-  const bookings = listBookingsForOperator(operatorId, date).filter(
-    (b) => b.status === 'confirmed'
-  );
+): Promise<{ cancelled: number; skipped: number }> {
+  const all = await listBookingsForOperator(operatorId, date);
+  const bookings = all.filter((b) => b.status === 'confirmed');
 
   let cancelled = 0;
   let skipped = 0;
 
   for (const booking of bookings) {
-    if (cancelBooking(booking.code, reason).ok) cancelled++;
+    if ((await cancelBooking(booking.code, reason)).ok) cancelled++;
     else skipped++;
   }
 

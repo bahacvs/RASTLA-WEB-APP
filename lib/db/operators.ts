@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { db } from './index';
+import { db, toCount } from './index.mjs';
 import { hashPassword, verifyPassword } from '@/lib/password.mjs';
 
 /**
@@ -63,65 +63,82 @@ export function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
 }
 
+/**
+ * Benzersizlik ihlali mi?
+ *
+ * İki motor farklı mesaj verir: SQLite "UNIQUE constraint failed", Postgres
+ * "duplicate key value violates unique constraint" (SQLSTATE 23505). Yalnızca
+ * birine bakılsaydı diğer motorda kopya e-posta beklenmedik bir hataya
+ * dönüşürdü.
+ */
+function isUniqueViolation(error: unknown): boolean {
+  if (typeof error === 'object' && error !== null && 'code' in error) {
+    if ((error as { code?: string }).code === '23505') return true;
+  }
+  const message = String(error);
+  return message.includes('UNIQUE') || message.includes('duplicate key');
+}
+
 // ---------------------------------------------------------------- işletmeler
 
-export function listOperators(): Operator[] {
-  const rows = db().prepare('SELECT * FROM operators ORDER BY name').all() as OperatorRow[];
+export async function listOperators(): Promise<Operator[]> {
+  const rows = await (await db()).all<OperatorRow>('SELECT * FROM operators ORDER BY name');
   return rows.map(toOperator);
 }
 
-export function getOperator(id: string): Operator | null {
-  const row = db().prepare('SELECT * FROM operators WHERE id = ?').get(id) as
-    | OperatorRow
-    | undefined;
+export async function getOperator(id: string): Promise<Operator | null> {
+  const row = await (await db()).get<OperatorRow>('SELECT * FROM operators WHERE id = ?', [id]);
   return row ? toOperator(row) : null;
 }
 
 /** Kimliği çağıran belirler (slug gibi okunur bir değer); tekrar çalıştırmak güvenlidir. */
-export function upsertOperator(id: string, name: string): Operator {
-  db()
-    .prepare(
-      `INSERT INTO operators (id, name, created_at) VALUES (?, ?, ?)
-         ON CONFLICT (id) DO UPDATE SET name = excluded.name`
-    )
-    .run(id, name, new Date().toISOString());
+export async function upsertOperator(id: string, name: string): Promise<Operator> {
+  await (
+    await db()
+  ).run(
+    `INSERT INTO operators (id, name, created_at) VALUES (?, ?, ?)
+       ON CONFLICT (id) DO UPDATE SET name = excluded.name`,
+    [id, name, new Date().toISOString()]
+  );
 
-  return getOperator(id)!;
+  return (await getOperator(id))!;
 }
 
 // ------------------------------------------------------------------ hesaplar
 
-export function listOperatorUsers(operatorId: string): OperatorUser[] {
-  const rows = db()
-    .prepare('SELECT * FROM operator_users WHERE operator_id = ? ORDER BY role, name')
-    .all(operatorId) as UserRow[];
+export async function listOperatorUsers(operatorId: string): Promise<OperatorUser[]> {
+  const rows = await (
+    await db()
+  ).all<UserRow>('SELECT * FROM operator_users WHERE operator_id = ? ORDER BY role, name', [
+    operatorId,
+  ]);
   return rows.map(toUser);
 }
 
-export function getOperatorUser(id: string): OperatorUser | null {
-  const row = db().prepare('SELECT * FROM operator_users WHERE id = ?').get(id) as
-    | UserRow
-    | undefined;
+export async function getOperatorUser(id: string): Promise<OperatorUser | null> {
+  const row = await (await db()).get<UserRow>('SELECT * FROM operator_users WHERE id = ?', [id]);
   return row ? toUser(row) : null;
 }
 
-export function countOperatorUsers(): number {
-  const row = db().prepare('SELECT COUNT(*) AS n FROM operator_users').get() as { n: number };
-  return row.n;
+export async function countOperatorUsers(): Promise<number> {
+  const row = await (
+    await db()
+  ).get<{ n: number | string }>('SELECT COUNT(*) AS n FROM operator_users');
+  return toCount(row?.n);
 }
 
 export type CreateUserResult =
   | { ok: true; user: OperatorUser }
   | { ok: false; reason: 'email_taken' | 'unknown_operator' };
 
-export function createOperatorUser(input: {
+export async function createOperatorUser(input: {
   operatorId: string;
   email: string;
   name: string;
   password: string;
   role: OperatorRole;
-}): CreateUserResult {
-  if (!getOperator(input.operatorId)) return { ok: false, reason: 'unknown_operator' };
+}): Promise<CreateUserResult> {
+  if (!(await getOperator(input.operatorId))) return { ok: false, reason: 'unknown_operator' };
 
   const email = normalizeEmail(input.email);
   const id = randomUUID();
@@ -130,27 +147,28 @@ export function createOperatorUser(input: {
   // durumuna açık olurdu: iki istek arasında kayıt oluşabilir. UNIQUE kısıtı
   // tek gerçek kaynak, ihlali burada yakalanıyor.
   try {
-    db()
-      .prepare(
-        `INSERT INTO operator_users
-           (id, operator_id, email, name, password_hash, role, status, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, 'active', ?)`
-      )
-      .run(
+    await (
+      await db()
+    ).run(
+      `INSERT INTO operator_users
+         (id, operator_id, email, name, password_hash, role, status, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, 'active', ?)`,
+      [
         id,
         input.operatorId,
         email,
         input.name.trim(),
         hashPassword(input.password),
         input.role,
-        new Date().toISOString()
-      );
+        new Date().toISOString(),
+      ]
+    );
   } catch (error) {
-    if (String(error).includes('UNIQUE')) return { ok: false, reason: 'email_taken' };
+    if (isUniqueViolation(error)) return { ok: false, reason: 'email_taken' };
     throw error;
   }
 
-  return { ok: true, user: getOperatorUser(id)! };
+  return { ok: true, user: (await getOperatorUser(id))! };
 }
 
 export type AuthResult =
@@ -173,10 +191,13 @@ export type AuthResult =
  * Hesap bulunamadığında da bir özet doğrulaması yapılır: aksi hâlde cevap
  * süresi, e-postanın sistemde kayıtlı olup olmadığını ele verirdi.
  */
-export function authenticateOperatorUser(email: string, password: string): AuthResult {
-  const row = db()
-    .prepare('SELECT * FROM operator_users WHERE email = ?')
-    .get(normalizeEmail(email)) as UserRow | undefined;
+export async function authenticateOperatorUser(
+  email: string,
+  password: string
+): Promise<AuthResult> {
+  const row = await (
+    await db()
+  ).get<UserRow>('SELECT * FROM operator_users WHERE email = ?', [normalizeEmail(email)]);
 
   if (!row) {
     verifyPassword(password, dummyHash());
@@ -191,7 +212,7 @@ export function authenticateOperatorUser(email: string, password: string): AuthR
     return { ok: false, reason: 'suspended', matchedOperatorId: row.operator_id };
   }
 
-  return { ok: true, user: toUser(row), operator: getOperator(row.operator_id)! };
+  return { ok: true, user: toUser(row), operator: (await getOperator(row.operator_id))! };
 }
 
 // Var olmayan hesapta da scrypt çalıştırmak için kullanılan sabit özet.
@@ -203,25 +224,33 @@ function dummyHash(): string {
   return cachedDummy;
 }
 
-export function recordLogin(userId: string): void {
-  db()
-    .prepare('UPDATE operator_users SET last_login_at = ? WHERE id = ?')
-    .run(new Date().toISOString(), userId);
+export async function recordLogin(userId: string): Promise<void> {
+  await (
+    await db()
+  ).run('UPDATE operator_users SET last_login_at = ? WHERE id = ?', [
+    new Date().toISOString(),
+    userId,
+  ]);
 }
 
 /** Mevcut parolayı doğrular — parola değiştirmeden önce sorulur. */
-export function checkPassword(userId: string, password: string): boolean {
-  const row = db()
-    .prepare('SELECT password_hash FROM operator_users WHERE id = ?')
-    .get(userId) as { password_hash: string } | undefined;
+export async function checkPassword(userId: string, password: string): Promise<boolean> {
+  const row = await (
+    await db()
+  ).get<{ password_hash: string }>('SELECT password_hash FROM operator_users WHERE id = ?', [
+    userId,
+  ]);
 
   return row ? verifyPassword(password, row.password_hash) : false;
 }
 
-export function setPassword(userId: string, password: string): void {
-  db()
-    .prepare('UPDATE operator_users SET password_hash = ? WHERE id = ?')
-    .run(hashPassword(password), userId);
+export async function setPassword(userId: string, password: string): Promise<void> {
+  await (
+    await db()
+  ).run('UPDATE operator_users SET password_hash = ? WHERE id = ?', [
+    hashPassword(password),
+    userId,
+  ]);
 }
 
 /**
@@ -232,28 +261,29 @@ export function setPassword(userId: string, password: string): void {
  * sorgunun içinde: önce sayıp sonra güncellemek iki eşzamanlı isteğin son iki
  * sahibi birlikte düşürmesine izin verirdi.
  */
-export function setOperatorUserStatus(
+export async function setOperatorUserStatus(
   userId: string,
   status: OperatorUserStatus
-): { ok: true } | { ok: false; reason: 'not_found' | 'last_owner' } {
-  const user = getOperatorUser(userId);
+): Promise<{ ok: true } | { ok: false; reason: 'not_found' | 'last_owner' }> {
+  const client = await db();
+
+  const user = await getOperatorUser(userId);
   if (!user) return { ok: false, reason: 'not_found' };
 
   if (status === 'suspended') {
-    const result = db()
-      .prepare(
-        `UPDATE operator_users SET status = 'suspended'
-          WHERE id = ?
-            AND status = 'active'
-            AND (
-              role <> 'owner'
-              OR (SELECT COUNT(*) FROM operator_users o
-                   WHERE o.operator_id = operator_users.operator_id
-                     AND o.role = 'owner'
-                     AND o.status = 'active') > 1
-            )`
-      )
-      .run(userId);
+    const result = await client.run(
+      `UPDATE operator_users SET status = 'suspended'
+        WHERE id = ?
+          AND status = 'active'
+          AND (
+            role <> 'owner'
+            OR (SELECT COUNT(*) FROM operator_users o
+                 WHERE o.operator_id = operator_users.operator_id
+                   AND o.role = 'owner'
+                   AND o.status = 'active') > 1
+          )`,
+      [userId]
+    );
 
     if (result.changes === 0) {
       return user.status === 'suspended' ? { ok: true } : { ok: false, reason: 'last_owner' };
@@ -261,6 +291,6 @@ export function setOperatorUserStatus(
     return { ok: true };
   }
 
-  db().prepare(`UPDATE operator_users SET status = 'active' WHERE id = ?`).run(userId);
+  await client.run(`UPDATE operator_users SET status = 'active' WHERE id = ?`, [userId]);
   return { ok: true };
 }

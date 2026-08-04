@@ -16,10 +16,10 @@ export default async function AccountPage() {
   const userId = await currentUserId();
   if (!userId) redirect('/rezervasyonlarim');
 
-  const user = getUser(userId);
+  const user = await getUser(userId);
   if (!user || user.deletedAt) redirect('/');
 
-  const bookings = listBookingsForUser(userId);
+  const bookings = await listBookingsForUser(userId);
   const active = bookings.filter((b) => b.status === 'confirmed');
 
   return (

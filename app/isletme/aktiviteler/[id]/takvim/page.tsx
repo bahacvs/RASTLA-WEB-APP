@@ -41,14 +41,14 @@ export default async function SchedulePage({
   const operatorId = session.operator.id;
 
   const { id } = await params;
-  const activity = getActivityById(id);
+  const activity = await getActivityById(id);
   if (!activity || activity.operatorId !== operatorId) notFound();
 
   const { gun } = await searchParams;
   const day = gun && /^\d{4}-\d{2}-\d{2}$/.test(gun) ? gun : isoDate(new Date());
 
-  const rules = listRules(activity.id);
-  const slots = listSlots(activity.id, day);
+  const rules = await listRules(activity.id);
+  const slots = await listSlots(activity.id, day);
 
   return (
     <div className="min-h-screen">

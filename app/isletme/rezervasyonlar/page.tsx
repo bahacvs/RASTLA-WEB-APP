@@ -39,12 +39,30 @@ export default async function OperatorBookingsPage({
   const { gun } = await searchParams;
   const day = gun && /^\d{4}-\d{2}-\d{2}$/.test(gun) ? gun : isoDate(new Date());
 
-  const bookings = listBookingsForOperator(operatorId, day);
+  const bookings = await listBookingsForOperator(operatorId, day);
 
   // Bileti onaylayan personelin adı. Kimliği ekranda göstermenin anlamı yok;
   // asıl mesele o kimliğin KAYITLI olması.
-  const staff = new Map(listOperatorUsers(operatorId).map((u) => [u.id, u.name]));
+  const staff = new Map((await listOperatorUsers(operatorId)).map((u) => [u.id, u.name] as const));
   const redeemerName = (id: string | null) => (id && staff.get(id)) || 'Bilinmeyen hesap';
+
+  // Aktivite ve misafir bilgisi JSX'ten ÖNCE toplanır: render sırasında veri
+  // çekilemez. Aynı slug ya da aynı kişi birden çok rezervasyonda geçebildiği
+  // için tekilleştirilir; aksi hâlde aynı satır defalarca sorgulanırdı.
+  const activities = new Map(
+    await Promise.all(
+      [...new Set(bookings.map((b) => b.activitySlug))].map(
+        async (slug) => [slug, await getActivityBySlug(slug)] as const
+      )
+    )
+  );
+  const guests_ = new Map(
+    await Promise.all(
+      [...new Set(bookings.map((b) => b.userId))].map(
+        async (id) => [id, displayContact(await getUser(id))] as const
+      )
+    )
+  );
 
   const guests = bookings
     .filter((b) => b.status !== 'cancelled')
@@ -98,8 +116,8 @@ export default async function OperatorBookingsPage({
         ) : (
           <ul className="flex flex-col gap-sm">
             {bookings.map((booking) => {
-              const activity = getActivityBySlug(booking.activitySlug);
-              const guest = displayContact(getUser(booking.userId));
+              const activity = activities.get(booking.activitySlug);
+              const guest = guests_.get(booking.userId) ?? displayContact(null);
               const status = STATUS[booking.status];
 
               return (

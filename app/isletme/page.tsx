@@ -12,7 +12,7 @@ export const metadata: Metadata = {
 export default async function OperatorLoginPage() {
   if (await currentOperator()) redirect('/isletme/tara');
 
-  const hasAccounts = countOperatorUsers() > 0;
+  const hasAccounts = await countOperatorUsers() > 0;
 
   return (
     <div className="flex min-h-screen items-center justify-center px-container-margin">

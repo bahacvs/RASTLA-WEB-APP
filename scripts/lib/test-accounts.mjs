@@ -7,14 +7,9 @@
  * fonksiyonuyla. Böylece test, gerçek giriş yolundan geçer; parola
  * doğrulaması atlanmaz.
  */
-import { readFileSync, mkdirSync } from 'node:fs';
-import { dirname, join } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { createRequire } from 'node:module';
 import { hashPassword } from '../../lib/password.mjs';
-
-const require = createRequire(import.meta.url);
-const Database = require('better-sqlite3');
+import { db as connect } from '../../lib/db/index.mjs';
 
 export const TEST_PASSWORD = 'test-parolasi-2026';
 
@@ -30,39 +25,36 @@ export function emailFor(operatorId, role = 'owner') {
   return found.email;
 }
 
-/** Test hesaplarını oluşturur ya da parolalarını bilinen değere döndürür. */
-export function ensureTestAccounts() {
-  const path = process.env.DATABASE_PATH ?? join(process.cwd(), 'data', 'rastla.db');
-  mkdirSync(dirname(path), { recursive: true });
-
-  const db = new Database(path);
-  db.exec(readFileSync(join(process.cwd(), 'lib', 'db', 'schema.sql'), 'utf8'));
-
+/**
+ * Test hesaplarını oluşturur ya da parolalarını bilinen değere döndürür.
+ *
+ * Uygulamanın bağlantı katmanını kullanır: DATABASE_URL tanımlıysa testler de
+ * Postgres'e karşı çalışır.
+ */
+export async function ensureTestAccounts() {
+  const db = await connect();
   const now = new Date().toISOString();
 
   for (const account of TEST_ACCOUNTS) {
-    const hash = hashPassword(TEST_PASSWORD);
-
-    db.prepare(
+    await db.run(
       `INSERT INTO operator_users
          (id, operator_id, email, name, password_hash, role, status, created_at)
        VALUES (?, ?, ?, ?, ?, ?, 'active', ?)
        ON CONFLICT (email) DO UPDATE SET
          password_hash = excluded.password_hash,
          status = 'active',
-         role = excluded.role`
-    ).run(
-      randomUUID(),
-      account.operatorId,
-      account.email,
-      `Test ${account.role === 'owner' ? 'Sahibi' : 'Personeli'}`,
-      hash,
-      account.role,
-      now
+         role = excluded.role`,
+      [
+        randomUUID(),
+        account.operatorId,
+        account.email,
+        `Test ${account.role === 'owner' ? 'Sahibi' : 'Personeli'}`,
+        hashPassword(TEST_PASSWORD),
+        account.role,
+        now,
+      ]
     );
   }
-
-  db.close();
 }
 
 /** Giriş formunu gerçek yoldan doldurur — oturum çerezi elle üretilmez. */

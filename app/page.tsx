@@ -10,8 +10,8 @@ import { listPublishedActivities } from '@/lib/db/activities';
 // Aktiviteler işletme tarafından düzenlenebildiği için sayfa belirli aralıkla tazelenir.
 export const revalidate = 60;
 
-export default function HomePage() {
-  const activities = listPublishedActivities();
+export default async function HomePage() {
+  const activities = await listPublishedActivities();
   const bySlug = (slug: string) => activities.find((a) => a.slug === slug);
 
   const popular = POPULAR_SLUGS.map(bySlug).filter((a) => a !== undefined);

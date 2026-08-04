@@ -37,12 +37,12 @@ const STATUS_STYLES = {
 
 export default async function TicketPage({ params }: { params: Promise<{ code: string }> }) {
   const { code } = await params;
-  const booking = getBookingByCode(decodeURIComponent(code));
+  const booking = await getBookingByCode(decodeURIComponent(code));
   if (!booking) notFound();
 
-  const activity = getActivityBySlug(booking.activitySlug);
-  const operator = getOperator(booking.operatorId);
-  const user = getUser(booking.userId);
+  const activity = await getActivityBySlug(booking.activitySlug);
+  const operator = await getOperator(booking.operatorId);
+  const user = await getUser(booking.userId);
   const status = STATUS_STYLES[booking.status];
 
   return (

@@ -17,19 +17,13 @@
  * Üretilen parolalar yalnızca burada yazdırılır; veritabanında özet saklanır.
  */
 import { randomUUID } from 'node:crypto';
-import { readFileSync, mkdirSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { createRequire } from 'node:module';
+import { readFileSync } from 'node:fs';
 import { generatePassword, hashPassword } from '../lib/password.mjs';
+import { db as connect } from '../lib/db/index.mjs';
 
-const require = createRequire(import.meta.url);
-const Database = require('better-sqlite3');
-
-const DB_PATH = process.env.DATABASE_PATH ?? join(process.cwd(), 'data', 'rastla.db');
-mkdirSync(dirname(DB_PATH), { recursive: true });
-
-const db = new Database(DB_PATH);
-db.exec(readFileSync(join(process.cwd(), 'lib', 'db', 'schema.sql'), 'utf8'));
+// Uygulamayla aynı bağlantı katmanı: DATABASE_URL varsa Postgres, yoksa SQLite.
+// Kurtarma aracının üretim veritabanına bağlanabilmesi gerekiyor.
+const db = await connect();
 
 const USAGE = readFileSync(new URL(import.meta.url), 'utf8')
   .split('\n')
@@ -43,20 +37,26 @@ function die(message) {
   process.exit(1);
 }
 
+/** Komut bittiğinde bağlantıyı kapatır; Postgres havuzu açık kalmasın. */
+async function done() {
+  await db.close();
+}
+
 const [command, ...args] = process.argv.slice(2);
 
 switch (command) {
   case 'list': {
-    const operators = db.prepare('SELECT * FROM operators ORDER BY name').all();
+    const operators = await db.all('SELECT * FROM operators ORDER BY name');
     if (operators.length === 0) {
       console.log('Hiç işletme yok. Önce: add-operator <id> "<Ad>"');
       break;
     }
     for (const o of operators) {
       console.log(`\n${o.name}  (${o.id})`);
-      const users = db
-        .prepare('SELECT * FROM operator_users WHERE operator_id = ? ORDER BY role, name')
-        .all(o.id);
+      const users = await db.all(
+        'SELECT * FROM operator_users WHERE operator_id = ? ORDER BY role, name',
+        [o.id]
+      );
 
       if (users.length === 0) {
         console.log('  — hesap yok, kimse giremez');
@@ -79,10 +79,11 @@ switch (command) {
     if (!id || !name) die('id ve ad gerekli.');
     if (!/^[a-z0-9-]+$/.test(id)) die('id yalnızca küçük harf, rakam ve tire içerebilir.');
 
-    db.prepare(
+    await db.run(
       `INSERT INTO operators (id, name, created_at) VALUES (?, ?, ?)
-         ON CONFLICT (id) DO UPDATE SET name = excluded.name`
-    ).run(id, name, new Date().toISOString());
+         ON CONFLICT (id) DO UPDATE SET name = excluded.name`,
+      [id, name, new Date().toISOString()]
+    );
 
     console.log(`İşletme kaydedildi: ${name} (${id})`);
     console.log(`Sıradaki adım: add-user ${id} <e-posta> "<Ad Soyad>" owner`);
@@ -93,27 +94,31 @@ switch (command) {
     const [operatorId, email, name, role = 'staff'] = args;
     if (!operatorId || !email || !name) die('işletme id, e-posta ve ad gerekli.');
     if (role !== 'owner' && role !== 'staff') die('yetki owner ya da staff olmalı.');
-    if (!db.prepare('SELECT 1 FROM operators WHERE id = ?').get(operatorId)) {
+    if (!(await db.get('SELECT 1 FROM operators WHERE id = ?', [operatorId]))) {
       die(`işletme bulunamadı: ${operatorId}`);
     }
 
     const password = generatePassword();
     try {
-      db.prepare(
+      await db.run(
         `INSERT INTO operator_users
            (id, operator_id, email, name, password_hash, role, status, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, 'active', ?)`
-      ).run(
-        randomUUID(),
-        operatorId,
-        email.trim().toLowerCase(),
-        name,
-        hashPassword(password),
-        role,
-        new Date().toISOString()
+         VALUES (?, ?, ?, ?, ?, ?, 'active', ?)`,
+        [
+          randomUUID(),
+          operatorId,
+          email.trim().toLowerCase(),
+          name,
+          hashPassword(password),
+          role,
+          new Date().toISOString(),
+        ]
       );
     } catch (error) {
-      if (String(error).includes('UNIQUE')) die(`bu e-posta zaten kayıtlı: ${email}`);
+      const message = String(error);
+      if (message.includes('UNIQUE') || message.includes('duplicate key')) {
+        die(`bu e-posta zaten kayıtlı: ${email}`);
+      }
       throw error;
     }
 
@@ -127,9 +132,10 @@ switch (command) {
     if (!email) die('e-posta gerekli.');
 
     const password = generatePassword();
-    const result = db
-      .prepare('UPDATE operator_users SET password_hash = ? WHERE email = ?')
-      .run(hashPassword(password), email.trim().toLowerCase());
+    const result = await db.run('UPDATE operator_users SET password_hash = ? WHERE email = ?', [
+      hashPassword(password),
+      email.trim().toLowerCase(),
+    ]);
 
     if (result.changes === 0) die(`hesap bulunamadı: ${email}`);
 
@@ -146,9 +152,10 @@ switch (command) {
       die('e-posta ve active|suspended gerekli.');
     }
 
-    const result = db
-      .prepare('UPDATE operator_users SET status = ? WHERE email = ?')
-      .run(status, email.trim().toLowerCase());
+    const result = await db.run('UPDATE operator_users SET status = ? WHERE email = ?', [
+      status,
+      email.trim().toLowerCase(),
+    ]);
 
     if (result.changes === 0) die(`hesap bulunamadı: ${email}`);
     console.log(`${email} → ${status}`);
@@ -158,3 +165,5 @@ switch (command) {
   default:
     die(command ? `bilinmeyen komut: ${command}` : 'komut girin.');
 }
+
+await done();

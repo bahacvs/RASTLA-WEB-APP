@@ -16,10 +16,10 @@ export async function GET() {
     return new Response('Oturum bulunamadı.', { status: 401 });
   }
 
-  const data = exportUserData(userId);
+  const data = await exportUserData(userId);
   if (!data) return new Response('Hesap bulunamadı.', { status: 404 });
 
-  record({
+  await record({
     action: 'account.exported',
     actorType: 'customer',
     actorId: userId,

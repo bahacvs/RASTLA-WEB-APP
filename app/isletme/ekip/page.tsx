@@ -15,7 +15,7 @@ export default async function TeamPage() {
   if (!session) redirect('/isletme');
   if (session.user.role !== 'owner') redirect('/isletme/tara');
 
-  const members = listOperatorUsers(session.operator.id);
+  const members = await listOperatorUsers(session.operator.id);
 
   return (
     <div className="min-h-screen">

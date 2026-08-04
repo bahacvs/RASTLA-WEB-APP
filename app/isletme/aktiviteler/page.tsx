@@ -22,7 +22,16 @@ export default async function OperatorActivitiesPage() {
   if (session.user.role !== 'owner') redirect('/isletme/tara');
   const operatorId = session.operator.id;
 
-  const activities = listActivitiesForOperator(operatorId);
+  const activities = await listActivitiesForOperator(operatorId);
+
+  // Kural listeleri JSX'ten ÖNCE toplanır: render sırasında veri çekilemez.
+  const activeRules = new Map(
+    await Promise.all(
+      activities.map(
+        async (a) => [a.id, (await listRules(a.id)).filter((r) => r.active)] as const
+      )
+    )
+  );
 
   return (
     <div className="min-h-screen">
@@ -50,7 +59,7 @@ export default async function OperatorActivitiesPage() {
         ) : (
           <ul className="flex flex-col gap-md">
             {activities.map((activity) => {
-              const rules = listRules(activity.id).filter((r) => r.active);
+              const rules = activeRules.get(activity.id) ?? [];
               const published = activity.status === 'published';
 
               return (

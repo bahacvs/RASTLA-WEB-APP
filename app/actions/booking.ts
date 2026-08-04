@@ -27,9 +27,10 @@ function unitsFor(capacityMode: 'per_person' | 'per_booking', party: number): nu
 
 /** Takvimde bir gün seçildiğinde o günün slotlarını getirir. */
 export async function slotsForDate(activitySlug: string, date: string): Promise<Slot[]> {
-  const activity = getActivityBySlug(activitySlug);
+  const activity = await getActivityBySlug(activitySlug);
   if (!activity) return [];
-  return listSlots(activity.id, date).filter((s) => s.status === 'open');
+  const slots = await listSlots(activity.id, date);
+  return slots.filter((s) => s.status === 'open');
 }
 
 /**
@@ -47,7 +48,7 @@ export async function createBookingAction(
   formData: FormData
 ): Promise<BookingFormState> {
   const slug = String(formData.get('slug') ?? '');
-  const activity = getActivityBySlug(slug);
+  const activity = await getActivityBySlug(slug);
   if (!activity) return { error: 'Aktivite bulunamadı.' };
 
   const name = String(formData.get('name') ?? '').trim();
@@ -74,7 +75,7 @@ export async function createBookingAction(
   if (context.ip) gates.push([bucketKey('booking:ip', context.ip), LIMITS.bookingByIp]);
 
   for (const [bucket, rule] of gates) {
-    const gate = consume(bucket, rule);
+    const gate = await consume(bucket, rule);
     if (!gate.allowed) {
       return {
         error: `Kısa sürede çok fazla rezervasyon oluşturuldu. ${describeRetry(
@@ -84,7 +85,7 @@ export async function createBookingAction(
     }
   }
 
-  const slot = getSlot(slotId);
+  const slot = await getSlot(slotId);
   if (!slot) return { error: 'Seçilen saat bulunamadı. Lütfen tekrar seçin.' };
   // Slotun gerçekten bu aktiviteye ait olduğu doğrulanır; istemciden gelen
   // kimliğe güvenilmez.
@@ -92,7 +93,7 @@ export async function createBookingAction(
 
   const units = unitsFor(activity.capacityMode, adults + children);
 
-  const reserved = reserveCapacity(slot.id, units);
+  const reserved = await reserveCapacity(slot.id, units);
   if (!reserved.ok) {
     if (reserved.reason === 'full') {
       return { error: 'Bu saat az önce doldu. Lütfen başka bir saat seçin.' };
@@ -104,10 +105,10 @@ export async function createBookingAction(
   }
 
   try {
-    const user = findOrCreateUser(name, phone);
+    const user = await findOrCreateUser(name, phone);
     if ((await getUserId()) !== user.id) await setUserSession(user.id);
 
-    const booking = createBooking({
+    const booking = await createBooking({
       userId: user.id,
       activitySlug: activity.slug,
       operatorId: activity.operatorId,
@@ -122,7 +123,7 @@ export async function createBookingAction(
 
     // Misafirin adı ve telefonu günlüğe KOPYALANMAZ; kayıt zaten hangi
     // rezervasyonu işaret ettiğini biliyor.
-    record({
+    await record({
       action: 'booking.created',
       actorType: 'customer',
       actorId: user.id,
@@ -143,7 +144,7 @@ export async function createBookingAction(
     }
 
     // Rezervasyon yazılamadıysa kapasiteyi geri ver; yoksa yer boşuna kilitlenir.
-    releaseCapacity(slot.id, units);
+    await releaseCapacity(slot.id, units);
     return { error: 'Rezervasyon oluşturulamadı. Lütfen tekrar deneyin.' };
   }
 
@@ -169,12 +170,12 @@ export async function cancelBookingAction(
   const userId = await currentUserId();
   if (!userId) return { error: 'Oturum bulunamadı. Rezervasyonu yapan cihazdan deneyin.' };
 
-  const booking = getBookingByCode(code);
+  const booking = await getBookingByCode(code);
   if (!booking || booking.userId !== userId) {
     return { error: 'Bu rezervasyona erişim yetkiniz yok.' };
   }
 
-  const result = cancelBooking(code, 'customer');
+  const result = await cancelBooking(code, 'customer');
   if (!result.ok) {
     if (result.reason === 'already_redeemed') {
       return { error: 'Bu bilet kullanılmış, iptal edilemez.' };
@@ -183,7 +184,7 @@ export async function cancelBookingAction(
     return { error: 'Rezervasyon bulunamadı.' };
   }
 
-  record({
+  await record({
     action: 'booking.cancelled',
     actorType: 'customer',
     actorId: userId,

@@ -185,14 +185,36 @@ npm run retention -- --uygula  # gerçekten siler
 
 Karar, projenin geri kalanındaki desenle aynı biçimde **tek bir koşullu SQL ifadesinde** verilir. `verify-rate-limit.mjs` bunu 30 eşzamanlı süreçle sınar: 10'luk kotayı tam olarak 10 istek geçer.
 
+### Veritabanı: SQLite ve Postgres
+
+Hangisinin kullanılacağını tek bir değişken belirler:
+
+| `DATABASE_URL` | Sonuç |
+| --- | --- |
+| tanımsız | Yerel SQLite dosyası (`data/rastla.db`) — geliştirme ve doğrulama betikleri |
+| tanımlı | Postgres — üretim |
+
+**Üretim için gereken tek şey bir bağlantı dizesidir.** Şema, ilk bağlantıda kendiliğinden kurulur; ayrı bir göç adımı yoktur.
+
+Erişim katmanı (`lib/db/index.mjs`) iki ağız farkını kapatır: yer tutucular (`?` ve `@ad` → `$1`) ve `PRAGMA`/`REAL` gibi SQLite'a özgü ifadeler. Sorguların geri kalanı — koşullu `UPDATE`, `CHECK`, `ON CONFLICT`, `RETURNING` — iki motorda da aynı yazılır.
+
+Üç ayrıntı bilerek çözüldü:
+
+- **Arayüz eşzamansız.** Postgres sürücüleri eşzamanlı çalışamaz; eşzamanlı bir arayüz seçilseydi Postgres'e geçiş hiç mümkün olmazdı. SQLite sürücüsü de aynı sözü verir, böylece çağıran taraf motoru bilmek zorunda kalmaz.
+- **`COUNT()` ve `SUM()` Postgres'te `bigint` döner** ve sürücü bunu **dizgi** olarak verir. `row.n === 0` karşılaştırması sessizce hep yanlış çıkardı; sayımlar `toCount()` ile çevrilir.
+- **Benzersizlik ihlali iki motorda farklı görünür** (`UNIQUE constraint failed` / SQLSTATE 23505); ikisi de tanınır.
+
+`lib/db/index.mjs` bilinçli olarak TypeScript değil düz ESM: `npm run seed`, `npm run retention` ve `operator-account` betikleri de aynı bağlantıyı kullanmak zorunda ve düğüm betikleri TypeScript modülünü doğrudan çalıştıramaz. Türler JSDoc ile verildi; uygulama tarafı yine tam tip denetimi görür.
+
+`verify-postgres.mjs`, tek kullanım güvencesini ve kapasite sınırını **gerçek Postgres'te ve ayrı işletim sistemi süreçleriyle** yeniden kanıtlar: 12 süreç aynı bileti onaylamayı dener, tam olarak biri geçer; 5 kişilik slota 20 süreç girer, tam olarak 5'i geçer.
+
 ### Bu fazın bilinen sınırları
 
 Aşağıdakiler **pilot seviyesindedir** ve üretime çıkmadan önce değişmelidir:
 
-1. **SQLite kalıcı değildir.** Vercel'in sunucusuz ortamında dosya sistemi geçicidir; üretimde Postgres'e geçilmelidir. Etkilenen tek yer `lib/db/`.
-2. **Kimlik doğrulanmıyor.** Kullanıcı adını ve telefonunu beyan eder, doğrulanmaz; oturum imzalı çerezle aynı cihaza bağlıdır. SMS OTP gerekir.
-3. **Kimlik doğrulama tek katmanlıdır.** İşletme hesapları kişiye özeldir (e-posta + parola, scrypt özeti), ancak ikinci faktör (SMS/TOTP) yoktur.
-7. **İhlal uyarısı otomatik değil.** İşlem günlüğü ve hız sınırı var; ama şüpheli bir örüntü fark edildiğinde kimseye bildirim gitmiyor, günlük elle inceleniyor.
+1. **Misafir kimliği doğrulanmıyor.** Kullanıcı adını ve telefonunu beyan eder, doğrulanmaz; oturum imzalı çerezle aynı cihaza bağlıdır. SMS OTP gerekir.
+2. **İşletme girişi tek katmanlı.** Hesaplar kişiye özel (e-posta + parola, scrypt özeti) ama ikinci faktör (SMS/TOTP) yok.
+3. **İhlal uyarısı otomatik değil.** İşlem günlüğü ve hız sınırı var; şüpheli bir örüntüde kimseye bildirim gitmiyor, günlük elle inceleniyor.
 4. **Ödeme yoktur.** Tutar hesaplanır ama tahsil edilmez; ödeme deneyim yerinde alınır.
 5. **Fotoğraf yükleme yoktur.** İşletme metin alanlarını ve takvimi yönetir; görselleri RASTLA ekler.
 6. **Harita karoları dış bağımlılıktır.** Uygulamanın tek dış isteği budur ve kaçışı yoktur. Sağlayıcı kullanıcı IP'lerini görür — KVKK aydınlatma metninde yer almalı.
@@ -212,6 +234,9 @@ node scripts/verify-offline.mjs       # harita karoları dışında dış istek 
 node scripts/verify-audit.mjs         # işlem günlüğü: ne kaydediliyor, ne KAYDEDİLMİYOR
 node scripts/verify-rate-limit.mjs    # hız sınırı ve 30 süreçli eşzamanlılık
 node scripts/verify-account-rights.mjs # veri indirme ve hesap silme (KVKK md. 11)
+
+# Postgres'e karşı (DATABASE_URL tanımlıyken):
+DATABASE_URL=… node scripts/verify-postgres.mjs   # eşzamanlılık ve ağız farkları
 node scripts/verify-interactions.mjs  # görünüm geçişi, filtre paneli, tutar hesabı
 node scripts/screenshots.mjs [dizin]  # her rotanın mobil + masaüstü görüntüsü
 ```

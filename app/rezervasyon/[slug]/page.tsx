@@ -22,13 +22,13 @@ export async function generateMetadata({
   params: Promise<{ slug: string }>;
 }): Promise<Metadata> {
   const { slug } = await params;
-  const activity = getActivityBySlug(slug);
+  const activity = await getActivityBySlug(slug);
   return activity ? { title: `${activity.title} — Rezervasyon` } : {};
 }
 
 export default async function BookingPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
-  const activity = getActivityBySlug(slug);
+  const activity = await getActivityBySlug(slug);
   if (!activity) notFound();
 
   const today = new Date();
@@ -37,12 +37,12 @@ export default async function BookingPage({ params }: { params: Promise<{ slug: 
 
   // Yalnızca boş yeri olan günler istemciye taşınır; tüm slotları göndermek
   // gereksiz büyük bir yük olurdu (günde 40 slot × 60 gün).
-  const availableDates = datesWithAvailability(activity.id, isoDate(today), isoDate(horizon));
+  const availableDates = await datesWithAvailability(activity.id, isoDate(today), isoDate(horizon));
 
   // İlk müsait gün açılışta seçili gelir; o günün slotları sunucuda hazırlanır.
   const initialDate = availableDates[0] ?? null;
   const initialSlots = initialDate
-    ? listSlots(activity.id, initialDate).filter((s) => s.status === 'open')
+    ? (await listSlots(activity.id, initialDate)).filter((s) => s.status === 'open')
     : [];
 
   return (

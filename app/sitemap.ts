@@ -2,14 +2,15 @@ import type { MetadataRoute } from 'next';
 import { listPublishedActivities } from '@/lib/db/activities';
 import { SITE_URL } from '@/lib/site';
 
-export default function sitemap(): MetadataRoute.Sitemap {
+export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const now = new Date();
+  const activities = await listPublishedActivities();
 
   return [
     { url: SITE_URL, lastModified: now, changeFrequency: 'daily', priority: 1 },
     { url: `${SITE_URL}/ara`, lastModified: now, changeFrequency: 'daily', priority: 0.8 },
     // Aktivite sayfaları organik aramanın asıl giriş noktası.
-    ...listPublishedActivities().map((activity) => ({
+    ...activities.map((activity) => ({
       url: `${SITE_URL}/aktivite/${activity.slug}`,
       lastModified: now,
       changeFrequency: 'weekly' as const,

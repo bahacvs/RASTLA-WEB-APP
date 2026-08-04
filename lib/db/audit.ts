@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { db } from './index';
+import { db, toCount } from './index.mjs';
 
 /**
  * İşlem günlüğü.
@@ -140,16 +140,15 @@ function shortenUserAgent(userAgent: string | null | undefined): string | null {
   return userAgent.slice(0, 180);
 }
 
-export function record(entry: AuditEntry): void {
+export async function record(entry: AuditEntry): Promise<void> {
   try {
-    db()
-      .prepare(
-        `INSERT INTO audit_log
-           (id, at, actor_type, actor_id, operator_id, action,
-            target_type, target_id, outcome, ip, user_agent, meta)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-      )
-      .run(
+    const client = await db();
+    await client.run(
+      `INSERT INTO audit_log
+         (id, at, actor_type, actor_id, operator_id, action,
+          target_type, target_id, outcome, ip, user_agent, meta)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
         randomUUID(),
         new Date().toISOString(),
         entry.actorType,
@@ -161,8 +160,9 @@ export function record(entry: AuditEntry): void {
         entry.outcome ?? 'success',
         entry.ip ?? null,
         shortenUserAgent(entry.userAgent),
-        entry.meta ? JSON.stringify(entry.meta) : null
-      );
+        entry.meta ? JSON.stringify(entry.meta) : null,
+      ]
+    );
   } catch (error) {
     // Günlük yazılamadıysa asıl işlem geri alınmaz — bkz. dosya başı.
     console.error('[audit] kayıt yazılamadı:', entry.action, error);
@@ -180,7 +180,7 @@ export type AuditQuery = {
   offset?: number;
 };
 
-export function listAudit(query: AuditQuery = {}): AuditRecord[] {
+export async function listAudit(query: AuditQuery = {}): Promise<AuditRecord[]> {
   const where: string[] = [];
   const params: unknown[] = [];
 
@@ -208,19 +208,22 @@ export function listAudit(query: AuditQuery = {}): AuditRecord[] {
   const limit = Math.min(Math.max(query.limit ?? 100, 1), 500);
   const offset = Math.max(query.offset ?? 0, 0);
 
-  const rows = db()
-    .prepare(
-      `SELECT * FROM audit_log
-        ${where.length > 0 ? `WHERE ${where.join(' AND ')}` : ''}
-        ORDER BY at DESC, id DESC
-        LIMIT ? OFFSET ?`
-    )
-    .all(...params, limit, offset) as Row[];
+  const rows = await (
+    await db()
+  ).all<Row>(
+    `SELECT * FROM audit_log
+      ${where.length > 0 ? `WHERE ${where.join(' AND ')}` : ''}
+      ORDER BY at DESC, id DESC
+      LIMIT ? OFFSET ?`,
+    [...params, limit, offset]
+  );
 
   return rows.map(toRecord);
 }
 
-export function countAudit(query: Pick<AuditQuery, 'operatorId' | 'action' | 'since'> = {}): number {
+export async function countAudit(
+  query: Pick<AuditQuery, 'operatorId' | 'action' | 'since'> = {}
+): Promise<number> {
   const where: string[] = [];
   const params: unknown[] = [];
 
@@ -237,14 +240,15 @@ export function countAudit(query: Pick<AuditQuery, 'operatorId' | 'action' | 'si
     params.push(query.since);
   }
 
-  const row = db()
-    .prepare(
-      `SELECT COUNT(*) AS n FROM audit_log
-        ${where.length > 0 ? `WHERE ${where.join(' AND ')}` : ''}`
-    )
-    .get(...params) as { n: number };
+  const row = await (
+    await db()
+  ).get<{ n: number | string }>(
+    `SELECT COUNT(*) AS n FROM audit_log
+      ${where.length > 0 ? `WHERE ${where.join(' AND ')}` : ''}`,
+    params
+  );
 
-  return row.n;
+  return toCount(row?.n);
 }
 
 /**
@@ -253,7 +257,7 @@ export function countAudit(query: Pick<AuditQuery, 'operatorId' | 'action' | 'si
  * Zaman hesabı bilinçli olarak burada: sayfa bileşeni içinde `Date.now()`
  * çağırmak render'ı saf olmaktan çıkarır.
  */
-export function countRecentLoginFailures(operatorId: string, hours = 24): number {
+export function countRecentLoginFailures(operatorId: string, hours = 24): Promise<number> {
   const since = new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
   return countAudit({ operatorId, action: 'operator.login_failed', since });
 }
@@ -265,7 +269,8 @@ export function countRecentLoginFailures(operatorId: string, hours = 24): number
  * süresiz tutmak ayrı bir ihlal: IP ve tarayıcı bilgisi kişisel veridir.
  * veri-saklama-imha-politikasi.md ile aynı süre kullanılmalı.
  */
-export function purgeAuditOlderThan(days: number): number {
+export async function purgeAuditOlderThan(days: number): Promise<number> {
   const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
-  return db().prepare('DELETE FROM audit_log WHERE at < ?').run(cutoff).changes;
+  const result = await (await db()).run('DELETE FROM audit_log WHERE at < ?', [cutoff]);
+  return result.changes;
 }

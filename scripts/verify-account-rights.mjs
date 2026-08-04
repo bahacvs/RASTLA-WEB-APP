@@ -20,24 +20,20 @@
  *
  * Kullanım: npm start & node scripts/verify-account-rights.mjs
  */
-import { join } from 'node:path';
-import { createRequire } from 'node:module';
 import { chromium } from 'playwright';
-
-const require = createRequire(import.meta.url);
-const Database = require('better-sqlite3');
+import { db as connect, usingPostgres } from '../lib/db/index.mjs';
 
 const BASE = process.env.BASE_URL ?? 'http://127.0.0.1:3000';
-const DB_PATH = process.env.DATABASE_PATH ?? join(process.cwd(), 'data', 'rastla.db');
+
+// Uygulamayla aynı bağlantı: DATABASE_URL tanımlıysa silme iddiası Postgres'te
+// de sınanır.
+const store = await connect();
 
 const checks = [];
 const check = (name, pass, detail = '') => checks.push({ name, pass, detail });
 
 function query(sql, params = []) {
-  const db = new Database(DB_PATH, { readonly: true });
-  const rows = db.prepare(sql).all(...params);
-  db.close();
-  return rows;
+  return store.all(sql, params);
 }
 
 const browser = await chromium.launch({
@@ -92,7 +88,7 @@ async function book(target) {
 const code = await book(page);
 check('test rezervasyonu oluşturuldu', Boolean(code), code ?? 'oluşturulamadı');
 
-const userRow = query('SELECT * FROM users WHERE name = ?', [NAME])[0];
+const userRow = (await query('SELECT * FROM users WHERE name = ?', [NAME]))[0];
 check('kullanıcı kaydı oluştu', Boolean(userRow), userRow?.id);
 
 // ---------- 1. Dışa aktarma ----------
@@ -148,7 +144,7 @@ check(
 );
 check(
   'hesap hâlâ duruyor',
-  query('SELECT * FROM users WHERE id = ?', [userRow.id])[0]?.deleted_at === null
+  (await query('SELECT * FROM users WHERE id = ?', [userRow.id]))[0]?.deleted_at === null
 );
 
 // Yanlış onay metni de reddedilmeli.
@@ -169,7 +165,7 @@ await page.getByRole('button', { name: /Hesabımı Kalıcı Olarak Sil/ }).click
 await page.waitForURL(/hesap=silindi/, { timeout: 15000 }).catch(() => {});
 await page.waitForTimeout(1000);
 
-const afterDelete = query('SELECT * FROM users WHERE id = ?', [userRow.id])[0];
+const afterDelete = (await query('SELECT * FROM users WHERE id = ?', [userRow.id]))[0];
 check('hesap silinmiş olarak işaretlendi', Boolean(afterDelete?.deleted_at), afterDelete?.deleted_at);
 check('ad artık veritabanında yok', afterDelete?.name !== NAME, afterDelete?.name);
 check('telefon artık veritabanında yok', afterDelete?.phone !== NORMALIZED, afterDelete?.phone);
@@ -180,31 +176,32 @@ check(
 );
 
 // Tüm users tablosunda o ad ve numara hiç geçmemeli.
-const anyTrace = query('SELECT COUNT(*) AS n FROM users WHERE name = ? OR phone = ?', [
-  NAME,
-  NORMALIZED,
-])[0].n;
+const anyTrace = Number(
+  (
+    await query('SELECT COUNT(*) AS n FROM users WHERE name = ? OR phone = ?', [NAME, NORMALIZED])
+  )[0].n
+);
 check('ad ve numara users tablosunun hiçbir yerinde yok', anyTrace === 0, `${anyTrace} eşleşme`);
 
 // ---------- 5. Rezervasyon kayıtları duruyor ama kimseye işaret etmiyor ----------
 
-const booking = query('SELECT * FROM bookings WHERE code = ?', [code])[0];
+const booking = (await query('SELECT * FROM bookings WHERE code = ?', [code]))[0];
 check('rezervasyon kaydı korundu (10 yıllık zamanaşımı)', Boolean(booking), booking?.status);
 check('rezervasyon iptal edildi', booking?.status === 'cancelled', booking?.status);
 check('rezervasyon artık silinmiş hesaba bağlı', booking?.user_id === userRow.id);
 
 // ---------- 6. İşlem günlüğünde de kişisel veri yok ----------
 
-const auditText = JSON.stringify(query('SELECT * FROM audit_log'));
+const auditText = JSON.stringify(await query('SELECT * FROM audit_log'));
 check('silinen kişinin adı günlükte yok', !auditText.includes(NAME));
 check('silinen kişinin numarası günlükte yok', !auditText.includes(NORMALIZED));
 check(
   'silme işlemi günlüğe kaydedildi',
-  query("SELECT COUNT(*) AS n FROM audit_log WHERE action = 'account.deleted'")[0].n >= 1
+  Number((await query("SELECT COUNT(*) AS n FROM audit_log WHERE action = 'account.deleted'"))[0].n) >= 1
 );
 check(
   'dışa aktarma günlüğe kaydedildi',
-  query("SELECT COUNT(*) AS n FROM audit_log WHERE action = 'account.exported'")[0].n >= 1
+  Number((await query("SELECT COUNT(*) AS n FROM audit_log WHERE action = 'account.exported'"))[0].n) >= 1
 );
 
 // ---------- 7. Kalmış çerez artık geçmiyor ----------
@@ -245,7 +242,7 @@ const newCode = await book(reborn);
 
 check('aynı numarayla yeniden rezervasyon yapılabiliyor', Boolean(newCode), newCode ?? 'yapılamadı');
 
-const newUser = query('SELECT * FROM users WHERE phone = ?', [NORMALIZED])[0];
+const newUser = (await query('SELECT * FROM users WHERE phone = ?', [NORMALIZED]))[0];
 check('yeni bir hesap oluştu', Boolean(newUser), newUser?.id);
 check(
   'yeni hesap eskisinden farklı',
@@ -253,9 +250,9 @@ check(
   'silinen hesap diriltilmiyor'
 );
 
-const rebornBookings = query('SELECT COUNT(*) AS n FROM bookings WHERE user_id = ?', [
-  newUser?.id ?? '',
-])[0].n;
+const rebornBookings = Number(
+  (await query('SELECT COUNT(*) AS n FROM bookings WHERE user_id = ?', [newUser?.id ?? '']))[0].n
+);
 check(
   'yeni hesap eski rezervasyonları görmüyor',
   rebornBookings === 1,
@@ -265,6 +262,8 @@ await rebornCtx.close();
 
 await ctx.close();
 await browser.close();
+await store.close();
+console.log(`(motor: ${usingPostgres ? 'Postgres' : 'SQLite'})\n`);
 
 let failed = 0;
 for (const c of checks) {

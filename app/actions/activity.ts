@@ -26,7 +26,7 @@ async function log(
   targetId: string,
   meta?: Record<string, unknown>
 ) {
-  record({
+  await record({
     action,
     actorType: 'operator',
     actorId: session.user.id,
@@ -56,7 +56,7 @@ async function assertOwnership(activityId: string) {
   const session = await requireOwner();
   if (!session) return null;
 
-  const activity = getActivityById(activityId);
+  const activity = await getActivityById(activityId);
   if (!activity || activity.operatorId !== session.operator.id) return null;
   return { operatorId: session.operator.id, activity, session };
 }
@@ -120,7 +120,7 @@ export async function createActivityAction(
   const input = readForm(formData, session.operator.id);
   if (typeof input === 'string') return { error: input };
 
-  const activity = createActivity({ ...input, slug: uniqueSlug(input.title) });
+  const activity = await createActivity({ ...input, slug: await uniqueSlug(input.title) });
   await log(session, 'activity.created', 'activity', activity.id, { slug: activity.slug });
 
   revalidatePath('/isletme/aktiviteler');
@@ -139,7 +139,7 @@ export async function updateActivityAction(
   if (typeof input === 'string') return { error: input };
 
   // Slug korunur: yayındaki bir adresin değişmesi bağlantıları kırar.
-  updateActivity(id, {
+  await updateActivity(id, {
     ...input,
     slug: owned.activity.slug,
     image: owned.activity.image || undefined,
@@ -170,7 +170,7 @@ export async function toggleActivityStatusAction(formData: FormData) {
   if (!owned) return;
 
   const publishing = owned.activity.status !== 'published';
-  setActivityStatus(id, publishing ? 'published' : 'draft');
+  await setActivityStatus(id, publishing ? 'published' : 'draft');
   await log(
     owned.session,
     publishing ? 'activity.published' : 'activity.unpublished',
@@ -226,7 +226,7 @@ export async function createRuleAction(
   const today = new Date();
   const validFrom = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
 
-  createRule({
+  await createRule({
     activityId,
     weekdays,
     startTime,
@@ -237,7 +237,7 @@ export async function createRuleAction(
     validUntil: null,
   });
 
-  const { added, closed, keptWithBookings } = syncSlots(activityId);
+  const { added, closed, keptWithBookings } = await syncSlots(activityId);
 
   await log(owned.session, 'schedule.rule_created', 'activity', activityId, {
     startTime,
@@ -265,8 +265,8 @@ export async function toggleRuleAction(formData: FormData) {
   const owned = await assertOwnership(activityId);
   if (!owned) return;
 
-  setRuleActive(ruleId, active);
-  const { added, closed } = syncSlots(activityId);
+  await setRuleActive(ruleId, active);
+  const { added, closed } = await syncSlots(activityId);
   await log(owned.session, 'schedule.rule_toggled', 'schedule_rule', ruleId, {
     activityId,
     active,
@@ -285,11 +285,11 @@ export async function toggleSlotAction(formData: FormData) {
   const owned = await assertOwnership(activityId);
   if (!owned) return;
 
-  const slot = getSlot(slotId);
+  const slot = await getSlot(slotId);
   if (!slot || slot.activityId !== activityId) return;
 
   const next = slot.status === 'open' ? 'closed' : 'open';
-  setSlotStatus(slotId, next);
+  await setSlotStatus(slotId, next);
   await log(owned.session, 'schedule.slot_toggled', 'slot', slotId, {
     activityId,
     date: slot.date,

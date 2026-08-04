@@ -15,7 +15,7 @@ import { emailFor, ensureTestAccounts, loginAs } from './lib/test-accounts.mjs';
 const BASE = process.env.BASE_URL ?? 'http://127.0.0.1:3000';
 
 // Bilinen parolalı test hesapları; seed'in ürettiği parolalar rastgeledir.
-ensureTestAccounts();
+await ensureTestAccounts();
 
 const browser = await chromium.launch({
   executablePath: process.env.CHROMIUM_PATH ?? '/opt/pw-browsers/chromium-1194/chrome-linux/chrome',

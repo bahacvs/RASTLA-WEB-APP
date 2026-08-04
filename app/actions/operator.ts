@@ -51,9 +51,9 @@ export async function operatorLoginAction(
   if (context.ip) buckets.push([bucketKey('login:ip', context.ip), LIMITS.loginByIp]);
 
   for (const [bucket, rule] of buckets) {
-    const gate = peek(bucket, rule);
+    const gate = await peek(bucket, rule);
     if (!gate.allowed) {
-      record({
+      await record({
         action: 'operator.login_failed',
         actorType: 'anonymous',
         outcome: 'denied',
@@ -67,15 +67,15 @@ export async function operatorLoginAction(
     }
   }
 
-  const result = authenticateOperatorUser(email, password);
+  const result = await authenticateOperatorUser(email, password);
 
   if (!result.ok) {
-    for (const [bucket, rule] of buckets) consume(bucket, rule);
+    for (const [bucket, rule] of buckets) await consume(bucket, rule);
 
     // Başarısız denemeler de kaydedilir: bir ihlali fark ettiren çoğunlukla
     // başarılı girişler değil, aynı kaynaktan gelen deneme yoğunluğudur.
     // Parola HİÇBİR koşulda günlüğe yazılmaz.
-    record({
+    await record({
       action: 'operator.login_failed',
       actorType: 'anonymous',
       operatorId: result.matchedOperatorId,
@@ -96,10 +96,10 @@ export async function operatorLoginAction(
   // Doğru parolayı girene ceza yok: unutkanlık saldırı değildir. IP kovası
   // bilinçli olarak sıfırlanmaz — aynı adresin arkasındaki başka bir hesaba
   // yapılan denemeler, buradan başarılı bir girişle silinmemeli.
-  reset(emailBucket);
+  await reset(emailBucket);
 
-  recordLogin(result.user.id);
-  record({
+  await recordLogin(result.user.id);
+  await record({
     action: 'operator.login',
     actorType: 'operator',
     actorId: result.user.id,
@@ -114,7 +114,7 @@ export async function operatorLoginAction(
 export async function operatorLogoutAction() {
   const session = await currentOperator();
   if (session) {
-    record({
+    await record({
       action: 'operator.logout',
       actorType: 'operator',
       actorId: session.user.id,
@@ -141,10 +141,11 @@ export type ScanState = {
   };
 };
 
-function describe(booking: Booking, customerName: string) {
+async function describe(booking: Booking, customerName: string) {
+  const activity = await getActivityBySlug(booking.activitySlug);
   return {
     code: booking.code,
-    activityTitle: getActivityBySlug(booking.activitySlug)?.title ?? booking.activitySlug,
+    activityTitle: activity?.title ?? booking.activitySlug,
     customerName,
     date: booking.bookingDate,
     time: booking.bookingTime,
@@ -184,17 +185,17 @@ export async function redeemAction(_prev: ScanState, formData: FormData): Promis
   const failureBucket = bucketKey('redeem:user', session.user.id);
 
   /** Başarısız denemeyi sayar; kota dolduysa mesaj döner. */
-  function countFailure(): string | null {
-    const gate = consume(failureBucket, LIMITS.redeemFailures);
+  async function countFailure(): Promise<string | null> {
+    const gate = await consume(failureBucket, LIMITS.redeemFailures);
     return gate.allowed
       ? null
       : `Çok fazla başarısız deneme. ${describeRetry(gate.retryAfterSeconds)} sonra tekrar deneyin.`;
   }
 
-  const existing = getBookingByCode(code);
+  const existing = await getBookingByCode(code);
   if (!existing) {
-    const limited = countFailure();
-    record({
+    const limited = await countFailure();
+    await record({
       ...actor,
       action: 'booking.redeem_failed',
       outcome: 'failure',
@@ -206,10 +207,10 @@ export async function redeemAction(_prev: ScanState, formData: FormData): Promis
     };
   }
   if (existing.operatorId !== operatorId) {
-    const limited = countFailure();
+    const limited = await countFailure();
     // Başka işletmenin biletini okutmaya çalışmak ya karışıklıktır ya da
     // sondaj; her iki hâlde de görülebilir olmalı.
-    record({
+    await record({
       ...actor,
       action: 'booking.redeem_failed',
       outcome: 'denied',
@@ -226,15 +227,15 @@ export async function redeemAction(_prev: ScanState, formData: FormData): Promis
   // Onaylayan olarak işletme değil KİŞİ kaydedilir. Bilet onayı geri alınamaz;
   // bir uyuşmazlıkta ya da ihlalde cevabı gereken soru "hangi işletme" değil,
   // "kim" sorusudur.
-  const result = redeemBooking(code, session.user.id);
-  const customerName = displayContact(getUser(existing.userId)).name;
+  const result = await redeemBooking(code, session.user.id);
+  const customerName = displayContact(await getUser(existing.userId)).name;
 
   if (result.ok) {
     // Geçerli bir onay, o personelin başarısız deneme sayacını sıfırlar:
     // gerçek iş yapıldığı belli.
-    reset(failureBucket);
+    await reset(failureBucket);
 
-    record({
+    await record({
       ...actor,
       action: 'booking.redeemed',
       targetType: 'booking',
@@ -245,11 +246,11 @@ export async function redeemAction(_prev: ScanState, formData: FormData): Promis
     return {
       status: 'success',
       message: 'Bilet onaylandı. Misafiri kabul edebilirsiniz.',
-      booking: describe(result.booking, customerName),
+      booking: await describe(result.booking, customerName),
     };
   }
 
-  record({
+  await record({
     ...actor,
     action: 'booking.redeem_failed',
     outcome: 'failure',
@@ -263,7 +264,7 @@ export async function redeemAction(_prev: ScanState, formData: FormData): Promis
       status: 'error',
       message: 'Bu bilet daha önce kullanılmış.',
       booking: {
-        ...describe(result.booking, customerName),
+        ...(await describe(result.booking, customerName)),
         redeemedAt: new Date(result.booking.redeemedAt!).toLocaleString('tr-TR'),
       },
     };
@@ -286,12 +287,12 @@ export async function operatorCancelAction(
   const code = String(formData.get('code') ?? '').trim();
   const reason = formData.get('reason') === 'weather' ? 'weather' : 'operator';
 
-  const booking = getBookingByCode(code);
+  const booking = await getBookingByCode(code);
   if (!booking || booking.operatorId !== operatorId) {
     return { error: 'Bu rezervasyona erişim yetkiniz yok.' };
   }
 
-  const result = cancelBooking(code, reason);
+  const result = await cancelBooking(code, reason);
   if (!result.ok) {
     if (result.reason === 'already_redeemed') {
       return { error: 'Bilet kullanılmış, iptal edilemez.' };
@@ -299,7 +300,7 @@ export async function operatorCancelAction(
     return { error: 'Rezervasyon zaten iptal edilmiş.' };
   }
 
-  record({
+  await record({
     action: 'booking.cancelled',
     actorType: 'operator',
     actorId: session.user.id,
@@ -331,11 +332,11 @@ export async function cancelDayAction(
   const date = String(formData.get('date') ?? '');
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return { error: 'Gün geçersiz.' };
 
-  const { cancelled, skipped } = cancelDay(operatorId, date, 'weather');
+  const { cancelled, skipped } = await cancelDay(operatorId, date, 'weather');
 
   // Toplu iptal tek satırda kaydedilir: kaç rezervasyonun etkilendiği
   // meta'da durur, tek tek kayıt açmak günlüğü okunmaz hâle getirirdi.
-  record({
+  await record({
     action: 'booking.day_cancelled',
     actorType: 'operator',
     actorId: session.user.id,

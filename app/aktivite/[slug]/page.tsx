@@ -11,8 +11,9 @@ import { formatPrice } from '@/lib/format';
 import { SITE_URL } from '@/lib/site';
 import { getOperator } from '@/lib/db/operators';
 
-export function generateStaticParams() {
-  return listPublishedActivities().map((a) => ({ slug: a.slug }));
+export async function generateStaticParams() {
+  const activities = await listPublishedActivities();
+  return activities.map((a) => ({ slug: a.slug }));
 }
 
 // Aktiviteler artık veritabanından geliyor; sayfalar önceden üretilir ama
@@ -25,7 +26,7 @@ export async function generateMetadata({
   params: Promise<{ slug: string }>;
 }): Promise<Metadata> {
   const { slug } = await params;
-  const activity = getActivityBySlug(slug);
+  const activity = await getActivityBySlug(slug);
   if (!activity) return {};
 
   const description =
@@ -50,8 +51,8 @@ export async function generateMetadata({
  * Arama motorlarının fiyat, puan ve konumu doğrudan okuyabilmesi için
  * yapılandırılmış veri. Yerel aramada zengin sonuç görünümü sağlar.
  */
-function activityJsonLd(activity: Activity) {
-  const operatorName = getOperator(activity.operatorId)?.name;
+async function activityJsonLd(activity: Activity) {
+  const operatorName = (await getOperator(activity.operatorId))?.name;
   return {
     '@context': 'https://schema.org',
     '@type': 'Product',
@@ -84,11 +85,11 @@ export default async function ActivityDetailPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const activity = getActivityBySlug(slug);
+  const activity = await getActivityBySlug(slug);
   if (!activity) notFound();
 
   const gallery = activity.gallery ?? [{ src: activity.image, alt: activity.imageAlt }];
-  const operatorName = getOperator(activity.operatorId)?.name;
+  const operatorName = (await getOperator(activity.operatorId))?.name;
 
   return (
     <div className="flex min-h-screen flex-col pb-24 md:pb-0">
