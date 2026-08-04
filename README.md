@@ -2,6 +2,8 @@
 
 RASTLA, Türkiye'deki su sporları ve yerel turistik aktiviteleri tek platformda keşfetme, karşılaştırma ve rezervasyon yapma vizyonuyla geliştirilen bir deneyim pazaryeridir.
 
+> **Yayına almak için:** [KURULUM.md](KURULUM.md) — kod tarafı hazır; o belge yalnızca sizden gelmesi gereken şeyleri (şirket bilgileri, veritabanı, anahtarlar, hukukçu onayı) sırayla listeler.
+
 ## Pilot kapsam
 
 - Bölge: İstanbul, Büyükçekmece Sahili
@@ -13,7 +15,7 @@ RASTLA, Türkiye'deki su sporları ve yerel turistik aktiviteleri tek platformda
 
 - **Next.js 16** (App Router) + **React 19** + **TypeScript**
 - **Tailwind CSS v4** — tasarım tokenları `app/globals.css` içindeki `@theme` bloğunda
-- **SQLite** (pilot) — aktiviteler, takvim, slotlar, rezervasyon ve biletler
+- **Postgres** (üretim) / **SQLite** (geliştirme) — tek bir `DATABASE_URL` ile seçilir
 - **MapLibre GL** + karo sağlayıcısı — gerçek harita
 - Yerel **Inter** fontu (`@fontsource/inter`) ve yerel SVG ikonlar
 - Dış çalışma zamanı bağımlılığı yok
@@ -28,11 +30,14 @@ RASTLA, Türkiye'deki su sporları ve yerel turistik aktiviteleri tek platformda
 | `/rezervasyon/[slug]` | Rezervasyon — tarih, saat, katılımcı seçimi, iletişim ve tutar hesabı |
 | `/bilet/[code]` | QR kodlu bilet |
 | `/rezervasyonlarim` | Kullanıcının kendi rezervasyonları |
+| `/hesabim` | Verilerini indirme ve hesap silme (KVKK md. 11) |
 | `/isletme` | İşletme girişi |
 | `/isletme/tara` | Bilet okutma ve onaylama |
 | `/isletme/aktiviteler` | Aktivite ekleme, düzenleme, yayına alma |
 | `/isletme/aktiviteler/[id]/takvim` | Takvim kuralı ve slot yönetimi |
 | `/isletme/rezervasyonlar` | Güne göre rezervasyonlar ve doluluk |
+| `/isletme/ekip` | Ekip yönetimi — hesap ekleme, parola sıfırlama, askıya alma (sahip) |
+| `/isletme/gunluk` | İşlem günlüğü — kim, ne zaman, ne yaptı (sahip) |
 
 Arama `?q=` ve `?kategori=` parametrelerini kabul eder; ana sayfadaki form ve kategori çipleri buraya bağlanır. Arama Türkçe'ye duyarlıdır: aksan ve büyük/küçük harf farkı yok sayılır (`buyukcekmece` → `Büyükçekmece`).
 
