@@ -186,7 +186,7 @@ Bu çalışma tam bir üretim uygulaması değildir; veri katmanı henüz sahted
 2. ~~Görseller kalıcı dosyalarla değiştirilmeli.~~ **Kısmen tamamlandı** — görseller repoya alındı, ancak lisans durumu hâlâ açık (aşağıya bakın).
 3. Rezervasyon kaydı ve işletme onay akışı **çalışıyor**; kimlik doğrulama (SMS OTP), ödeme ve müsaitlik yönetimi eksik.
 4. ~~Harita sağlayıcısı seçilmeli.~~ **Tamamlandı** — MapLibre + karo sağlayıcısı; işletme konumu koordinat olarak girer.
-5. KVKK, mesafeli satış, iptal/iade ve işletme sözleşmeleri hazırlanmalıdır.
+5. KVKK metinleri **taslak olarak hazırlandı** (`legal/`), hukukçu onayı bekliyor. Mesafeli satış sözleşmesi, ön bilgilendirme formu ve işletme sözleşmeleri henüz yok.
 
 İşletme kendi aktivitelerini ekleyip takvimini tanımlayabilir; rezervasyon slot kapasitesinden düşer ve QR kodlu bilet üretir. Ödeme hâlâ yoktur.
 
@@ -217,6 +217,7 @@ lib/db/               şema; aktivite, slot, rezervasyon ve kullanıcı depolar�
 public/               görseller ve marka varlıkları
 scripts/              varlık üretimi ve doğrulama betikleri
 reference/prototypes/ özgün statik Stitch ekranları (build'e dahil değil)
+legal/                KVKK metinleri — TASLAK, hukukçu onayı bekliyor
 ```
 
 ## Sonraki geliştirme hedefi
