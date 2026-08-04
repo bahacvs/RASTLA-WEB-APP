@@ -1,8 +1,7 @@
 import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 import { ScanPanel } from './ScanPanel';
-import { getOperatorId } from '@/lib/session';
-import { getOperator } from '@/lib/operators';
+import { currentOperator } from '@/lib/auth';
 import { OperatorNav } from '@/components/OperatorNav';
 
 export const metadata: Metadata = {
@@ -11,15 +10,12 @@ export const metadata: Metadata = {
 };
 
 export default async function ScanPage() {
-  const operatorId = await getOperatorId();
-  if (!operatorId) redirect('/isletme');
-
-  const operator = getOperator(operatorId);
-  if (!operator) redirect('/isletme');
+  const session = await currentOperator();
+  if (!session) redirect('/isletme');
 
   return (
     <div className="min-h-screen">
-      <OperatorNav operatorName={operator.name} />
+      <OperatorNav session={session} />
 
       <main className="mx-auto max-w-[32rem] px-container-margin py-lg">
         <ScanPanel />

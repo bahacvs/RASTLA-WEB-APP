@@ -65,7 +65,7 @@ Aşağıdakiler **açıkça yasaktır**:
 
 İŞLETME, aktarılan verilerin hukuka aykırı işlenmesini ve erişilmesini önlemek, muhafazasını sağlamak üzere gerekli teknik ve idari tedbirleri alır. Asgari olarak:
 
-- Platform erişim bilgilerini (işletme erişim kodu) üçüncü kişilerle paylaşmaz, paylaşılmış olması hâlinde derhal RASTLA'ya bildirir
+- Platform erişim bilgilerini (kişiye özel hesap parolası) hiç kimseyle paylaşmaz; her çalışan kendi hesabını kullanır, paylaşıldığından şüphelenilmesi hâlinde derhal RASTLA'ya bildirir ve hesabı askıya alır
 - Misafir listesini içeren ekran görüntüsü, çıktı veya kopyayı hizmet dışı amaçlarla saklamaz
 - Verilere erişen personelini gizlilik konusunda bilgilendirir ve bu kişileri gizlilikle yükümlü kılar
 - Personel ayrıldığında erişimini derhal sonlandırır

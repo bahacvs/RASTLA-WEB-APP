@@ -13,6 +13,7 @@ import { randomUUID } from 'node:crypto';
 import { readFileSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { createRequire } from 'node:module';
+import { generatePassword, hashPassword } from '../lib/password.mjs';
 
 const require = createRequire(import.meta.url);
 const Database = require('better-sqlite3');
@@ -25,6 +26,11 @@ db.exec(readFileSync(join(process.cwd(), 'lib', 'db', 'schema.sql'), 'utf8'));
 
 const BUYUKCEKMECE = 'buyukcekmece-wsc';
 const MIMARSINAN = 'mimarsinan-marina';
+
+const OPERATORS = [
+  { id: BUYUKCEKMECE, name: 'Büyükçekmece Water Sports Center' },
+  { id: MIMARSINAN, name: 'Mimarsinan Marina Deniz Sporları' },
+];
 
 /**
  * Koordinatlar Büyükçekmece ve Mimarsinan çevresinden yaklaşık değerlerdir.
@@ -172,6 +178,16 @@ const ACTIVITIES = [
 ];
 
 const now = new Date().toISOString();
+
+// İşletmeler aktivitelerden önce yazılır: activities.operator_id bir yabancı
+// anahtardır ve foreign_keys açıktır.
+for (const o of OPERATORS) {
+  db.prepare(
+    `INSERT INTO operators (id, name, created_at) VALUES (?, ?, ?)
+       ON CONFLICT (id) DO UPDATE SET name = excluded.name`
+  ).run(o.id, o.name, now);
+}
+
 const today = new Date();
 const isoToday = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
 
@@ -269,3 +285,38 @@ run();
 
 console.log(`${created} aktivite eklendi (${ACTIVITIES.length - created} zaten vardı)`);
 console.log(`${slotsCreated} slot üretildi (${HORIZON_DAYS} günlük ufuk)`);
+
+/*
+ * İlk sahip hesapları.
+ *
+ * Bir işletmenin hiç hesabı yoksa kimse giremez, giremediği için de hesap
+ * açamaz. Kilidi kıran adım budur. Parola üretilir ve YALNIZCA burada
+ * yazdırılır; veritabanında özeti tutulur, geri getirilemez.
+ */
+const bootstrapped = [];
+for (const o of OPERATORS) {
+  const has = db.prepare('SELECT 1 FROM operator_users WHERE operator_id = ?').get(o.id);
+  if (has) continue;
+
+  const email = `sahip@${o.id}.local`;
+  const password = generatePassword();
+
+  db.prepare(
+    `INSERT INTO operator_users
+       (id, operator_id, email, name, password_hash, role, status, created_at)
+     VALUES (?, ?, ?, ?, ?, 'owner', 'active', ?)`
+  ).run(randomUUID(), o.id, email, `${o.name} Sahibi`, hashPassword(password), now);
+
+  bootstrapped.push({ operator: o.name, email, password });
+}
+
+if (bootstrapped.length > 0) {
+  console.log('\nİlk sahip hesapları oluşturuldu. Parolalar BİR DAHA gösterilmeyecek:\n');
+  for (const b of bootstrapped) {
+    console.log(`  ${b.operator}`);
+    console.log(`    e-posta: ${b.email}`);
+    console.log(`    parola : ${b.password}\n`);
+  }
+  console.log('İlk girişten sonra /isletme/ekip üzerinden kendi parolanızı belirleyin.');
+  console.log('Gerçek e-posta adreslerini de oradan ekleyip bu geçici hesapları askıya alın.');
+}

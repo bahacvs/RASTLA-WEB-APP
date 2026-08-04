@@ -133,7 +133,6 @@ Kural `scripts/verify-redemption.mjs` ile sınanır — 12 ayrı süreç aynı a
 | Değişken | Etkisi |
 | --- | --- |
 | `SESSION_SECRET` | Oturum çerezlerini imzalar. Üretimde rastgele ve gizli olmalı (`openssl rand -base64 32`). |
-| `OPERATOR_ACCESS_CODES` | `isletme:kod` çiftleri, virgülle ayrılır. Tanımsızsa işletme girişi kapalıdır. |
 | `NEXT_PUBLIC_SITE_URL` | Sitenin genel adresi. Sitemap, robots, canonical, Open Graph ve bilet QR'ının işaret ettiği adres. |
 | `DATABASE_PATH` | SQLite dosyası (varsayılan `data/rastla.db`). |
 | `NEXT_PUBLIC_MAPTILER_KEY` | Harita karo sağlayıcısı anahtarı. Tanımsızsa harita yerine yapılandırma uyarısı gösterilir. |
@@ -144,7 +143,7 @@ Aşağıdakiler **pilot seviyesindedir** ve üretime çıkmadan önce değişmel
 
 1. **SQLite kalıcı değildir.** Vercel'in sunucusuz ortamında dosya sistemi geçicidir; üretimde Postgres'e geçilmelidir. Etkilenen tek yer `lib/db/`.
 2. **Kimlik doğrulanmıyor.** Kullanıcı adını ve telefonunu beyan eder, doğrulanmaz; oturum imzalı çerezle aynı cihaza bağlıdır. SMS OTP gerekir.
-3. **İşletme girişi paylaşılan koddur.** Kişi bazında hesap ve rol yönetimi yoktur.
+3. **Kimlik doğrulama tek katmanlıdır.** İşletme hesapları kişiye özeldir (e-posta + parola, scrypt özeti), ancak ikinci faktör (SMS/TOTP) yoktur.
 4. **Ödeme yoktur.** Tutar hesaplanır ama tahsil edilmez; ödeme deneyim yerinde alınır.
 5. **Fotoğraf yükleme yoktur.** İşletme metin alanlarını ve takvimi yönetir; görselleri RASTLA ekler.
 6. **Harita karoları dış bağımlılıktır.** Uygulamanın tek dış isteği budur ve kaçışı yoktur. Sağlayıcı kullanıcı IP'lerini görür — KVKK aydınlatma metninde yer almalı.
@@ -156,6 +155,7 @@ Sunucu ayaktayken (`npm start`) çalıştırılır:
 ```bash
 node scripts/verify-redemption.mjs    # tek kullanım güvencesi (eşzamanlılık dahil) — sunucu gerekmez
 node scripts/verify-capacity.mjs      # slot üretimi ve kapasite yarışı — sunucu gerekmez
+node scripts/verify-accounts.mjs      # parola özeti, rol ve son-sahip koruması — sunucu gerekmez
 node scripts/verify-operator-flow.mjs # aktivite -> takvim -> yayın -> rezervasyon -> bilet
 node scripts/verify-ticket-flow.mjs   # rezervasyon -> bilet -> onay -> ikinci onay reddi
 node scripts/verify-offline-ticket.mjs # bağlantı kesikken bilet ve QR açılıyor mu

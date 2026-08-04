@@ -33,6 +33,9 @@ const check = (name, pass, detail = '') => checks.push({ name, pass, detail });
 const db = open();
 const now = new Date().toISOString();
 
+// activities.operator_id yabancı anahtardır; işletme önce yazılmalı.
+db.prepare(`INSERT INTO operators (id,name,created_at) VALUES ('op-1','Test İşletmesi',?)`).run(now);
+
 db.prepare(
   `INSERT INTO activities (id,operator_id,slug,title,category,price_try,duration_minutes,
      location_name,capacity_mode,created_at)

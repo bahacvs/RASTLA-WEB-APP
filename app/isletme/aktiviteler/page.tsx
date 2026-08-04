@@ -3,8 +3,7 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { OperatorNav } from '@/components/OperatorNav';
 import { Icon } from '@/components/Icon';
-import { getOperatorId } from '@/lib/session';
-import { getOperator } from '@/lib/operators';
+import { currentOperator } from '@/lib/auth';
 import { listActivitiesForOperator } from '@/lib/db/activities';
 import { listRules } from '@/lib/db/slots';
 import { formatPrice } from '@/lib/format';
@@ -17,17 +16,17 @@ export const metadata: Metadata = {
 };
 
 export default async function OperatorActivitiesPage() {
-  const operatorId = await getOperatorId();
-  if (!operatorId) redirect('/isletme');
-
-  const operator = getOperator(operatorId);
-  if (!operator) redirect('/isletme');
+  const session = await currentOperator();
+  if (!session) redirect('/isletme');
+  // Aktivite yönetimi sahibe ayrılmış; personel bilet ekranına döner.
+  if (session.user.role !== 'owner') redirect('/isletme/tara');
+  const operatorId = session.operator.id;
 
   const activities = listActivitiesForOperator(operatorId);
 
   return (
     <div className="min-h-screen">
-      <OperatorNav operatorName={operator.name} />
+      <OperatorNav session={session} />
 
       <main className="mx-auto max-w-[48rem] px-container-margin py-lg">
         <div className="mb-lg flex items-center justify-between gap-4">

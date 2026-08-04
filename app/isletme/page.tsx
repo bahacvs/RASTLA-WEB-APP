@@ -1,8 +1,8 @@
 import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 import { OperatorLoginForm } from './OperatorLoginForm';
-import { getOperatorId } from '@/lib/session';
-import { OPERATORS, isOperatorLoginEnabled } from '@/lib/operators';
+import { currentOperator } from '@/lib/auth';
+import { countOperatorUsers } from '@/lib/db/operators';
 
 export const metadata: Metadata = {
   title: 'İşletme Girişi',
@@ -10,26 +10,28 @@ export const metadata: Metadata = {
 };
 
 export default async function OperatorLoginPage() {
-  if (await getOperatorId()) redirect('/isletme/tara');
+  if (await currentOperator()) redirect('/isletme/tara');
 
-  const enabled = isOperatorLoginEnabled();
+  const hasAccounts = countOperatorUsers() > 0;
 
   return (
     <div className="flex min-h-screen items-center justify-center px-container-margin">
       <div className="w-full max-w-[24rem]">
         <h1 className="mb-xs text-headline-md text-on-background">İşletme Girişi</h1>
         <p className="mb-lg text-body-md text-on-surface-variant">
-          Bilet okutmak için işletmenizi seçip erişim kodunu girin.
+          Bilet okutmak ve rezervasyonlarınızı görmek için kendi hesabınızla giriş yapın.
         </p>
 
-        {enabled ? (
-          <OperatorLoginForm operators={OPERATORS} />
+        {hasAccounts ? (
+          <OperatorLoginForm />
         ) : (
           <div className="rounded-xl border border-outline-variant bg-surface-container-lowest p-md shadow-card">
-            <p className="text-body-md text-on-surface-variant">
-              İşletme girişi yapılandırılmamış. Sunucuda{' '}
-              <code className="font-mono text-label-sm">OPERATOR_ACCESS_CODES</code> tanımlanmalı.
+            <p className="mb-sm text-body-md text-on-surface-variant">
+              Henüz hesap oluşturulmamış. Sunucuda ilk sahip hesabını şu komutla açın:
             </p>
+            <pre className="overflow-x-auto rounded-lg bg-surface-container p-3 font-mono text-label-sm text-on-surface">
+              npm run operator:create
+            </pre>
           </div>
         )}
       </div>

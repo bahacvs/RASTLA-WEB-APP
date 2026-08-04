@@ -11,19 +11,32 @@ import {
   type ActivityInput,
 } from '@/lib/db/activities';
 import { createRule, setRuleActive, setSlotStatus, syncSlots, getSlot } from '@/lib/db/slots';
-import { getOperatorId } from '@/lib/session';
+import { currentOperator } from '@/lib/auth';
 import { isActivityCategory, type CapacityMode } from '@/lib/catalog';
 
 export type ActivityFormState = { error?: string };
 
-/** İşletmenin yalnızca kendi aktivitesine dokunabilmesini sağlar. */
+/**
+ * Aktivite yönetimi sahiplere ayrılmıştır.
+ *
+ * Personel bilet okutur ve rezervasyon listesini görür; fiyat değiştirmek,
+ * takvim tanımlamak ve yayına almak ticari kararlardır. Kontrol her eylemde
+ * sunucu tarafında yapılır — bağlantıyı menüden gizlemek yetkilendirme değildir.
+ */
+async function requireOwner() {
+  const session = await currentOperator();
+  if (!session || session.user.role !== 'owner') return null;
+  return session;
+}
+
+/** Sahibin yalnızca kendi aktivitesine dokunabilmesini sağlar. */
 async function assertOwnership(activityId: string) {
-  const operatorId = await getOperatorId();
-  if (!operatorId) return null;
+  const session = await requireOwner();
+  if (!session) return null;
 
   const activity = getActivityById(activityId);
-  if (!activity || activity.operatorId !== operatorId) return null;
-  return { operatorId, activity };
+  if (!activity || activity.operatorId !== session.operator.id) return null;
+  return { operatorId: session.operator.id, activity };
 }
 
 function readForm(formData: FormData, operatorId: string): ActivityInput | string {
@@ -79,10 +92,10 @@ export async function createActivityAction(
   _prev: ActivityFormState,
   formData: FormData
 ): Promise<ActivityFormState> {
-  const operatorId = await getOperatorId();
-  if (!operatorId) return { error: 'Oturum sona ermiş. Tekrar giriş yapın.' };
+  const session = await requireOwner();
+  if (!session) return { error: 'Bu işlem için işletme sahibi yetkisi gerekir.' };
 
-  const input = readForm(formData, operatorId);
+  const input = readForm(formData, session.operator.id);
   if (typeof input === 'string') return { error: input };
 
   const activity = createActivity({ ...input, slug: uniqueSlug(input.title) });

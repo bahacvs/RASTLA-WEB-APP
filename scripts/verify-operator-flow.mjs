@@ -9,8 +9,13 @@
  * Kullanım: npm start & node scripts/verify-operator-flow.mjs
  */
 import { chromium } from 'playwright';
+import { execFileSync } from 'node:child_process';
+import { emailFor, ensureTestAccounts, loginAs } from './lib/test-accounts.mjs';
 
 const BASE = process.env.BASE_URL ?? 'http://127.0.0.1:3000';
+
+// Bilinen parolalı test hesapları; seed'in ürettiği parolalar rastgeledir.
+ensureTestAccounts();
 
 const browser = await chromium.launch({
   executablePath: process.env.CHROMIUM_PATH ?? '/opt/pw-browsers/chromium-1194/chrome-linux/chrome',
@@ -26,12 +31,8 @@ const TITLE = `Test Jet Ski ${unique}`;
 const operator = await browser.newContext({ viewport: { width: 390, height: 844 } });
 const op = await operator.newPage();
 
-await op.goto(`${BASE}/isletme`, { waitUntil: 'networkidle' });
-await op.selectOption('#operatorId', 'buyukcekmece-wsc');
-await op.fill('#code', '1234');
-await op.getByRole('button', { name: 'Giriş Yap' }).click();
-await op.waitForURL(/\/isletme\/tara/, { timeout: 15000 });
-check('işletme girişi başarılı', true);
+await loginAs(op, BASE, 'buyukcekmece-wsc');
+check('işletme girişi e-posta ve parolayla yapılabiliyor', true);
 
 // ---------- Aktivite oluştur ----------
 await op.goto(`${BASE}/isletme/aktiviteler/yeni`, { waitUntil: 'networkidle' });
@@ -157,8 +158,74 @@ check('aynı bilet ikinci kez onaylanamıyor', await op.getByText('daha önce ku
 // ---------- İşletme rezervasyon listesi ----------
 await op.goto(`${BASE}/isletme/rezervasyonlar`, { waitUntil: 'networkidle' });
 check('rezervasyonlar listesinde görünüyor', await op.getByText(first.code).isVisible());
+check(
+  'bileti kimin onayladığı listede yazıyor',
+  await op.getByText('Test Sahibi onayladı').first().isVisible()
+);
 
 await operator.close();
+
+// ---------- Yetki sınırı: personel aktivite yönetemez ----------
+//
+// Menüde bağlantının gizli olması yetkilendirme değildir; adres doğrudan
+// yazıldığında da sunucu tarafından engellenmeli.
+const staffCtx = await browser.newContext({ viewport: { width: 390, height: 844 } });
+const sp = await staffCtx.newPage();
+await loginAs(sp, BASE, 'buyukcekmece-wsc', 'staff');
+
+check(
+  'personel menüsünde Aktiviteler yok',
+  (await sp.getByRole('link', { name: 'Aktiviteler' }).count()) === 0
+);
+check('personel menüsünde Ekip yok', (await sp.getByRole('link', { name: 'Ekip' }).count()) === 0);
+
+await sp.goto(`${BASE}/isletme/aktiviteler`, { waitUntil: 'networkidle' });
+check(
+  'personel aktivite sayfasına doğrudan giremiyor',
+  /\/isletme\/tara/.test(sp.url()),
+  sp.url()
+);
+
+await sp.goto(`${BASE}/isletme/ekip`, { waitUntil: 'networkidle' });
+check('personel ekip sayfasına doğrudan giremiyor', /\/isletme\/tara/.test(sp.url()), sp.url());
+
+await sp.goto(`${BASE}/isletme/rezervasyonlar`, { waitUntil: 'networkidle' });
+check(
+  'personel rezervasyonları görebiliyor',
+  /\/isletme\/rezervasyonlar/.test(sp.url()),
+  sp.url()
+);
+await staffCtx.close();
+
+// ---------- Oturum, hesap askıya alınınca anında düşer ----------
+//
+// İşletme kimliği çereze gömülmediği, her istekte hesaptan türetildiği için
+// askıya alma elindeki çerezi de geçersiz kılar.
+const suspendCtx = await browser.newContext({ viewport: { width: 390, height: 844 } });
+const susp = await suspendCtx.newPage();
+await loginAs(susp, BASE, 'buyukcekmece-wsc', 'staff');
+
+execFileSync(
+  process.execPath,
+  ['scripts/operator-account.mjs', 'status', emailFor('buyukcekmece-wsc', 'staff'), 'suspended'],
+  { encoding: 'utf8' }
+);
+
+await susp.goto(`${BASE}/isletme/tara`, { waitUntil: 'networkidle' });
+check(
+  'askıya alınan hesabın mevcut oturumu anında geçersiz',
+  /\/isletme$/.test(susp.url()),
+  susp.url()
+);
+await suspendCtx.close();
+
+// Sonraki koşumlar için geri aç.
+execFileSync(
+  process.execPath,
+  ['scripts/operator-account.mjs', 'status', emailFor('buyukcekmece-wsc', 'staff'), 'active'],
+  { encoding: 'utf8' }
+);
+
 await customer.close();
 await browser.close();
 

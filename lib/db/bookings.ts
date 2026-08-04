@@ -25,6 +25,7 @@ export type Booking = {
   status: BookingStatus;
   createdAt: string;
   redeemedAt: string | null;
+  /** Bileti onaylayan işletme personelinin hesap kimliği (operator_users.id). */
   redeemedBy: string | null;
   cancelledAt: string | null;
   cancelReason: CancelReason | null;
@@ -177,7 +178,7 @@ export type RedeemResult =
  * Başarısızlığın sebebi, kullanıcıya doğru mesajı gösterebilmek için UPDATE
  * sonrasında ayrıca sorgulanır — bu sorgu kararı etkilemez, yalnızca açıklar.
  */
-export function redeemBooking(code: string, redeemedBy: string): RedeemResult {
+export function redeemBooking(code: string, redeemedByUserId: string): RedeemResult {
   const normalized = code.trim().toUpperCase();
 
   const result = db()
@@ -186,7 +187,7 @@ export function redeemBooking(code: string, redeemedBy: string): RedeemResult {
           SET status = 'redeemed', redeemed_at = ?, redeemed_by = ?
         WHERE code = ? AND status = 'confirmed'`
     )
-    .run(new Date().toISOString(), redeemedBy, normalized);
+    .run(new Date().toISOString(), redeemedByUserId, normalized);
 
   if (result.changes === 1) {
     return { ok: true, booking: getBookingByCode(normalized)! };

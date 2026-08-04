@@ -13,10 +13,48 @@ CREATE TABLE IF NOT EXISTS users (
   created_at  TEXT NOT NULL
 );
 
+-- Hizmeti veren işletme. Önceden lib/operators.ts içinde sabit bir diziydi.
+CREATE TABLE IF NOT EXISTS operators (
+  id          TEXT PRIMARY KEY,
+  name        TEXT NOT NULL,
+  created_at  TEXT NOT NULL
+);
+
+-- İşletme personelinin kişisel hesabı.
+--
+-- Paylaşılan erişim kodunun yerini alır. Sebebi denetimdir: bilet onayı,
+-- iptal ve aktivite değişikliği geri dönüşü olmayan işlemlerdir; bir ihlalde
+-- "kim yaptı" sorusunun cevabı olması gerekir. Paylaşılan kodla bu soru
+-- yapısal olarak cevapsızdı.
+CREATE TABLE IF NOT EXISTS operator_users (
+  id             TEXT PRIMARY KEY,
+  operator_id    TEXT NOT NULL REFERENCES operators(id) ON DELETE CASCADE,
+
+  email          TEXT NOT NULL UNIQUE,   -- küçük harfe indirgenmiş
+  name           TEXT NOT NULL,
+
+  -- scrypt$N$r$p$salt$hash — parametreler kaydın içinde taşınır, böylece
+  -- maliyet ilerideki donanıma göre artırıldığında eski kayıtlar da
+  -- doğrulanmaya devam eder.
+  password_hash  TEXT NOT NULL,
+
+  -- owner: ekip yönetebilir, aktivite düzenleyebilir
+  -- staff: yalnızca bilet okutur ve rezervasyon görür
+  role           TEXT NOT NULL CHECK (role IN ('owner', 'staff')),
+
+  status         TEXT NOT NULL DEFAULT 'active'
+                 CHECK (status IN ('active', 'suspended')),
+
+  created_at     TEXT NOT NULL,
+  last_login_at  TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_operator_users_operator ON operator_users(operator_id, status);
+
 -- İşletmenin yönettiği aktiviteler. Önceden lib/data.ts içinde sabitti.
 CREATE TABLE IF NOT EXISTS activities (
   id                TEXT PRIMARY KEY,
-  operator_id       TEXT NOT NULL,
+  operator_id       TEXT NOT NULL REFERENCES operators(id),
   slug              TEXT NOT NULL UNIQUE,
 
   title             TEXT NOT NULL,

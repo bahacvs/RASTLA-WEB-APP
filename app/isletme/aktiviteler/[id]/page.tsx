@@ -3,8 +3,7 @@ import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { OperatorNav } from '@/components/OperatorNav';
 import { ActivityForm } from '../ActivityForm';
-import { getOperatorId } from '@/lib/session';
-import { getOperator } from '@/lib/operators';
+import { currentOperator } from '@/lib/auth';
 import { getActivityById } from '@/lib/db/activities';
 
 export const metadata: Metadata = {
@@ -13,11 +12,11 @@ export const metadata: Metadata = {
 };
 
 export default async function EditActivityPage({ params }: { params: Promise<{ id: string }> }) {
-  const operatorId = await getOperatorId();
-  if (!operatorId) redirect('/isletme');
-
-  const operator = getOperator(operatorId);
-  if (!operator) redirect('/isletme');
+  const session = await currentOperator();
+  if (!session) redirect('/isletme');
+  // Aktivite yönetimi sahibe ayrılmış; personel bilet ekranına döner.
+  if (session.user.role !== 'owner') redirect('/isletme/tara');
+  const operatorId = session.operator.id;
 
   const { id } = await params;
   const activity = getActivityById(id);
@@ -26,7 +25,7 @@ export default async function EditActivityPage({ params }: { params: Promise<{ i
 
   return (
     <div className="min-h-screen">
-      <OperatorNav operatorName={operator.name} />
+      <OperatorNav session={session} />
       <main className="mx-auto max-w-[48rem] px-container-margin py-lg">
         <div className="mb-lg flex items-center justify-between gap-4">
           <h1 className="text-headline-md text-on-background">{activity.title}</h1>

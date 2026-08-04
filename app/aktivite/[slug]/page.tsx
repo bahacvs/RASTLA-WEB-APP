@@ -9,7 +9,7 @@ import { getActivityBySlug, listPublishedActivities } from '@/lib/db/activities'
 import type { Activity } from '@/lib/catalog';
 import { formatPrice } from '@/lib/format';
 import { SITE_URL } from '@/lib/site';
-import { getOperator } from '@/lib/operators';
+import { getOperator } from '@/lib/db/operators';
 
 export function generateStaticParams() {
   return listPublishedActivities().map((a) => ({ slug: a.slug }));

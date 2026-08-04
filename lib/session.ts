@@ -57,11 +57,18 @@ export async function clearUserSession() {
   (await cookies()).delete(USER_COOKIE);
 }
 
-export async function setOperatorSession(operatorId: string) {
-  (await cookies()).set(OPERATOR_COOKIE, pack(operatorId), COOKIE_OPTIONS);
+/**
+ * İşletme oturumu, işletmenin değil **kişinin** kimliğini taşır.
+ *
+ * Bilet onayı geri alınamaz bir işlemdir; çereze işletme kimliği yazılsaydı
+ * denetim kaydı "hangi işletme" sorusunu cevaplar, "kim" sorusunu cevaplamazdı.
+ * İşletme kimliği hesaptan türetilir — bkz. lib/auth.ts.
+ */
+export async function setOperatorSession(operatorUserId: string) {
+  (await cookies()).set(OPERATOR_COOKIE, pack(operatorUserId), COOKIE_OPTIONS);
 }
 
-export async function getOperatorId(): Promise<string | null> {
+export async function getOperatorUserId(): Promise<string | null> {
   return unpack((await cookies()).get(OPERATOR_COOKIE)?.value);
 }
 

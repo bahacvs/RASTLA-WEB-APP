@@ -50,4 +50,3 @@ Metin yazmak uyum sağlamıyor; şunlar hâlâ eksik:
 - **Hesap silme akışı yok.** md. 11 kapsamındaki silme talebi elle karşılanıyor.
 - **Erişim günlüğü yok.** İhlal müdahale planının en zayıf noktası: ihlali fark edecek ve kapsamını tespit edecek mekanizma yok.
 - **Hız sınırı yok.** Kaba kuvvet denemeleri engellenmiyor.
-- **İşletme girişi paylaşılan kod.** Kişi bazında hesap ve rol yönetimi yok; ihlalde "kim yaptı" sorusu cevapsız kalır.

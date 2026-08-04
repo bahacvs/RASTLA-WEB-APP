@@ -4,8 +4,7 @@ import { notFound, redirect } from 'next/navigation';
 import { OperatorNav } from '@/components/OperatorNav';
 import { Icon } from '@/components/Icon';
 import { ScheduleForm } from './ScheduleForm';
-import { getOperatorId } from '@/lib/session';
-import { getOperator } from '@/lib/operators';
+import { currentOperator } from '@/lib/auth';
 import { getActivityById } from '@/lib/db/activities';
 import { listRules, listSlots, timesForRule } from '@/lib/db/slots';
 import { toggleRuleAction, toggleSlotAction } from '@/app/actions/activity';
@@ -35,11 +34,11 @@ export default async function SchedulePage({
   params: Promise<{ id: string }>;
   searchParams: Promise<{ gun?: string }>;
 }) {
-  const operatorId = await getOperatorId();
-  if (!operatorId) redirect('/isletme');
-
-  const operator = getOperator(operatorId);
-  if (!operator) redirect('/isletme');
+  const session = await currentOperator();
+  if (!session) redirect('/isletme');
+  // Aktivite yönetimi sahibe ayrılmış; personel bilet ekranına döner.
+  if (session.user.role !== 'owner') redirect('/isletme/tara');
+  const operatorId = session.operator.id;
 
   const { id } = await params;
   const activity = getActivityById(id);
@@ -53,7 +52,7 @@ export default async function SchedulePage({
 
   return (
     <div className="min-h-screen">
-      <OperatorNav operatorName={operator.name} />
+      <OperatorNav session={session} />
 
       <main className="mx-auto flex max-w-[48rem] flex-col gap-lg px-container-margin py-lg">
         <div>

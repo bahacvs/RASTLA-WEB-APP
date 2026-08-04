@@ -10,8 +10,9 @@ import {
   type Booking,
 } from '@/lib/db/bookings';
 import { getUser } from '@/lib/db/users';
-import { authenticateOperator } from '@/lib/operators';
-import { clearOperatorSession, getOperatorId, setOperatorSession } from '@/lib/session';
+import { authenticateOperatorUser, recordLogin } from '@/lib/db/operators';
+import { currentOperator, currentOperatorId } from '@/lib/auth';
+import { clearOperatorSession, setOperatorSession } from '@/lib/session';
 import { getActivityBySlug } from '@/lib/db/activities';
 
 export type LoginState = { error?: string };
@@ -20,13 +21,23 @@ export async function operatorLoginAction(
   _prev: LoginState,
   formData: FormData
 ): Promise<LoginState> {
-  const operatorId = String(formData.get('operatorId') ?? '');
-  const code = String(formData.get('code') ?? '');
+  const email = String(formData.get('email') ?? '');
+  const password = String(formData.get('password') ?? '');
 
-  const operator = authenticateOperator(operatorId, code);
-  if (!operator) return { error: 'İşletme veya erişim kodu hatalı.' };
+  const result = authenticateOperatorUser(email, password);
 
-  await setOperatorSession(operator.id);
+  if (!result.ok) {
+    // Askıya alınmış hesap ayrı mesaj alır: kişi parolasını doğru girmiştir,
+    // "hatalı parola" demek onu boşuna uğraştırırdı. Hesabın varlığı zaten
+    // doğru parolayı bilen kişiye ifşa olmuş sayılır.
+    if (result.reason === 'suspended') {
+      return { error: 'Hesabınız askıya alınmış. İşletme sahibiyle görüşün.' };
+    }
+    return { error: 'E-posta veya parola hatalı.' };
+  }
+
+  recordLogin(result.user.id);
+  await setOperatorSession(result.user.id);
   redirect('/isletme/tara');
 }
 
@@ -68,8 +79,9 @@ function describe(booking: Booking, customerName: string) {
  * yanlış işletme bileti yakabilirdi.
  */
 export async function redeemAction(_prev: ScanState, formData: FormData): Promise<ScanState> {
-  const operatorId = await getOperatorId();
-  if (!operatorId) return { status: 'error', message: 'Oturum sona ermiş. Tekrar giriş yapın.' };
+  const session = await currentOperator();
+  if (!session) return { status: 'error', message: 'Oturum sona ermiş. Tekrar giriş yapın.' };
+  const operatorId = session.operator.id;
 
   const raw = String(formData.get('code') ?? '').trim();
   if (!raw) return { status: 'error', message: 'Bilet kodu girin.' };
@@ -85,7 +97,10 @@ export async function redeemAction(_prev: ScanState, formData: FormData): Promis
     return { status: 'error', message: 'Bu bilet başka bir işletmeye ait.' };
   }
 
-  const result = redeemBooking(code, operatorId);
+  // Onaylayan olarak işletme değil KİŞİ kaydedilir. Bilet onayı geri alınamaz;
+  // bir uyuşmazlıkta ya da ihlalde cevabı gereken soru "hangi işletme" değil,
+  // "kim" sorusudur.
+  const result = redeemBooking(code, session.user.id);
   const customerName = getUser(existing.userId)?.name ?? '—';
 
   if (result.ok) {
@@ -118,7 +133,7 @@ export async function operatorCancelAction(
   _prev: OperatorCancelState,
   formData: FormData
 ): Promise<OperatorCancelState> {
-  const operatorId = await getOperatorId();
+  const operatorId = await currentOperatorId();
   if (!operatorId) return { error: 'Oturum sona ermiş.' };
 
   const code = String(formData.get('code') ?? '').trim();
@@ -151,7 +166,7 @@ export async function cancelDayAction(
   _prev: OperatorCancelState,
   formData: FormData
 ): Promise<OperatorCancelState> {
-  const operatorId = await getOperatorId();
+  const operatorId = await currentOperatorId();
   if (!operatorId) return { error: 'Oturum sona ermiş.' };
 
   const date = String(formData.get('date') ?? '');

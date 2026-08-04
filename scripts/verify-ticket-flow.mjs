@@ -14,8 +14,12 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { chromium } from 'playwright';
+import { ensureTestAccounts, loginAs } from './lib/test-accounts.mjs';
 
 const BASE = process.env.BASE_URL ?? 'http://127.0.0.1:3000';
+
+// Bilinen parolalı test hesapları; seed'in ürettiği parolalar rastgeledir.
+ensureTestAccounts();
 
 const browser = await chromium.launch({
   executablePath: process.env.CHROMIUM_PATH ?? '/opt/pw-browsers/chromium-1194/chrome-linux/chrome',
@@ -114,11 +118,7 @@ await stranger.close();
 // ---------- Yanlış işletme onaylayamamalı ----------
 const wrong = await browser.newContext({ viewport: { width: 390, height: 844 } });
 const wp = await wrong.newPage();
-await wp.goto(`${BASE}/isletme`, { waitUntil: 'networkidle' });
-await wp.selectOption('#operatorId', 'mimarsinan-marina');
-await wp.fill('#code', '5678');
-await wp.getByRole('button', { name: 'Giriş Yap' }).click();
-await wp.waitForURL(/\/isletme\/tara/, { timeout: 15000 });
+await loginAs(wp, BASE, 'mimarsinan-marina');
 
 await wp.fill('#code', code);
 await wp.getByRole('button', { name: 'Onayla' }).click();
@@ -132,11 +132,7 @@ await wrong.close();
 // ---------- Doğru işletme: ilk onay ----------
 const operator = await browser.newContext({ viewport: { width: 390, height: 844 } });
 const op = await operator.newPage();
-await op.goto(`${BASE}/isletme`, { waitUntil: 'networkidle' });
-await op.selectOption('#operatorId', 'buyukcekmece-wsc');
-await op.fill('#code', '1234');
-await op.getByRole('button', { name: 'Giriş Yap' }).click();
-await op.waitForURL(/\/isletme\/tara/, { timeout: 15000 });
+await loginAs(op, BASE, 'buyukcekmece-wsc');
 
 // Hatalı kod reddedilmeli.
 await op.fill('#code', 'YOKB-OYLE-BIRK-ODXX');

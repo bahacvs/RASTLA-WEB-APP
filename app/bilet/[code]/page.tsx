@@ -7,7 +7,7 @@ import { CancelButton } from './CancelButton';
 import { getBookingByCode } from '@/lib/db/bookings';
 import { getUser } from '@/lib/db/users';
 import { getActivityBySlug } from '@/lib/db/activities';
-import { getOperator } from '@/lib/operators';
+import { getOperator } from '@/lib/db/operators';
 import { formatPrice } from '@/lib/format';
 import { SITE_URL } from '@/lib/site';
 

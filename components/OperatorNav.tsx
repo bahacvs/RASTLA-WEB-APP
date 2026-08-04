@@ -1,20 +1,34 @@
 import Link from 'next/link';
 import { operatorLogoutAction } from '@/app/actions/operator';
+import type { OperatorSession } from '@/lib/auth';
 
+// Personelin işi: bilet okutmak ve o günün listesini görmek.
 const LINKS = [
   { href: '/isletme/tara', label: 'Bilet Okut' },
-  { href: '/isletme/aktiviteler', label: 'Aktiviteler' },
   { href: '/isletme/rezervasyonlar', label: 'Rezervasyonlar' },
 ];
 
+// Fiyat, takvim, ekip ve denetim kaydı ticari kararlardır; sahibe ayrılmıştır.
+// Menüyü gizlemek yetkilendirme değildir — kontrol ayrıca sunucuda yapılır.
+const OWNER_LINKS = [
+  { href: '/isletme/aktiviteler', label: 'Aktiviteler' },
+  { href: '/isletme/ekip', label: 'Ekip' },
+];
+
 /** İşletme panelinin ortak üst çubuğu. */
-export function OperatorNav({ operatorName }: { operatorName: string }) {
+export function OperatorNav({ session }: { session: OperatorSession }) {
+  const links = session.user.role === 'owner' ? [...LINKS, ...OWNER_LINKS] : LINKS;
+
   return (
     <header className="border-b border-surface-variant bg-surface">
-      <div className="mx-auto flex h-16 w-full max-w-7xl items-center justify-between px-container-margin">
+      <div className="mx-auto flex h-16 w-full max-w-7xl items-center justify-between gap-3 px-container-margin">
         <div className="min-w-0">
-          <p className="text-label-sm text-on-surface-variant">İşletme</p>
-          <p className="truncate text-body-md font-semibold text-on-surface">{operatorName}</p>
+          <p className="truncate text-body-md font-semibold text-on-surface">
+            {session.operator.name}
+          </p>
+          <p className="truncate text-label-sm text-on-surface-variant">
+            {session.user.name} · {session.user.role === 'owner' ? 'Sahip' : 'Personel'}
+          </p>
         </div>
         <form action={operatorLogoutAction}>
           <button type="submit" className="text-label-bold text-on-surface-variant hover:underline">
@@ -24,7 +38,7 @@ export function OperatorNav({ operatorName }: { operatorName: string }) {
       </div>
 
       <nav className="scrollbar-hide mx-auto flex w-full max-w-7xl gap-sm overflow-x-auto px-container-margin pb-sm">
-        {LINKS.map(({ href, label }) => (
+        {links.map(({ href, label }) => (
           <Link
             key={href}
             href={href}

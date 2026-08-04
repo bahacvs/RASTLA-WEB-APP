@@ -2,8 +2,8 @@ import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 import { OperatorNav } from '@/components/OperatorNav';
 import { Icon } from '@/components/Icon';
-import { getOperatorId } from '@/lib/session';
-import { getOperator } from '@/lib/operators';
+import { currentOperator } from '@/lib/auth';
+import { listOperatorUsers } from '@/lib/db/operators';
 import { listBookingsForOperator } from '@/lib/db/bookings';
 import { getUser } from '@/lib/db/users';
 import { getActivityBySlug } from '@/lib/db/activities';
@@ -32,16 +32,20 @@ export default async function OperatorBookingsPage({
 }: {
   searchParams: Promise<{ gun?: string }>;
 }) {
-  const operatorId = await getOperatorId();
-  if (!operatorId) redirect('/isletme');
-
-  const operator = getOperator(operatorId);
-  if (!operator) redirect('/isletme');
+  const session = await currentOperator();
+  if (!session) redirect('/isletme');
+  const operatorId = session.operator.id;
 
   const { gun } = await searchParams;
   const day = gun && /^\d{4}-\d{2}-\d{2}$/.test(gun) ? gun : isoDate(new Date());
 
   const bookings = listBookingsForOperator(operatorId, day);
+
+  // Bileti onaylayan personelin adı. Kimliği ekranda göstermenin anlamı yok;
+  // asıl mesele o kimliğin KAYITLI olması.
+  const staff = new Map(listOperatorUsers(operatorId).map((u) => [u.id, u.name]));
+  const redeemerName = (id: string | null) => (id && staff.get(id)) || 'Bilinmeyen hesap';
+
   const guests = bookings
     .filter((b) => b.status !== 'cancelled')
     .reduce((sum, b) => sum + b.adults + b.children, 0);
@@ -53,7 +57,7 @@ export default async function OperatorBookingsPage({
 
   return (
     <div className="min-h-screen">
-      <OperatorNav operatorName={operator.name} />
+      <OperatorNav session={session} />
 
       <main className="mx-auto max-w-[48rem] px-container-margin py-lg">
         <div className="mb-lg flex flex-wrap items-center justify-between gap-sm">
@@ -138,6 +142,16 @@ export default async function OperatorBookingsPage({
                     <div className="mt-sm flex justify-end">
                       <CancelBookingButton code={booking.code} />
                     </div>
+                  )}
+
+                  {booking.status === 'redeemed' && (
+                    <p className="mt-sm text-label-sm text-on-surface-variant">
+                      {redeemerName(booking.redeemedBy)} onayladı ·{' '}
+                      {new Date(booking.redeemedAt!).toLocaleTimeString('tr-TR', {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })}
+                    </p>
                   )}
 
                   {booking.cancelReason === 'weather' && (

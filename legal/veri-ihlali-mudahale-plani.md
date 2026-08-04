@@ -50,7 +50,7 @@ Genel bir liste değil — bu uygulamanın gerçek zayıf noktaları:
 
 | Senaryo | Nasıl fark edilir | İlk hamle | Ağırlık |
 | --- | --- | --- | --- |
-| **İşletme erişim kodu sızdı** (`OPERATOR_ACCESS_CODES`) | Beklenmeyen saatte/konumda işletme oturumu; okutulmayan biletlerin onaylanması | İlgili işletmenin kodunu değiştir, oturumları geçersiz kıl | Yüksek — o işletmenin tüm misafir ad ve telefonları görülmüş olabilir |
+| **İşletme personelinin parolası ele geçti** | Beklenmeyen saatte/konumda giriş; okutulmayan biletlerin onaylanması | İlgili hesabı `/isletme/ekip` üzerinden askıya al — oturumu anında düşer; ardından parolayı sıfırla | Yüksek — o işletmenin misafir ad ve telefonları görülmüş olabilir. Hangi hesabın kullanıldığı kayıtlıdır. |
 | **`SESSION_SECRET` sızdı** | Kod deposunda/ortam değişkeninde ifşa | Anahtarı değiştir; tüm oturumlar geçersizleşir | Yüksek — sahte oturum çerezi üretilip başkasının rezervasyonları görülebilir |
 | **Veritabanı dosyası/yedeği ifşa oldu** | Yetkisiz erişim kaydı, yanlış yapılandırılmış depolama | Erişimi kes, kimlik bilgilerini döndür | **Kritik** — tüm misafir ad, telefon ve rezervasyon geçmişi |
 | **Barındırma sağlayıcısında ihlal** | Sağlayıcı bildirimi | Sağlayıcıdan kapsam bilgisi iste, kendi anahtarlarını döndür | Kapsama göre |
@@ -161,14 +161,16 @@ Her kayıt şunları içerir:
 | İşletme yalnızca kendi rezervasyonlarını görüyor | ✅ var |
 | Bilet ve rezervasyon sayfaları arama motorlarına kapalı | ✅ var |
 | Kart verisi işlenmiyor | ✅ var (ödeme yok) |
-| İşletme başına ayrı erişim kodu | ✅ var |
-| **Kişi bazında işletme hesabı ve rol yönetimi** | ❌ yok — kod paylaşımlı |
+| Kişi bazında işletme hesabı (e-posta + scrypt parola özeti) | ✅ var |
+| Rol ayrımı: personel bilet okutur, yalnızca sahip fiyat/takvim/ekip yönetir | ✅ var |
+| Askıya alınan hesabın oturumu anında geçersizleşir | ✅ var |
+| Bileti onaylayan **kişi** kayıtlı (işletme değil) | ✅ var |
 | **SMS ile kimlik doğrulama (OTP)** | ❌ yok — oturum cihaza bağlı |
 | **Erişim günlüğü ve anormallik tespiti** | ❌ yok |
 | **Otomatik yedekleme ve geri yükleme testi** | ❌ yok |
 | **Hız sınırı (brute force koruması)** | ❌ yok |
 
-> Sağ sütundaki ❌'ler bu planın en zayıf noktalarıdır: **ihlali fark edecek mekanizma yok.** Erişim günlüğü olmadan "kim ne zaman neye erişti" sorusuna cevap verilemez, bu da Adım 3'teki kapsam tespitini imkânsıza yakın kılar. Öncelik sırası: erişim günlüğü → hız sınırı → kişi bazında hesap → OTP.
+> Sağ sütundaki ❌'ler bu planın en zayıf noktalarıdır: **ihlali fark edecek mekanizma yok.** Erişim günlüğü olmadan "kim ne zaman neye erişti" sorusuna cevap verilemez, bu da Adım 3'teki kapsam tespitini imkânsıza yakın kılar. Öncelik sırası: erişim günlüğü → hız sınırı → OTP.
 
 ## 8. Tatbikat
 
