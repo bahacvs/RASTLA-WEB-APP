@@ -14,6 +14,8 @@ Değerleri şurada: hazır şablon değiller. Her biri uygulamanın gerçekte ne
 | `acik-riza-metni.md` | Yalnızca açık rıza gereken dar kapsam | Pazarlama izni kutucuğu |
 | `kvkk-basvuru-formu.md` | İlgili kişi başvuru formu | `/kvkk-basvuru` |
 | `veri-saklama-imha-politikasi.md` | Saklama süreleri ve imha | İç doküman |
+| `isletme-veri-sozlesmesi.md` | İşletmelerle imzalanacak veri koruma protokolü | İşletme sözleşmesinin eki |
+| `veri-ihlali-mudahale-plani.md` | İhlal hâlinde ne yapılacağı, 72 saatlik bildirim | İç doküman |
 
 ## Doldurulması gereken alanlar
 
@@ -30,11 +32,22 @@ Bunlar benim karar veremeyeceğim, hukukçu görüşü gereken noktalar:
 5. **Çocuk verisi.** Rezervasyonda "çocuk sayısı" tutuluyor ama çocuğun kimlik bilgisi tutulmuyor. Bu hâliyle çocuğa ait kişisel veri işlenmediği kanaatindeyim; teyit gerekli.
 6. **VERBİS.** Mevcut ölçekte muafiyet kapsamındasınız (50'den az çalışan, 100 milyon TL altı bilanço). Büyüme hâlinde yeniden değerlendirilmeli.
 
+## Metinler sitede nasıl yayımlanıyor
+
+`aydinlatma`, `gizlilik`, `cerez-politikasi` ve `kvkk-basvuru` dosyaları uygulamada gerçek sayfa olarak sunulur (`/aydinlatma` vb.). Kaynak tek: sitedeki metin doğrudan bu markdown dosyalarından okunur, ikinci bir kopya tutulmaz.
+
+Dosyanın başındaki **TASLAK** uyarısı durduğu sürece sayfa:
+
+- üstte kırmızı "Bu metin taslaktır" bayrağı gösterir,
+- `noindex` ile arama motorlarına kapalı kalır.
+
+Hukukçu onayı geldiğinde markdown'ın başındaki uyarı bloğunu silmeniz yeterli — sayfa kendiliğinden yayın hâline geçer, kod değişikliği gerekmez.
+
 ## Şu an KVKK açısından yapılmayanlar
 
-Dürüst olmak gerekirse metin yazmak yetmiyor; şunlar da yapılmalı:
+Metin yazmak uyum sağlamıyor; şunlar hâlâ eksik:
 
-- **Uygulamada aydınlatma bağlantısı yok.** Rezervasyon formuna eklenmeli.
-- **Hesap silme akışı yok.** md. 11 kapsamındaki silme talebi şu an elle karşılanır.
-- **Veri ihlali müdahale planı yok.** İhlal hâlinde Kurum'a 72 saat içinde bildirim yükümlülüğü var.
-- **İşletmelerle veri işleme sözleşmesi yok.** İşletmeler misafir verisine erişiyor.
+- **Hesap silme akışı yok.** md. 11 kapsamındaki silme talebi elle karşılanıyor.
+- **Erişim günlüğü yok.** İhlal müdahale planının en zayıf noktası: ihlali fark edecek ve kapsamını tespit edecek mekanizma yok.
+- **Hız sınırı yok.** Kaba kuvvet denemeleri engellenmiyor.
+- **İşletme girişi paylaşılan kod.** Kişi bazında hesap ve rol yönetimi yok; ihlalde "kim yaptı" sorusu cevapsız kalır.

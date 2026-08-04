@@ -1,6 +1,7 @@
 'use client';
 
 import { useActionState, useMemo, useState, useTransition } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Icon } from '@/components/Icon';
 import { formatPrice } from '@/lib/format';
@@ -332,6 +333,26 @@ export function BookingView({
                 />
               </div>
             </div>
+
+            {/*
+              Bilgilendirme, onay kutucuğu DEĞİL. Rezervasyonun hukuki dayanağı
+              sözleşmenin ifası (KVKK md. 5/2-c); ad ve telefon hizmeti vermek
+              için zorunlu. Rıza istemek yanlış dayanak olur ve var olmayan bir
+              reddetme hakkı ima ederdi.
+            */}
+            <p className="mt-md text-label-sm text-on-surface-variant">
+              Ad ve telefon bilginiz, rezervasyonunuzun oluşturulması ve hizmeti verecek
+              işletmenin sizinle iletişim kurabilmesi için işlenir ve yalnızca o işletmeyle
+              paylaşılır. Ayrıntı için{' '}
+              <Link href="/aydinlatma" className="text-primary underline">
+                Aydınlatma Metni
+              </Link>{' '}
+              ve{' '}
+              <Link href="/gizlilik" className="text-primary underline">
+                Gizlilik Politikası
+              </Link>
+              .
+            </p>
 
             {state.error && (
               <p
