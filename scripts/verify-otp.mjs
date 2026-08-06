@@ -26,6 +26,8 @@ import { join } from 'node:path';
 import { chromium } from 'playwright';
 import { db as connect } from '../lib/db/index.mjs';
 import { ensureTestAccounts, TEST_PASSWORD } from './lib/test-accounts.mjs';
+// Gönderme butonunun metni ödeme açıkken değişiyor; deseni tek yerde tutuyoruz.
+import { SUBMIT } from './lib/booking.mjs';
 
 const BASE = process.env.BASE_URL ?? 'http://127.0.0.1:3000';
 const LOG = process.env.SERVER_LOG;
@@ -100,9 +102,23 @@ const bookedBefore = Number(
   (await store.get('SELECT COUNT(*) AS n FROM bookings')).n
 );
 
+/** Bu aktivite için o an tutulu olan toplam yer. */
+async function heldCapacity() {
+  const row = await store.get(
+    `SELECT SUM(booked) AS n FROM slots WHERE activity_id =
+       (SELECT id FROM activities WHERE slug = 'elektrikli-sup-deneyimi')`
+  );
+  return Number(row?.n ?? 0);
+}
+
+// Mutlak değil FARK ölçülüyor: veritabanında başka testlerden kalmış
+// rezervasyonlar olabilir ve "toplam tutulu yer sıfır" iddiası onlarla
+// çökerdi. Sınanan şey zaten fark: kod istemek kapasiteyi ARTIRMAMALI.
+const heldBefore = await heldCapacity();
+
 check('rezervasyon formu dolduruldu', await fillBooking(page));
 
-await page.getByRole('button', { name: 'Rezervasyonu Tamamla' }).first().click();
+await page.getByRole('button', { name: SUBMIT }).first().click();
 await page.waitForTimeout(1500);
 
 check(
@@ -119,14 +135,11 @@ check(
 
 // Kapasite de tutulmamalı: doğrulamayan biri slot işgal edip işletmenin
 // gününü doldurabilseydi, doğrulama koymanın anlamı kalmazdı.
-const heldRow = await store.get(
-  `SELECT SUM(booked) AS n FROM slots WHERE activity_id =
-     (SELECT id FROM activities WHERE slug = 'elektrikli-sup-deneyimi')`
-);
+const heldAfter = await heldCapacity();
 check(
   'kod istenirken KAPASİTE de tutulmuyor',
-  Number(heldRow.n ?? 0) === 0,
-  `${heldRow.n ?? 0} yer tutulu`
+  heldAfter === heldBefore,
+  `önce ${heldBefore}, sonra ${heldAfter}`
 );
 
 // ---------- 1-3. Depolama ve günlük ----------
@@ -158,7 +171,7 @@ if (code && stored) {
 
 for (let i = 0; i < 4; i++) {
   await page.fill('#code', '000000');
-  await page.getByRole('button', { name: /Doğrula|Tamamla/ }).first().click();
+  await page.getByRole('button', { name: SUBMIT }).first().click();
   await page.waitForTimeout(700);
 }
 
@@ -169,7 +182,7 @@ const attemptsRow = await store.get(
 check('yanlış denemeler sayılıyor', Number(attemptsRow?.attempts ?? 0) >= 4, `${attemptsRow?.attempts} deneme`);
 
 await page.fill('#code', '000000');
-await page.getByRole('button', { name: /Doğrula|Tamamla/ }).first().click();
+await page.getByRole('button', { name: SUBMIT }).first().click();
 await page.waitForTimeout(900);
 
 const burned = await store.get('SELECT attempts, consumed_at FROM phone_verifications WHERE id = ?', [
@@ -184,7 +197,7 @@ check(
 // Yakılan kod artık DOĞRU değeriyle bile geçmemeli.
 if (code) {
   await page.fill('#code', code);
-  await page.getByRole('button', { name: /Doğrula|Tamamla/ }).first().click();
+  await page.getByRole('button', { name: SUBMIT }).first().click();
   await page.waitForTimeout(900);
 
   const afterBurn = Number((await store.get('SELECT COUNT(*) AS n FROM bookings')).n);
@@ -198,7 +211,7 @@ const ctx2 = await browser.newContext({ viewport: { width: 390, height: 844 } })
 const page2 = await ctx2.newPage();
 
 await fillBooking(page2);
-await page2.getByRole('button', { name: 'Rezervasyonu Tamamla' }).first().click();
+await page2.getByRole('button', { name: SUBMIT }).first().click();
 await page2.waitForTimeout(1500);
 
 const openCodes = await store.all(
@@ -212,7 +225,7 @@ check('yeni kod üretildi', Boolean(code2) && code2 !== code, code2 === code ? '
 
 if (code2) {
   await page2.fill('#code', code2);
-  await page2.getByRole('button', { name: /Doğrula|Tamamla/ }).first().click();
+  await page2.getByRole('button', { name: SUBMIT }).first().click();
   await page2.waitForURL(/\/bilet\//, { timeout: 15000 }).catch(() => {});
   await page2.waitForTimeout(800);
 

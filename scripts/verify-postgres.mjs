@@ -11,6 +11,7 @@
  *   2. Slot kapasitesi: 20 süreç 5 kişilik slota girer, tam olarak 5'i geçer.
  *   3. Hız sınırı: 30 süreç 10'luk kotayı tüketir, tam olarak 10'u geçer.
  *   4. Hesap silme: 8 süreç aynı hesabı siler, tam olarak biri geçer.
+ *   5. Ödeme onayı: 12 süreç aynı geri çağrıyı işler, tam olarak biri onaylar.
  *
  * Ayrıca ağız farkları:
  *   5. COUNT(*) Postgres'te dizgi döner; toCount() sayıya çeviriyor mu.
@@ -219,6 +220,85 @@ check(
   `kazanan: ${deleteWinners}`
 );
 
+// --- 4b. Ödeme onayı: 12 süreç aynı geri çağrıyı işliyor ---
+//
+// Ödemenin en pahalı hatası burada olurdu: sağlayıcının geri çağrısı ile
+// tarayıcının dönüşü aynı anda gelirse rezervasyon iki kez onaylanmamalı.
+// SQLite'ta kanıtlandı; üretim Postgres'te çalışacağı için aynı kanıt burada
+// da gerekiyor.
+
+const paidCode = `PGPAY-${suffix}`;
+const paidBookingId = randomUUID();
+const paymentId = randomUUID();
+
+await db.run(
+  `INSERT INTO bookings (id, code, user_id, activity_slug, operator_id, units,
+     booking_date, booking_time, adults, children, total_try, status, created_at)
+   VALUES (?, ?, ?, ?, ?, 1, '2026-08-22', '10:00', 1, 0, 1000, 'pending_payment', ?)`,
+  [paidBookingId, paidCode, userId, `pg-test-${suffix}`, operatorId, now]
+);
+await db.run(
+  `INSERT INTO payments (id, booking_id, provider, conversation_id, amount_try,
+     commission_try, currency, status, created_at, updated_at)
+   VALUES (?, ?, 'pgtest', ?, 1000, 100, 'TRY', 'initiated', ?, ?)`,
+  [paymentId, paidBookingId, paidBookingId, now, now]
+);
+
+const confirmOutcomes = race(
+  12,
+  `UPDATE bookings SET status = 'confirmed', confirmed_at = ?
+    WHERE id = ? AND status = 'pending_payment'`,
+  () => [new Date().toISOString(), paidBookingId]
+);
+const confirmWinners = confirmOutcomes.filter((o) => o === 1).length;
+
+check(
+  '12 eşzamanlı ödeme geri çağrısından tam olarak biri onaylıyor',
+  confirmWinners === 1,
+  `kazanan: ${confirmWinners}, sonuçlar: ${confirmOutcomes.join(',')}`
+);
+
+const confirmed = await db.get('SELECT status, confirmed_at FROM bookings WHERE id = ?', [
+  paidBookingId,
+]);
+check(
+  'onaylanan rezervasyonun onay zamanı yazıldı',
+  confirmed.status === 'confirmed' && Boolean(confirmed.confirmed_at),
+  `durum ${confirmed.status}`
+);
+
+// İade idempotanlığı kodda değil ŞEMADA: UNIQUE (payment_id, reason).
+await db.run(
+  `INSERT INTO refunds (id, payment_id, amount_try, reason, status, created_at)
+   VALUES (?, ?, 1000, 'weather', 'pending', ?)`,
+  [randomUUID(), paymentId, now]
+);
+
+let secondRefundRejected = false;
+try {
+  await db.run(
+    `INSERT INTO refunds (id, payment_id, amount_try, reason, status, created_at)
+     VALUES (?, ?, 1000, 'weather', 'pending', ?)`,
+    [randomUUID(), paymentId, now]
+  );
+} catch {
+  secondRefundRejected = true;
+}
+check(
+  'aynı ödeme aynı sebeple iki kez iade edilemiyor (Postgres UNIQUE)',
+  secondRefundRejected
+);
+
+// Komisyon tutarı aşamaz — mutabakatı sessizce bozacak türden bir hatanın
+// şema tarafındaki karşılığı.
+let badCommissionRejected = false;
+try {
+  await db.run('UPDATE payments SET commission_try = amount_try + 1 WHERE id = ?', [paymentId]);
+} catch {
+  badCommissionRejected = true;
+}
+check('komisyon tutarı aşamıyor (CHECK)', badCommissionRejected);
+
 // --- 5. COUNT(*) dizgi dönüşü ---
 
 const raw = await db.get('SELECT COUNT(*) AS n FROM activities');
@@ -295,6 +375,10 @@ check('geçersiz durum değeri reddediliyor', badStatusRejected);
 
 // --- Temizlik ---
 
+// Sıra önemli: yabancı anahtarlar yüzünden iade -> ödeme -> rezervasyon.
+await db.run('DELETE FROM refunds WHERE payment_id = ?', [paymentId]);
+await db.run('DELETE FROM payments WHERE id = ?', [paymentId]);
+await db.run('DELETE FROM bookings WHERE id = ?', [paidBookingId]);
 await db.run('DELETE FROM bookings WHERE code = ?', [bookingCode]);
 await db.run('DELETE FROM slots WHERE id = ?', [slotId]);
 await db.run('DELETE FROM activities WHERE id = ?', [activityId]);

@@ -12,6 +12,12 @@
  */
 import { existsSync, readFileSync } from 'node:fs';
 
+/**
+ * Gönderme butonunun metni dört hâlde farklı: ödemeli/ödemesiz × kod
+ * ekranı açık/kapalı. Tek desen hepsini yakalar.
+ */
+export const SUBMIT = /Rezervasyonu Tamamla|Ödemeye Geç|Kodu Doğrula/;
+
 /** Sunucu günlüğünden bir numaraya gönderilen SON kodu okur. */
 export function codeFromLog(phone, logPath = process.env.SERVER_LOG) {
   if (!logPath || !existsSync(logPath)) return null;
@@ -43,7 +49,12 @@ export async function pickAvailableSlot(page) {
 /**
  * Uçtan uca rezervasyon: slot seç, bilgileri gir, gerekiyorsa kodu doğrula.
  *
- * @returns {Promise<{ code?: string, error?: string, slotLabel?: string }>}
+ * `stopAtPayment` ile ödeme sağlayıcısına yönlendirme YAKALANIR ve durdurulur.
+ * Ödeme testinin buna ihtiyacı var: geri çağrı henüz işlenmemişken
+ * rezervasyonun `pending_payment` durumunda beklediğini ve tek bir token'ın
+ * eşzamanlı isteklerde ne yaptığını ancak o an sınayabilirsiniz.
+ *
+ * @returns {Promise<{ code?: string, paymentUrl?: string, error?: string, slotLabel?: string }>}
  */
 export async function book(page, options) {
   const {
@@ -53,7 +64,34 @@ export async function book(page, options) {
     phone,
     logPath = process.env.SERVER_LOG,
     slotLabel = false,
+    stopAtPayment = false,
   } = options;
+
+  // Ödeme adımına giden ilk istek yakalanıp DURDURULUR. Desen sayfanın da geri
+  // çağrının da önüne geçecek kadar geniş: sağlayıcı hangi sırayla giderse
+  // gitsin akış ödeme öncesinde donar.
+  let captured = null;
+  if (stopAtPayment) {
+    await page.route('**/odeme/**', async (route) => {
+      captured ??= route.request().url();
+      await route.abort();
+    });
+  }
+
+  /** Gönderimden sonra varılan yer: ya bilet ya da yakalanmış ödeme adresi. */
+  async function arrive(timeout) {
+    if (!stopAtPayment) {
+      await page.waitForURL(/\/bilet\//, { timeout });
+      return { code: ticketCode(page) };
+    }
+
+    const deadline = Date.now() + timeout;
+    while (Date.now() < deadline) {
+      if (captured) return { paymentUrl: captured };
+      await page.waitForTimeout(100);
+    }
+    throw new Error('ödeme yönlendirmesi yakalanamadı');
+  }
 
   await page.goto(`${baseUrl}/rezervasyon/${slug}`, { waitUntil: 'networkidle' });
   await page.waitForTimeout(400);
@@ -69,12 +107,13 @@ export async function book(page, options) {
 
   await page.getByLabel('Ad Soyad').fill(name);
   await page.getByLabel('Telefon').fill(phone);
-  await page.getByRole('button', { name: /Rezervasyonu Tamamla/ }).first().click();
+  // Butonun metni işletme online ödemeye açıksa değişiyor. Test hangi
+  // kurulumda koştuğunu bilmek zorunda kalmasın diye ikisi de kabul edilir.
+  await page.getByRole('button', { name: SUBMIT }).first().click();
 
   // Doğrulama istendi mi? Oturumu doğrulanmış bir cihazda istenmez.
   try {
-    await page.waitForURL(/\/bilet\//, { timeout: 6000 });
-    return { code: ticketCode(page), slotLabel: label };
+    return { ...(await arrive(6000)), slotLabel: label };
   } catch {
     // Kod ekranı gelmiş olabilir; gelmediyse aşağıdaki kontrol hatayı döndürür.
   }
@@ -92,11 +131,10 @@ export async function book(page, options) {
   if (!code) return { error: 'doğrulama kodu günlükten okunamadı (SERVER_LOG?)', slotLabel: label };
 
   await page.fill('#code', code);
-  await page.getByRole('button', { name: /Tamamla/ }).first().click();
+  await page.getByRole('button', { name: SUBMIT }).first().click();
 
   try {
-    await page.waitForURL(/\/bilet\//, { timeout: 15000 });
-    return { code: ticketCode(page), slotLabel: label };
+    return { ...(await arrive(15000)), slotLabel: label };
   } catch {
     const error = await page
       .locator('[role="alert"]')

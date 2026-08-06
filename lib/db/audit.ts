@@ -53,6 +53,18 @@ export const AUDIT_ACTIONS = [
   'booking.redeem_failed',
   'booking.cancelled',
   'booking.day_cancelled',
+  'booking.expired',
+
+  // Ödeme. KART VERİSİ hiçbir zaman yazılmaz; yalnızca tutar ve sağlayıcı
+  // referansı. `payment.denied` en önemlisi: sağlayıcının söylediği tutar
+  // bizim kaydımızla uyuşmadığında düşer ve bu bir saldırı belirtisidir.
+  'payment.started',
+  'payment.succeeded',
+  'payment.failed',
+  'payment.denied',
+  'payment.refunded',
+  'payment.refund_failed',
+  'operator.submerchant_created',
 
   // Katalog
   'activity.created',

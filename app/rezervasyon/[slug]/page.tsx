@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import { BookingView } from './BookingView';
 import { getActivityBySlug } from '@/lib/db/activities';
 import { datesWithAvailability, listSlots } from '@/lib/db/slots';
+import { onlinePaymentFor } from '@/lib/payments/flow';
 
 // Slotlar ve doluluk sürekli değiştiği için bu sayfa önceden üretilmez.
 export const dynamic = 'force-dynamic';
@@ -45,12 +46,18 @@ export default async function BookingPage({ params }: { params: Promise<{ slug: 
     ? (await listSlots(activity.id, initialDate)).filter((s) => s.status === 'open')
     : [];
 
+  // Ödemenin online alınıp alınmayacağı SUNUCUDA belirlenir ve istemciye
+  // yalnızca bir evet/hayır olarak taşınır. Bu bilgi sadece butonun metnini ve
+  // alt notu değiştiriyor; kararın kendisi sunucu eyleminde yeniden veriliyor.
+  const payment = await onlinePaymentFor(activity.operatorId);
+
   return (
     <BookingView
       activity={activity}
       availableDates={availableDates}
       initialDate={initialDate}
       initialSlots={initialSlots}
+      payOnline={payment.available && activity.priceTRY > 0}
     />
   );
 }

@@ -370,13 +370,12 @@ export async function reserveCapacity(slotId: string, units: number): Promise<Re
   return { ok: false, reason: 'full' };
 }
 
-/** İptalde kapasiteyi geri verir. Negatife düşmesi şema kısıtıyla da engellenir. */
-export async function releaseCapacity(slotId: string, units: number) {
-  await (
-    await db()
-  ).run('UPDATE slots SET booked = booked - ? WHERE id = ? AND booked >= ?', [
-    units,
-    slotId,
-    units,
-  ]);
-}
+/**
+ * İptalde kapasiteyi geri verir. Negatife düşmesi şema kısıtıyla da engellenir.
+ *
+ * Gövdesi `capacity.mjs` içinde: aynı ifadeyi zamanlanmış ödeme süresi işi de
+ * çağırıyor ve o iş düz düğüm betiği olarak da çalıştığı için TypeScript
+ * modülünü yükleyemez. Buradan yeniden dışa aktarılıyor ki çağrı yerleri
+ * "kapasite işleri slots.ts'te" beklentisini bozmasın.
+ */
+export { releaseCapacity } from './capacity.mjs';

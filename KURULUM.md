@@ -17,6 +17,10 @@ Yazılım tarafında yapılacak bir iş kalmadıysa, sıra bu listede.
 | 4 | `SESSION_SECRET` | Kendiniz üretirsiniz | Oturum çerezleri taklit edilebilir |
 | 5 | MapTiler anahtarı | Ücretsiz hesap | Harita yerine yapılandırma uyarısı görünür |
 | 6 | Alan adı | Sizden | Bilet QR'ları ve paylaşım bağlantıları yanlış adresi gösterir |
+| 6b | iyzico üye işyeri + ETBİS kaydı + mesafeli satış metinleri | Sizden, Bakanlıktan, avukatınızdan | Online ödeme kapalı kalır; ücret deneyim yerinde alınır |
+| 6c | İşletmelerin vergi no, IBAN ve yetkili bilgisi | İşletmelerden | O işletmenin aktiviteleri online ödemeye açılamaz |
+| 6d | `CRON_SECRET` | Kendiniz üretirsiniz | Zamanlanmış işler kapalı kalır; ödemesi yarım kalan rezervasyonlar slotları kilitler |
+| 6e | SMS sağlayıcı anahtarı (Netgsm) | Sağlayıcıdan | Doğrulama kodları kimseye ulaşmaz, yalnızca sunucu günlüğüne yazılır |
 | 7 | İlk işletme hesapları | Sizden | İşletmeler giriş yapamaz |
 | 8 | Yurt dışına aktarım sözleşmesi | Avukatınızdan | KVKK md. 9 ihlali |
 
@@ -122,6 +126,53 @@ NEXT_PUBLIC_SITE_URL=https://rastla.com
 Bilet QR kodları bu adresi taşır, sitemap ve paylaşım bağlantıları buradan
 üretilir. Yanlış olursa basılı/ekranda gösterilen QR kodlar çalışmaz.
 
+**Ödeme açıldığında bu adres ayrıca kritiktir:** ödeme sağlayıcısının
+kullanıcıyı geri göndereceği adres buradan türetilir. Yanlış ya da erişilemez
+bir adres, ödemesi alınmış ama onaylanamamış rezervasyonlar demektir.
+
+## 6b. Ödeme (isteğe bağlı ama para almak için zorunlu)
+
+Online ödeme **iki koşul birden** sağlanınca açılır:
+
+1. `IYZICO_API_KEY` ve `IYZICO_SECRET_KEY` tanımlı.
+2. İşletmenin **alt üye işyeri anahtarı** var (aşağıya bakın).
+
+İkisinden biri eksikse sistem çalışmaya devam eder; rezervasyon doğrudan
+onaylanır ve ücret deneyim yerinde alınır. Bu, yarım bir kurulum değil,
+bilinçli bir çalışma biçimidir.
+
+### Sıra
+
+1. **Şirket kurulu olmalı.** iyzico üye işyeri başvurusu şahıs ya da sermaye
+   şirketi ister; şahsi hesapla pazaryeri modeli açılmaz.
+2. **ETBİS kaydı.** Para akışına girdiğiniz an *elektronik ticaret aracı
+   hizmet sağlayıcı* olursunuz (6563 sayılı Kanun). Kayıt Ticaret
+   Bakanlığı üzerinden yapılır.
+3. **Mesafeli satış sözleşmesi ve ön bilgilendirme formu.** Bunlar olmadan
+   yasal olarak tahsilat yapılamaz. Metinlerin hukukçu onayı gerekir.
+4. **iyzico anahtarlarını girin**, önce sandbox ile deneyin
+   (`IYZICO_SANDBOX` boş bırakılırsa sandbox kullanılır).
+5. **Her işletme kendi ticari bilgilerini girer:** `/isletme/odeme-ayarlari`
+   ekranından vergi/kimlik numarası, IBAN ve adres kaydedilir, ardından
+   "ödeme sağlayıcısına gönder" ile alt üye işyeri açılır.
+
+### Zamanlanmış iş
+
+`CRON_SECRET` tanımlı olmalı ve `vercel.json` içindeki `odeme-suresi` işi
+çalışıyor olmalı. Çalışmazsa ödemesi yarım kalan rezervasyonlar slotları
+süresiz kilitli tutar. Elle kontrol:
+
+```bash
+npm run gorev -- odeme-suresi
+```
+
+### İptal politikası
+
+`FREE_CANCELLATION_HOURS` (varsayılan 24) müşteri iptalinde tam iade
+eşiğidir. **Bu değer ön bilgilendirme formunda yazan süreyle aynı olmalı** —
+farklı olursa formdaki taahhüt bağlayıcıdır. Hava ve işletme kaynaklı
+iptalde iade koşulsuz ve tamdır; müşteri kusurlu değildir.
+
 ## 7. İlk işletme hesapları
 
 Sunucuda bir kez:
@@ -181,6 +232,12 @@ proje ayarlarından girilir.
 | `DATABASE_SSL` | Hayır | `strict` / `off`. Varsayılan: TLS açık, zincir doğrulanmaz. |
 | `DATABASE_POOL_MAX` | Hayır | Postgres bağlantı havuzu üst sınırı (varsayılan 10). |
 | `DATABASE_PATH` | Hayır | SQLite dosya yolu. Yalnızca `DATABASE_URL` yokken. |
+| `CRON_SECRET` | **Evet** | Zamanlanmış iş uçlarını korur. **Tanımsızsa uçlar kapalıdır** ve ödeme süresi aşımı süpürülmez. |
+| `IYZICO_API_KEY` / `IYZICO_SECRET_KEY` | Ödeme alınacaksa | Üye işyeri anahtarları. İkisi de yoksa online ödeme kapalı kalır. |
+| `IYZICO_SANDBOX` | Hayır | `0` verilirse üretim ucu. Varsayılan sandbox. |
+| `PAYMENT_TIMEOUT_MINUTES` | Hayır | Ödemesi bekleyen rezervasyonun düşürülme süresi (varsayılan 20). |
+| `FREE_CANCELLATION_HOURS` | Hayır | Müşteri iptalinde tam iade eşiği (varsayılan 24). Ön bilgilendirme formuyla aynı olmalı. |
+| `PAYMENT_PROVIDER` | **Hayır — üretimde asla** | Yalnızca test. `fake` verilirse ödeme alınmadan bilet üretilir. |
 
 ---
 
@@ -192,6 +249,19 @@ proje ayarlarından girilir.
 npm run retention              # ne silineceğini gösterir, silmez
 npm run retention -- --uygula  # gerçekten siler
 ```
+
+### Beş dakikada bir: ödeme süresi
+
+`vercel.json` içindeki `odeme-suresi` işi ödemesi yarım kalan rezervasyonları
+düşürür ve slot kapasitesini geri verir. Vercel Cron bunu kendiliğinden
+çağırır; elle çalıştırmak için:
+
+```bash
+npm run gorev -- odeme-suresi
+```
+
+Bu iş çalışmıyorsa yerler boşuna kilitli kalır — doğrudan kaybedilen satış
+demektir. `CRON_SECRET` tanımlı değilse uç kapalıdır ve iş hiç tetiklenmez.
 
 İşlem günlüğündeki IP ve tarayıcı bilgisi kişisel veridir; 12 ay sonunda
 silinir. Hız sınırı sayaçları 24 saat sonra temizlenir. **Veri tutmak kadar
@@ -239,6 +309,15 @@ node scripts/verify-account-rights.mjs
 node scripts/verify-interactions.mjs
 node scripts/verify-offline-ticket.mjs
 node scripts/verify-offline.mjs
+
+# Sunucu CRON_SECRET=gizli-cron-anahtari ile başlatılmışken
+node scripts/verify-jobs.mjs
+
+# Sunucu SERVER_LOG'a yazarken (SMS sağlayıcısı yokken kodlar oraya düşer)
+SERVER_LOG=server.log node scripts/verify-otp.mjs
+
+# Sunucu PAYMENT_PROVIDER=fake ile başlatılmışken
+SERVER_LOG=server.log node scripts/verify-payment.mjs
 
 # Postgres'e karşı
 DATABASE_URL=… node scripts/verify-postgres.mjs

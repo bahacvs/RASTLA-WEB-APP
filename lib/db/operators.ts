@@ -14,7 +14,35 @@ import { hashPassword, verifyPassword } from '@/lib/password.mjs';
 export type OperatorRole = 'owner' | 'staff';
 export type OperatorUserStatus = 'active' | 'suspended';
 
-export type Operator = { id: string; name: string; createdAt: string };
+/** iyzico'nun tanıdığı alt üye işyeri türleri. */
+export type LegalType = 'personal' | 'private' | 'limited';
+
+export type Operator = {
+  id: string;
+  name: string;
+  createdAt: string;
+  /**
+   * Sağlayıcıdaki alt üye işyeri anahtarı.
+   *
+   * NULL ise bu işletmenin aktiviteleri **online ödemeye kapalıdır**: para
+   * tahsil edilip aktarılamayacak bir yere toplanmamalı.
+   */
+  submerchantKey: string | null;
+  /** RASTLA'nın payı, on binde. 1000 = %10. */
+  commissionBp: number;
+};
+
+/** Alt üye işyeri başvurusu için gereken ticari bilgiler. */
+export type OperatorPaymentProfile = {
+  legalType: LegalType | null;
+  legalName: string | null;
+  taxNumber: string | null;
+  taxOffice: string | null;
+  identityNumber: string | null;
+  iban: string | null;
+  legalAddress: string | null;
+  contactEmail: string | null;
+};
 
 export type OperatorUser = {
   id: string;
@@ -29,7 +57,21 @@ export type OperatorUser = {
   lastLoginAt: string | null;
 };
 
-type OperatorRow = { id: string; name: string; created_at: string };
+type OperatorRow = {
+  id: string;
+  name: string;
+  created_at: string;
+  submerchant_key: string | null;
+  commission_bp: number | string | null;
+  legal_type: LegalType | null;
+  legal_name: string | null;
+  tax_number: string | null;
+  tax_office: string | null;
+  identity_number: string | null;
+  iban: string | null;
+  legal_address: string | null;
+  contact_email: string | null;
+};
 
 type UserRow = {
   id: string;
@@ -45,7 +87,14 @@ type UserRow = {
 };
 
 function toOperator(row: OperatorRow): Operator {
-  return { id: row.id, name: row.name, createdAt: row.created_at };
+  return {
+    id: row.id,
+    name: row.name,
+    createdAt: row.created_at,
+    submerchantKey: row.submerchant_key ?? null,
+    // Sütun sonradan eklendi; eski satırlarda NULL gelebilir.
+    commissionBp: Number(row.commission_bp ?? 1000),
+  };
 }
 
 function toUser(row: UserRow): OperatorUser {
@@ -106,6 +155,83 @@ export async function upsertOperator(id: string, name: string): Promise<Operator
   );
 
   return (await getOperator(id))!;
+}
+
+// ------------------------------------------------------- pazaryeri / ödeme
+
+/**
+ * Alt üye işyeri başvurusunda kullanılacak ticari bilgiler.
+ *
+ * Ayrı bir okuyucu var çünkü bunlar `Operator` içinde taşınmamalı: vergi
+ * numarası, TCKN ve IBAN her sayfa oluşturmada belleğe gelen bir nesnenin
+ * içinde dolaşmamalı. Yalnızca ödeme ayarları ekranı ve başvuru çağrısı okur.
+ */
+export async function getPaymentProfile(
+  operatorId: string
+): Promise<OperatorPaymentProfile | null> {
+  const row = await (
+    await db()
+  ).get<OperatorRow>(
+    `SELECT legal_type, legal_name, tax_number, tax_office, identity_number,
+            iban, legal_address, contact_email
+       FROM operators WHERE id = ?`,
+    [operatorId]
+  );
+  if (!row) return null;
+
+  return {
+    legalType: row.legal_type ?? null,
+    legalName: row.legal_name ?? null,
+    taxNumber: row.tax_number ?? null,
+    taxOffice: row.tax_office ?? null,
+    identityNumber: row.identity_number ?? null,
+    iban: row.iban ?? null,
+    legalAddress: row.legal_address ?? null,
+    contactEmail: row.contact_email ?? null,
+  };
+}
+
+export async function setPaymentProfile(
+  operatorId: string,
+  profile: OperatorPaymentProfile
+): Promise<void> {
+  await (
+    await db()
+  ).run(
+    `UPDATE operators
+        SET legal_type = ?, legal_name = ?, tax_number = ?, tax_office = ?,
+            identity_number = ?, iban = ?, legal_address = ?, contact_email = ?
+      WHERE id = ?`,
+    [
+      profile.legalType,
+      profile.legalName,
+      profile.taxNumber,
+      profile.taxOffice,
+      profile.identityNumber,
+      profile.iban,
+      profile.legalAddress,
+      profile.contactEmail,
+      operatorId,
+    ]
+  );
+}
+
+/**
+ * Sağlayıcıdan dönen alt üye anahtarını saklar.
+ *
+ * Koşul `submerchant_key IS NULL`: iki eşzamanlı başvuru olursa ikincisi
+ * mevcut anahtarın üzerine yazmaz. Üzerine yazsaydı, ilk anahtarla başlamış
+ * ödemelerin parası artık takip edilmeyen bir üye işyerine giderdi.
+ * Dönen değer, anahtarın gerçekten bu çağrıyla yazılıp yazılmadığıdır.
+ */
+export async function setSubmerchantKey(operatorId: string, key: string): Promise<boolean> {
+  const result = await (
+    await db()
+  ).run(
+    `UPDATE operators SET submerchant_key = ? WHERE id = ? AND submerchant_key IS NULL`,
+    [key, operatorId]
+  );
+  return result.changes === 1;
 }
 
 // ------------------------------------------------------------------ hesaplar

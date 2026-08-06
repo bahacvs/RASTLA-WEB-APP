@@ -141,6 +141,12 @@ Kural `scripts/verify-redemption.mjs` ile sınanır — 12 ayrı süreç aynı a
 | `NEXT_PUBLIC_SITE_URL` | Sitenin genel adresi. Sitemap, robots, canonical, Open Graph ve bilet QR'ının işaret ettiği adres. |
 | `DATABASE_PATH` | SQLite dosyası (varsayılan `data/rastla.db`). |
 | `NEXT_PUBLIC_MAPTILER_KEY` | Harita karo sağlayıcısı anahtarı. Tanımsızsa harita yerine yapılandırma uyarısı gösterilir. |
+| `IYZICO_API_KEY` / `IYZICO_SECRET_KEY` | Ödeme sağlayıcısı. **İkisi de tanımsızsa online ödeme kapalıdır** ve ücret eskisi gibi deneyim yerinde alınır. |
+| `IYZICO_SANDBOX` | `0` verilirse üretim ucu kullanılır; varsayılan sandbox. |
+| `PAYMENT_PROVIDER` | Yalnızca test için `fake`. **Üretimde asla verilmemeli** — ödeme almadan bilet üretmek demek olurdu. |
+| `PAYMENT_TIMEOUT_MINUTES` | Ödemesi bekleyen rezervasyonun düşürüleceği süre (varsayılan 20). |
+| `FREE_CANCELLATION_HOURS` | Müşteri iptalinde tam iade eşiği (varsayılan 24). Ön bilgilendirme formuyla aynı olmalı. |
+| `CRON_SECRET` | Zamanlanmış iş uçlarını korur. **Tanımsızsa uçlar tamamen kapalıdır.** |
 
 ### İşlem günlüğü
 
@@ -234,13 +240,39 @@ Erişim katmanı (`lib/db/index.mjs`) iki ağız farkını kapatır: yer tutucul
 
 `verify-postgres.mjs`, tek kullanım güvencesini ve kapasite sınırını **gerçek Postgres'te ve ayrı işletim sistemi süreçleriyle** yeniden kanıtlar: 12 süreç aynı bileti onaylamayı dener, tam olarak biri geçer; 5 kişilik slota 20 süreç girer, tam olarak 5'i geçer.
 
+### Ödeme
+
+Pazaryeri modeli: RASTLA tutarın tamamını tahsil eder, komisyonunu keser, kalanı işletmeye aktarır. İşletmenin sağlayıcıda **alt üye işyeri** olarak tanımlı olması gerekir; anahtarı olmayan işletmenin aktivitesi online ödemeye açılmaz — para, aktarılamayacak bir yerde toplanmamalı.
+
+**Kart verisi bu sunucuya hiç değmez.** iyzico'nun barındırdığı Checkout Form kullanılıyor; elimize yalnızca bir token ve sağlayıcının döndürdüğü maskeli son dört hane geçiyor.
+
+Akışın dayandığı üç savunma:
+
+1. **Sonuç geri çağrının gövdesinden okunmaz.** Token ile sağlayıcıya sorulur (`resolve`). Gövdeye güvenilseydi adresi bilen biri "ödendi" diyen bir istek yollayıp bedava bilet alabilirdi.
+2. **Tutar, para birimi ve eşleştirme kimliği bizim kaydımızla karşılaştırılır.** Uyuşmazsa ödeme reddedilir ve günlüğe `payment.denied` düşer.
+3. **Onay tek koşullu UPDATE'tir:**
+
+```sql
+UPDATE bookings SET status='confirmed', confirmed_at=?
+ WHERE id=? AND status='pending_payment'
+```
+
+Rezervasyon ödeme boyunca `pending_payment` durumunda bekler ve kapasitesi tutulur. Tek kullanım güvencesi burada bedavaya geliyor: bilet onayı zaten `WHERE code=? AND status='confirmed'` koşuluna dayandığı için **ödemesi tamamlanmamış bir rezervasyon hiçbir ek kod yazılmadan okutulamaz.**
+
+Ödeme süresi dolan kayıtları `odeme-suresi` işi düşürür ve kapasiteyi geri verir; iade de durum değişikliği gerçekten olduysa yapıldığı için iki süpürme aynı yeri iki kez serbest bırakamaz.
+
+İptalde iade politikası: **hava ve işletme kaynaklı iptalde koşulsuz tam iade** (müşteri kusurlu değil), müşteri iptalinde aktiviteden `FREE_CANCELLATION_HOURS` saat öncesine kadar tam iade. Belirli tarihte yapılan eğlence ve dinlenme hizmetleri Mesafeli Sözleşmeler Yönetmeliği md. 15 uyarınca cayma hakkı istisnasındadır; bu eşiğin ön bilgilendirme formunda açıkça yazılması gerekir. Aynı ödeme aynı sebeple iki kez iade edilemez — güvence kodda değil, `refunds` tablosundaki `UNIQUE (payment_id, reason)` kısıtındadır.
+
+`verify-payment.mjs` (22 kontrol) bunların hepsini sınar: 12 ayrı süreç aynı geri çağrıyı işlediğinde rezervasyonun tam olarak bir kez onaylandığını, kurcalanmış tutarın reddedilip günlüğe `denied` düştüğünü, süre aşımının kapasiteyi tam olarak bir kez iade ettiğini ve ödemesi bekleyen biletin okutulamadığını gösterir.
+
 ### Bu fazın bilinen sınırları
 
 Aşağıdakiler **pilot seviyesindedir** ve üretime çıkmadan önce değişmelidir:
 
 1. **İkinci faktörü olmayan eski hesaplar.** Bu özellikten önce açılmış işletme hesaplarında numara yok; parolayla girmeye devam ederler ve ekip ekranında uyarı görürler. Numara eklenene kadar tek katmanlıdırlar.
-3. **İhlal uyarısı otomatik değil.** İşlem günlüğü ve hız sınırı var; şüpheli bir örüntüde kimseye bildirim gitmiyor, günlük elle inceleniyor.
-4. **Ödeme yoktur.** Tutar hesaplanır ama tahsil edilmez; ödeme deneyim yerinde alınır.
+2. **iyzico bağdaştırıcısı gerçek anahtarla sınanmadı.** Ödeme akışının doğruluk iddialarının tamamı (yarış, süre aşımı, kurcalanmış tutar, iade idempotanlığı) aynı sözleşmeyi uygulayan `fake` sağlayıcıyla ve gerçek eşzamanlılıkla kanıtlandı; bu iddiaların hiçbiri sağlayıcıya özgü değil, hepsi bizim kodumuzda. Sağlayıcıya özgü olan **yalnızca imzalama ve alan adlarıdır** ve o kısım ilk sandbox anahtarıyla sınanmalıdır.
+3. **Aracı hizmet sağlayıcı yükümlülükleri açık.** RASTLA para akışına girdiği an ETBİS kaydı, mesafeli satış sözleşmesi ve ön bilgilendirme formu gerekir. Metinler henüz yok.
+4. **İhlal uyarısı otomatik değil.** İşlem günlüğü ve hız sınırı var; şüpheli bir örüntüde kimseye bildirim gitmiyor, günlük elle inceleniyor.
 5. **Fotoğraf yükleme yoktur.** İşletme metin alanlarını ve takvimi yönetir; görselleri RASTLA ekler.
 6. **Harita karoları dış bağımlılıktır.** Uygulamanın tek dış isteği budur ve kaçışı yoktur. Sağlayıcı kullanıcı IP'lerini görür — KVKK aydınlatma metninde yer almalı.
 
@@ -261,6 +293,10 @@ node scripts/verify-rate-limit.mjs    # hız sınırı ve 30 süreçli eşzamanl
 node scripts/verify-jobs.mjs          # zamanlayıcı ucunun yetkilendirmesi
 SERVER_LOG=… node scripts/verify-otp.mjs  # SMS doğrulama ve işletme 2FA
 node scripts/verify-account-rights.mjs # veri indirme ve hesap silme (KVKK md. 11)
+
+# Ödeme (sunucu PAYMENT_PROVIDER=fake ile başlatılmış olmalı):
+PAYMENT_PROVIDER=fake npm start > server.log &
+SERVER_LOG=server.log node scripts/verify-payment.mjs  # yarış, süre aşımı, kurcalama, iade
 
 # Postgres'e karşı (DATABASE_URL tanımlıyken):
 DATABASE_URL=… node scripts/verify-postgres.mjs   # eşzamanlılık ve ağız farkları
@@ -288,11 +324,11 @@ Bu çalışma tam bir üretim uygulaması değildir; veri katmanı henüz sahted
 
 1. ~~Tasarım React/Next.js bileşenlerine ayrılmalı.~~ **Tamamlandı.**
 2. ~~Görseller kalıcı dosyalarla değiştirilmeli.~~ **Kısmen tamamlandı** — görseller repoya alındı, ancak lisans durumu hâlâ açık (aşağıya bakın).
-3. Rezervasyon kaydı ve işletme onay akışı **çalışıyor**; kimlik doğrulama (SMS OTP), ödeme ve müsaitlik yönetimi eksik.
+3. ~~Rezervasyon kaydı ve işletme onay akışı çalışıyor; kimlik doğrulama, ödeme ve müsaitlik yönetimi eksik.~~ **Tamamlandı** — SMS doğrulaması, işletme 2FA'sı, müsaitlik yönetimi ve pazaryeri ödemesi devrede. iyzico bağdaştırıcısı gerçek anahtarla henüz sınanmadı.
 4. ~~Harita sağlayıcısı seçilmeli.~~ **Tamamlandı** — MapLibre + karo sağlayıcısı; işletme konumu koordinat olarak girer.
 5. KVKK metinleri **taslak olarak hazırlandı** (`legal/`), hukukçu onayı bekliyor. Mesafeli satış sözleşmesi, ön bilgilendirme formu ve işletme sözleşmeleri henüz yok.
 
-İşletme kendi aktivitelerini ekleyip takvimini tanımlayabilir; rezervasyon slot kapasitesinden düşer ve QR kodlu bilet üretir. Ödeme hâlâ yoktur.
+İşletme kendi aktivitelerini ekleyip takvimini tanımlayabilir; rezervasyon slot kapasitesinden düşer, ödemesi alınır ve QR kodlu bilet üretir. Ödemenin canlıya çıkması için iyzico üye işyeri hesabı, ETBİS kaydı ve mesafeli satış metinleri gerekir — üçü de sizden gelmesi gerekenler arasında (bkz. KURULUM.md).
 
 ### Görsel lisansı — açık madde
 

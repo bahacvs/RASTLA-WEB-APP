@@ -4,7 +4,7 @@ import { OperatorNav } from '@/components/OperatorNav';
 import { Icon } from '@/components/Icon';
 import { currentOperator } from '@/lib/auth';
 import { listOperatorUsers } from '@/lib/db/operators';
-import { listBookingsForOperator } from '@/lib/db/bookings';
+import { listBookingsForOperator, type BookingStatus } from '@/lib/db/bookings';
 import { displayContact, getUser } from '@/lib/db/users';
 import { getActivityBySlug } from '@/lib/db/activities';
 import { formatPrice } from '@/lib/format';
@@ -15,10 +15,20 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-const STATUS = {
+const STATUS: Record<BookingStatus, { label: string; className: string }> = {
+  // Ayrı gösterilir ve ciroya sayılmaz: bu kayıt henüz para değil, bir
+  // niyet. Personel de "bekliyor" görüp misafiri kabul etmemeli.
+  pending_payment: {
+    label: 'Ödeme bekliyor',
+    className: 'bg-tertiary-container text-on-tertiary-container',
+  },
   confirmed: { label: 'Bekliyor', className: 'bg-secondary-container text-on-secondary-container' },
   redeemed: { label: 'Kullanıldı', className: 'bg-surface-container-high text-on-surface-variant' },
   cancelled: { label: 'İptal', className: 'bg-error-container text-on-error-container' },
+  expired: {
+    label: 'Ödenmedi, düştü',
+    className: 'bg-surface-container-high text-on-surface-variant',
+  },
 };
 
 function isoDate(date: Date): string {
@@ -64,14 +74,15 @@ export default async function OperatorBookingsPage({
     )
   );
 
-  const guests = bookings
-    .filter((b) => b.status !== 'cancelled')
-    .reduce((sum, b) => sum + b.adults + b.children, 0);
-  const revenue = bookings
-    .filter((b) => b.status !== 'cancelled')
-    .reduce((sum, b) => sum + b.totalTRY, 0);
+  // Sayımlar yalnızca ödemesi tamam olan kayıtlar üzerinden. Bekleyen ödemeyi
+  // ciroya yazmak, henüz tahsil edilmemiş parayı gün sonunda kasada varmış
+  // gibi göstermek olurdu; süresi dolanı yazmak ise düpedüz yanlış.
+  const counted = bookings.filter((b) => b.status === 'confirmed' || b.status === 'redeemed');
+  const guests = counted.reduce((sum, b) => sum + b.adults + b.children, 0);
+  const revenue = counted.reduce((sum, b) => sum + b.totalTRY, 0);
 
   const activeCount = bookings.filter((b) => b.status === 'confirmed').length;
+  const pendingCount = bookings.filter((b) => b.status === 'pending_payment').length;
 
   return (
     <div className="min-h-screen">
@@ -101,6 +112,14 @@ export default async function OperatorBookingsPage({
           <Stat label="Misafir" value={String(guests)} />
           <Stat label="Ciro" value={formatPrice(revenue)} />
         </div>
+
+        {pendingCount > 0 && (
+          <p className="mb-lg rounded-xl border border-outline-variant bg-surface-container p-md text-body-md text-on-surface-variant">
+            <strong className="text-on-surface">{pendingCount} rezervasyonun ödemesi sürüyor.</strong>{' '}
+            Yerleri tutuluyor ama biletleri henüz geçerli değil. Ödeme tamamlanmazsa kısa süre
+            içinde düşer ve yerler tekrar satışa açılır.
+          </p>
+        )}
 
         {activeCount > 0 && (
           <div className="mb-lg">

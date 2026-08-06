@@ -11,6 +11,14 @@ import { sendVerificationCode, verifyCode } from '@/lib/verification';
 import { bookingCodeMessage } from '@/lib/sms/messages';
 import { maskPhone } from '@/lib/sms';
 import { getActivityBySlug } from '@/lib/db/activities';
+import {
+  customerRefundAllowed,
+  FREE_CANCELLATION_HOURS,
+  onlinePaymentFor,
+  refundBooking,
+  startPayment,
+} from '@/lib/payments/flow';
+import { expireBooking } from '@/lib/db/payments';
 import { record } from '@/lib/db/audit';
 import { requestContext } from '@/lib/request-context';
 import {
@@ -157,6 +165,13 @@ export async function createBookingAction(
     return { error: 'Seçilen saat bulunamadı. Lütfen tekrar seçin.' };
   }
 
+  // Online ödeme yalnızca sağlayıcı yapılandırılmışsa VE işletmenin alt üye
+  // işyeri anahtarı varsa devreye girer. Ücretsiz aktivitede de tahsilat
+  // yapılmaz — sıfır tutarlı bir ödeme oturumu açmanın anlamı yok.
+  const totalTRY = (adults + children) * activity.priceTRY;
+  const online = totalTRY > 0 ? await onlinePaymentFor(activity.operatorId) : null;
+  const payOnline = online?.available === true;
+
   try {
     const user = await findOrCreateUser(name, phone);
     if ((await getUserId()) !== user.id) await setUserSession(user.id);
@@ -171,7 +186,11 @@ export async function createBookingAction(
       bookingTime: slot.time,
       adults,
       children,
-      totalTRY: (adults + children) * activity.priceTRY,
+      totalTRY,
+      // Ödeme alınacaksa bilet HENÜZ GEÇERLİ DEĞİL. Kapasite tutuluyor ama
+      // `redeemBooking` yalnızca 'confirmed' kaydı okutur; ödemesi
+      // tamamlanmamış bir QR kapıda çalışmaz.
+      status: payOnline ? 'pending_payment' : 'confirmed',
     });
 
     // Misafirin adı ve telefonu günlüğe KOPYALANMAZ; kayıt zaten hangi
@@ -184,8 +203,33 @@ export async function createBookingAction(
       targetType: 'booking',
       targetId: booking.id,
       ...context,
-      meta: { slotId: slot.id, units, party: adults + children },
+      meta: { slotId: slot.id, units, party: adults + children, odemeli: payOnline },
     });
+
+    if (payOnline && online?.available) {
+      const started = await startPayment({
+        booking,
+        activityTitle: activity.title,
+        activityCategory: activity.category,
+        submerchantKey: online.submerchantKey,
+        commissionBp: online.commissionBp,
+        buyer: { id: user.id, name: user.name, phone: user.phone },
+        context,
+      });
+
+      if (!started.ok) {
+        // Ödeme oturumu açılamadıysa rezervasyon askıda kalmamalı: kapasite
+        // hemen geri verilir, kullanıcı yeniden deneyebilir. Beklemek de bir
+        // seçenekti (süre aşımı işi zaten toplardı) ama o zaman kullanıcı 20
+        // dakika boyunca kendi tuttuğu yeri yeniden seçemezdi.
+        await expireBooking(booking.id);
+        return { error: started.error };
+      }
+
+      // Sağlayıcının barındırdığı forma gidilir; kart verisi bu sunucuya
+      // hiç değmez.
+      redirect(started.formUrl);
+    }
 
     redirect(`/bilet/${booking.code}`);
   } catch (error) {
@@ -237,6 +281,8 @@ export async function cancelBookingAction(
     return { error: 'Rezervasyon bulunamadı.' };
   }
 
+  const cancelContext = await requestContext();
+
   await record({
     action: 'booking.cancelled',
     actorType: 'customer',
@@ -244,11 +290,28 @@ export async function cancelBookingAction(
     operatorId: booking.operatorId,
     targetType: 'booking',
     targetId: booking.id,
-    ...(await requestContext()),
+    ...cancelContext,
     meta: { reason: 'customer' },
   });
 
+  // İade politikası: aktiviteden FREE_CANCELLATION_HOURS saat öncesine kadar
+  // tam iade, sonrasında iade yok (bkz. lib/payments/flow.ts — Mesafeli
+  // Sözleşmeler Yönetmeliği md. 15 istisnası). Eşikten sonra iptal yine
+  // yapılabilir; işletme yeri başkasına satabilsin diye.
+  let refundNote = '';
+  if (customerRefundAllowed(booking)) {
+    const refund = await refundBooking({
+      bookingId: booking.id,
+      operatorId: booking.operatorId,
+      reason: 'customer',
+      context: cancelContext,
+    });
+    if (refund.ok) refundNote = ' Ödemeniz iade edildi; kartınıza yansıması birkaç gün sürebilir.';
+  } else if (booking.totalTRY > 0) {
+    refundNote = ` Aktiviteye ${FREE_CANCELLATION_HOURS} saatten az kaldığı için ücret iadesi yapılmadı.`;
+  }
+
   revalidatePath('/rezervasyonlarim');
   revalidatePath(`/bilet/${code}`);
-  return { message: 'Rezervasyonunuz iptal edildi.' };
+  return { message: `Rezervasyonunuz iptal edildi.${refundNote}` };
 }

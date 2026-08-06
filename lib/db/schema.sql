@@ -24,7 +24,28 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE TABLE IF NOT EXISTS operators (
   id          TEXT PRIMARY KEY,
   name        TEXT NOT NULL,
-  created_at  TEXT NOT NULL
+  created_at  TEXT NOT NULL,
+
+  -- ---- Pazaryeri ödeme bilgileri (sonradan eklendi) ----
+  --
+  -- RASTLA tutarın tamamını tahsil edip komisyonunu keserek kalanı işletmeye
+  -- aktarıyor. Bunun için işletmenin sağlayıcıda "alt üye işyeri" olarak
+  -- tanımlı olması gerekiyor; anahtarı olmayan işletme online ödemeye
+  -- açılamaz — para, aktarılamayacak bir yere toplanmamalı.
+  submerchant_key TEXT,
+  legal_type      TEXT,   -- 'personal' | 'private' | 'limited'
+  legal_name      TEXT,   -- vergi levhasındaki unvan
+  tax_number      TEXT,
+  tax_office      TEXT,
+  identity_number TEXT,   -- şahıs şirketi/gerçek kişi için TCKN
+  iban            TEXT,
+  legal_address   TEXT,
+  contact_email   TEXT,
+
+  -- RASTLA'nın payı, on binde. 1000 = %10. Tam sayı tutuluyor ki kuruş
+  -- hesabında kayan nokta yuvarlaması olmasın.
+  commission_bp   INTEGER NOT NULL DEFAULT 1000
+                  CHECK (commission_bp >= 0 AND commission_bp <= 10000)
 );
 
 -- İşletme personelinin kişisel hesabı.
@@ -195,12 +216,26 @@ CREATE TABLE IF NOT EXISTS bookings (
   children       INTEGER NOT NULL,
   total_try      INTEGER NOT NULL,
 
-  -- confirmed -> onay bekleyen geçerli bilet
-  -- redeemed  -> işletme tarafından okutulup kullanıldı (geri dönüşü yok)
-  -- cancelled -> iptal
-  status         TEXT NOT NULL CHECK (status IN ('confirmed', 'redeemed', 'cancelled')),
+  -- pending_payment -> kapasite tutuldu, ödeme bekleniyor. BİLET GEÇERSİZ.
+  -- confirmed       -> ödeme alındı, okutulmayı bekleyen geçerli bilet
+  -- redeemed        -> işletme tarafından okutulup kullanıldı (geri dönüşü yok)
+  -- cancelled       -> iptal edildi
+  -- expired         -> ödeme süresi doldu, kapasite geri verildi
+  --
+  -- Tek kullanım güvencesi bedavaya geliyor: bilet onayı
+  -- `WHERE code=? AND status='confirmed'` koşuluna dayandığı için ödemesi
+  -- tamamlanmamış bir rezervasyon hiçbir ek kod yazılmadan okutulamaz.
+  --
+  -- Kısıt ADLANDIRILDI: durum listesi ileride yine değişebilir ve isimsiz bir
+  -- kısıtı göçte bulup değiştirmek motora göre farklı yollar gerektirirdi.
+  status         TEXT NOT NULL CONSTRAINT bookings_status_check
+                 CHECK (status IN ('pending_payment', 'confirmed', 'redeemed', 'cancelled', 'expired')),
 
   created_at     TEXT NOT NULL,
+  -- Ödemenin onaylandığı an. `confirmed` durumuna geçişin zamanı.
+  confirmed_at   TEXT,
+  -- Ödeme süresi dolduğu için düşürüldüğü an.
+  expired_at     TEXT,
   redeemed_at    TEXT,
   redeemed_by    TEXT,
 
@@ -225,6 +260,75 @@ CREATE TABLE IF NOT EXISTS bookings (
 
 CREATE INDEX IF NOT EXISTS idx_bookings_user ON bookings(user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_bookings_operator ON bookings(operator_id, booking_date);
+-- Süresi dolan ödemeleri süpüren iş bu indeksi kullanır.
+CREATE INDEX IF NOT EXISTS idx_bookings_pending ON bookings(status, created_at);
+
+-- Ödeme kayıtları.
+--
+-- Bir rezervasyonun birden çok ödeme DENEMESİ olabilir (kart reddedildi,
+-- kullanıcı vazgeçti, tekrar denedi); bu yüzden ayrı tablo.
+--
+-- KART NUMARASI HİÇBİR ZAMAN BURAYA YAZILMAZ. iyzico'nun barındırdığı
+-- Checkout Form kullanıldığı için kart verisi RASTLA'nın sunucusuna hiç
+-- değmez; yalnızca sağlayıcının döndürdüğü MASKELİ bilgi saklanır.
+CREATE TABLE IF NOT EXISTS payments (
+  id              TEXT PRIMARY KEY,
+  booking_id      TEXT NOT NULL REFERENCES bookings(id),
+
+  provider        TEXT NOT NULL,          -- 'iyzico' | 'fake'
+  -- Sağlayıcının bu ödeme için verdiği kimlik (iyzico: paymentId).
+  provider_ref    TEXT,
+  -- Bizim ürettiğimiz ve sağlayıcıya gönderdiğimiz eşleştirme kimliği.
+  -- Geri dönen cevabın hangi rezervasyona ait olduğu bununla doğrulanır.
+  conversation_id TEXT NOT NULL UNIQUE,
+  -- Checkout Form oturum anahtarı; sonucu sağlayıcıdan bununla sorarız.
+  token           TEXT,
+
+  amount_try      INTEGER NOT NULL CHECK (amount_try >= 0),
+  -- RASTLA'nın payı. İşletmeye aktarılan tutar: amount_try - commission_try.
+  commission_try  INTEGER NOT NULL DEFAULT 0 CHECK (commission_try >= 0),
+  currency        TEXT NOT NULL DEFAULT 'TRY',
+
+  status          TEXT NOT NULL
+                  CHECK (status IN ('initiated', 'succeeded', 'failed', 'refunded')),
+
+  -- Sağlayıcıdan dönen MASKELİ kart bilgisi. Fişte ve destek görüşmesinde
+  -- "hangi kartla ödedim" sorusunu cevaplar; kartı yeniden kullanmaya yetmez.
+  card_family     TEXT,
+  card_last_four  TEXT CHECK (card_last_four IS NULL OR length(card_last_four) = 4),
+
+  failure_reason  TEXT,
+  created_at      TEXT NOT NULL,
+  updated_at      TEXT NOT NULL,
+
+  CHECK (commission_try <= amount_try)
+);
+
+CREATE INDEX IF NOT EXISTS idx_payments_booking ON payments(booking_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_payments_token ON payments(token);
+
+-- İadeler. Ayrı tablo: bir ödeme kısmi olarak birden çok kez iade edilebilir
+-- ve her iadenin sağlayıcı tarafında ayrı bir kimliği vardır.
+CREATE TABLE IF NOT EXISTS refunds (
+  id            TEXT PRIMARY KEY,
+  payment_id    TEXT NOT NULL REFERENCES payments(id),
+
+  amount_try    INTEGER NOT NULL CHECK (amount_try > 0),
+  -- weather/operator -> müşteri kusurlu değil, tam iade
+  -- customer         -> iptal politikasına tabi
+  reason        TEXT NOT NULL CHECK (reason IN ('customer', 'operator', 'weather')),
+
+  provider_ref  TEXT,
+  status        TEXT NOT NULL CHECK (status IN ('pending', 'succeeded', 'failed')),
+  failure_reason TEXT,
+  created_at    TEXT NOT NULL,
+
+  -- Aynı ödeme aynı sebeple iki kez iade edilemez: çift tıklama ya da
+  -- tekrarlanan webhook, parayı iki kez geri göndermemeli.
+  UNIQUE (payment_id, reason)
+);
+
+CREATE INDEX IF NOT EXISTS idx_refunds_payment ON refunds(payment_id);
 
 -- İşlem günlüğü.
 --

@@ -12,6 +12,7 @@ const LINKS = [
 // Menüyü gizlemek yetkilendirme değildir — kontrol ayrıca sunucuda yapılır.
 const OWNER_LINKS = [
   { href: '/isletme/aktiviteler', label: 'Aktiviteler' },
+  { href: '/isletme/odeme-ayarlari', label: 'Ödeme' },
   { href: '/isletme/ekip', label: 'Ekip' },
   { href: '/isletme/gunluk', label: 'İşlem Günlüğü' },
 ];

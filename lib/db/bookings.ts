@@ -2,7 +2,19 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import { db } from './index.mjs';
 import { releaseCapacity } from './slots';
 
-export type BookingStatus = 'confirmed' | 'redeemed' | 'cancelled';
+/**
+ * `pending_payment` ve `expired` ödeme fazıyla eklendi.
+ *
+ * Eklemenin bedava gelen güvencesi şu: bilet onayı zaten
+ * `WHERE code = ? AND status = 'confirmed'` koşuluna dayanıyor. Yani ödemesi
+ * tamamlanmamış bir rezervasyon, tek satır ek kod yazılmadan okutulamaz.
+ */
+export type BookingStatus =
+  | 'pending_payment'
+  | 'confirmed'
+  | 'redeemed'
+  | 'cancelled'
+  | 'expired';
 
 /** İptali kimin yaptığı. `weather` ayrı tutulur: müşteri kusurlu değildir. */
 export type CancelReason = 'customer' | 'operator' | 'weather';
@@ -24,6 +36,10 @@ export type Booking = {
   totalTRY: number;
   status: BookingStatus;
   createdAt: string;
+  /** Ödemenin onaylandığı an. Ödeme kapalıyken oluşturma anıyla aynıdır. */
+  confirmedAt: string | null;
+  /** Ödeme süresi dolduğu için düşürüldüğü an. */
+  expiredAt: string | null;
   redeemedAt: string | null;
   /** Bileti onaylayan işletme personelinin hesap kimliği (operator_users.id). */
   redeemedBy: string | null;
@@ -46,6 +62,8 @@ type Row = {
   total_try: number;
   status: BookingStatus;
   created_at: string;
+  confirmed_at: string | null;
+  expired_at: string | null;
   redeemed_at: string | null;
   redeemed_by: string | null;
   cancelled_at: string | null;
@@ -68,6 +86,8 @@ function toBooking(row: Row): Booking {
     totalTRY: row.total_try,
     status: row.status,
     createdAt: row.created_at,
+    confirmedAt: row.confirmed_at,
+    expiredAt: row.expired_at,
     redeemedAt: row.redeemed_at,
     redeemedBy: row.redeemed_by,
     cancelledAt: row.cancelled_at,
@@ -103,7 +123,19 @@ export async function createBooking(input: {
   adults: number;
   children: number;
   totalTRY: number;
+  /**
+   * Online ödeme devredeyse `pending_payment`, değilse `confirmed`.
+   *
+   * Varsayılan bilinçli olarak `confirmed`: ödeme sağlayıcısı yapılandırılana
+   * kadar sistem eskisi gibi çalışmaya devam etmeli. Varsayılan
+   * `pending_payment` olsaydı, ödeme kapalı bir kurulumda hiçbir bilet
+   * geçerli olmazdı.
+   */
+  status?: 'pending_payment' | 'confirmed';
 }): Promise<Booking> {
+  const now = new Date().toISOString();
+  const status = input.status ?? 'confirmed';
+
   const row: Row = {
     id: randomUUID(),
     code: generateCode(),
@@ -117,8 +149,11 @@ export async function createBooking(input: {
     adults: input.adults,
     children: input.children,
     total_try: input.totalTRY,
-    status: 'confirmed',
-    created_at: new Date().toISOString(),
+    status,
+    created_at: now,
+    // Ödeme kapalıyken rezervasyon doğrudan onaylı doğuyor; onay anı da o an.
+    confirmed_at: status === 'confirmed' ? now : null,
+    expired_at: null,
     redeemed_at: null,
     redeemed_by: null,
     cancelled_at: null,
@@ -130,12 +165,12 @@ export async function createBooking(input: {
   ).run(
     `INSERT INTO bookings
        (id, code, user_id, activity_slug, operator_id, slot_id, units, booking_date,
-        booking_time, adults, children, total_try, status, created_at, redeemed_at, redeemed_by,
-        cancelled_at, cancel_reason)
+        booking_time, adults, children, total_try, status, created_at, confirmed_at, expired_at,
+        redeemed_at, redeemed_by, cancelled_at, cancel_reason)
      VALUES
        (@id, @code, @user_id, @activity_slug, @operator_id, @slot_id, @units, @booking_date,
-        @booking_time, @adults, @children, @total_try, @status, @created_at, @redeemed_at,
-        @redeemed_by, @cancelled_at, @cancel_reason)`,
+        @booking_time, @adults, @children, @total_try, @status, @created_at, @confirmed_at,
+        @expired_at, @redeemed_at, @redeemed_by, @cancelled_at, @cancel_reason)`,
     row
   );
 
@@ -146,6 +181,12 @@ export async function getBookingByCode(code: string): Promise<Booking | null> {
   const row = await (
     await db()
   ).get<Row>('SELECT * FROM bookings WHERE code = ?', [code.trim().toUpperCase()]);
+  return row ? toBooking(row) : null;
+}
+
+/** Kimliğe göre. Ödeme akışı kodu değil kimliği taşır (kod ödeme sonrası anlam kazanır). */
+export async function getBooking(id: string): Promise<Booking | null> {
+  const row = await (await db()).get<Row>('SELECT * FROM bookings WHERE id = ?', [id]);
   return row ? toBooking(row) : null;
 }
 
@@ -160,7 +201,13 @@ export type RedeemResult =
   | { ok: true; booking: Booking }
   | {
       ok: false;
-      reason: 'not_found' | 'already_redeemed' | 'cancelled' | 'wrong_operator';
+      reason:
+        | 'not_found'
+        | 'already_redeemed'
+        | 'cancelled'
+        | 'wrong_operator'
+        | 'unpaid'
+        | 'expired';
       booking: Booking | null;
     };
 
@@ -203,6 +250,12 @@ export async function redeemBooking(
   if (existing.status === 'redeemed') {
     return { ok: false, reason: 'already_redeemed', booking: existing };
   }
+  // Ödemesi tamamlanmamış bilet. WHERE koşulu bunu zaten engelledi; buradaki
+  // ayrım yalnızca personele doğru cümleyi gösterebilmek için.
+  if (existing.status === 'pending_payment') {
+    return { ok: false, reason: 'unpaid', booking: existing };
+  }
+  if (existing.status === 'expired') return { ok: false, reason: 'expired', booking: existing };
   return { ok: false, reason: 'cancelled', booking: existing };
 }
 
@@ -273,15 +326,21 @@ export async function cancelDay(
   operatorId: string,
   date: string,
   reason: CancelReason
-): Promise<{ cancelled: number; skipped: number }> {
+): Promise<{ cancelled: Booking[]; skipped: number }> {
   const all = await listBookingsForOperator(operatorId, date);
   const bookings = all.filter((b) => b.status === 'confirmed');
 
-  let cancelled = 0;
+  // İptal edilenler sayılmakla kalmaz, DÖNDÜRÜLÜR: çağıran taraf her biri için
+  // iade başlatacak. Yalnızca sayı dönseydi, iade edilmesi gereken kayıtları
+  // bulmak için aynı listeyi ikinci kez sorgulamak gerekirdi ve o sorgu artık
+  // hepsini 'cancelled' göreceği için "bu iptali ben mi yaptım" ayrımı
+  // kaybolurdu.
+  const cancelled: Booking[] = [];
   let skipped = 0;
 
   for (const booking of bookings) {
-    if ((await cancelBooking(booking.code, reason)).ok) cancelled++;
+    const result = await cancelBooking(booking.code, reason);
+    if (result.ok) cancelled.push(result.booking);
     else skipped++;
   }
 

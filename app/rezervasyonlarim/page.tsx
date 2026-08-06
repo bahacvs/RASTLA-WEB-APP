@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Icon } from '@/components/Icon';
 import { BottomNavBar } from '@/components/BottomNavBar';
-import { listBookingsForUser } from '@/lib/db/bookings';
+import { listBookingsForUser, type BookingStatus } from '@/lib/db/bookings';
 import { currentUserId } from '@/lib/auth';
 import { getActivityBySlug } from '@/lib/db/activities';
 import { formatPrice } from '@/lib/format';
@@ -12,10 +12,16 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-const STATUS = {
+const STATUS: Record<BookingStatus, { label: string; className: string }> = {
+  // Ödeme yarıda kalmışsa bilet GEÇERLİ DEĞİL; listede de öyle görünmeli.
+  pending_payment: {
+    label: 'Ödeme bekliyor',
+    className: 'bg-tertiary-container text-on-tertiary-container',
+  },
   confirmed: { label: 'Geçerli', className: 'bg-secondary-container text-on-secondary-container' },
   redeemed: { label: 'Kullanıldı', className: 'bg-surface-container-high text-on-surface-variant' },
   cancelled: { label: 'İptal', className: 'bg-error-container text-on-error-container' },
+  expired: { label: 'Süresi doldu', className: 'bg-surface-container-high text-on-surface-variant' },
 };
 
 export default async function MyBookingsPage() {

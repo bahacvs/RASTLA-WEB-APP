@@ -28,6 +28,7 @@ import {
   setPendingOperator,
 } from '@/lib/session';
 import { getActivityBySlug } from '@/lib/db/activities';
+import { refundBooking } from '@/lib/payments/flow';
 import { record } from '@/lib/db/audit';
 import { requestContext } from '@/lib/request-context';
 import {
@@ -394,6 +395,16 @@ export async function redeemAction(_prev: ScanState, formData: FormData): Promis
     };
   }
 
+  // Ödemesi tamamlanmamış bilet, personele açıkça söylenmeli: "geçersiz"
+  // demek, misafirin ekranındaki QR'ı gören personeli tartışmanın içinde
+  // bırakırdı. Sebep belliyse çözüm de belli — ödeme tamamlanmamış.
+  if (result.reason === 'unpaid') {
+    return { status: 'error', message: 'Bu rezervasyonun ödemesi tamamlanmamış.' };
+  }
+  if (result.reason === 'expired') {
+    return { status: 'error', message: 'Ödeme süresi dolduğu için rezervasyon düşmüş.' };
+  }
+
   return { status: 'error', message: 'Bilet geçersiz ya da iptal edilmiş.' };
 }
 
@@ -424,6 +435,8 @@ export async function operatorCancelAction(
     return { error: 'Rezervasyon zaten iptal edilmiş.' };
   }
 
+  const context = await requestContext();
+
   await record({
     action: 'booking.cancelled',
     actorType: 'operator',
@@ -431,12 +444,26 @@ export async function operatorCancelAction(
     operatorId,
     targetType: 'booking',
     targetId: booking.id,
-    ...(await requestContext()),
+    ...context,
     meta: { reason },
   });
 
+  // İşletme ya da hava kaynaklı iptalde iade KOŞULSUZ ve otomatik: müşteri
+  // kusurlu değil, hizmet verilmedi. İade kararını insana bırakmak, en sık
+  // yaşanan iptal türünde en sık şikâyet edilen sonucu üretirdi.
+  const refund = await refundBooking({
+    bookingId: booking.id,
+    operatorId,
+    reason,
+    context,
+  });
+
   revalidatePath('/isletme/rezervasyonlar');
-  return { message: 'Rezervasyon iptal edildi ve slot kapasitesi geri verildi.' };
+  return {
+    message: `Rezervasyon iptal edildi ve slot kapasitesi geri verildi.${
+      refund.ok ? ' Müşteriye tam iade başlatıldı.' : ''
+    }`,
+  };
 }
 
 /**
@@ -457,6 +484,7 @@ export async function cancelDayAction(
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return { error: 'Gün geçersiz.' };
 
   const { cancelled, skipped } = await cancelDay(operatorId, date, 'weather');
+  const context = await requestContext();
 
   // Toplu iptal tek satırda kaydedilir: kaç rezervasyonun etkilendiği
   // meta'da durur, tek tek kayıt açmak günlüğü okunmaz hâle getirirdi.
@@ -465,15 +493,32 @@ export async function cancelDayAction(
     actorType: 'operator',
     actorId: session.user.id,
     operatorId,
-    ...(await requestContext()),
-    meta: { date, cancelled, skipped, reason: 'weather' },
+    ...context,
+    meta: { date, cancelled: cancelled.length, skipped, reason: 'weather' },
   });
+
+  // Hava iptalinde iade otomatik ve tam. İadeler tek tek yapılıyor çünkü her
+  // biri sağlayıcıda ayrı bir işlem; biri başarısız olursa diğerleri devam
+  // etmeli. `refundBooking` idempotent, bu yüzden iş yarıda kalıp tekrar
+  // çalıştırılsa da kimseye iki kez para gitmez.
+  let refunded = 0;
+  for (const booking of cancelled) {
+    const refund = await refundBooking({
+      bookingId: booking.id,
+      operatorId,
+      reason: 'weather',
+      context,
+    });
+    if (refund.ok) refunded++;
+  }
 
   revalidatePath('/isletme/rezervasyonlar');
   return {
     message:
-      cancelled === 0
+      cancelled.length === 0
         ? 'İptal edilecek aktif rezervasyon yoktu.'
-        : `${cancelled} rezervasyon iptal edildi${skipped > 0 ? `, ${skipped} tanesi atlandı` : ''}. Misafirleri bilgilendirmeyi unutmayın.`,
+        : `${cancelled.length} rezervasyon iptal edildi${
+            skipped > 0 ? `, ${skipped} tanesi atlandı` : ''
+          }${refunded > 0 ? `, ${refunded} ödeme iade edildi` : ''}. Misafirleri bilgilendirmeyi unutmayın.`,
   };
 }

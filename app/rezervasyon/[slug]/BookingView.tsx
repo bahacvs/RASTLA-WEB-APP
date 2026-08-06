@@ -39,12 +39,15 @@ export function BookingView({
   availableDates,
   initialDate,
   initialSlots,
+  payOnline,
 }: {
   activity: Activity;
   /** Boş yeri olan günler; takvimde yalnızca bunlar seçilebilir. */
   availableDates: string[];
   initialDate: string | null;
   initialSlots: Slot[];
+  /** Bu rezervasyon ödeme adımına gidecek mi. Sunucuda belirlenir. */
+  payOnline: boolean;
 }) {
   const router = useRouter();
   const available = useMemo(() => new Set(availableDates), [availableDates]);
@@ -413,14 +416,16 @@ export function BookingView({
                 ready={ready}
                 pending={pending}
                 verifying={state.step === 'verify'}
+                payOnline={payOnline}
                 className="w-full"
               />
             </div>
           </section>
 
           <p className="pb-4 text-label-sm text-on-surface-variant">
-            Rezervasyonunuz oluşturulduğunda QR kodlu biletiniz hazırlanır. Ödeme deneyim yerinde
-            alınır; online ödeme henüz devrede değildir.
+            {payOnline
+              ? 'Ödemeyi tamamladığınızda QR kodlu biletiniz hazırlanır. Kart bilgileriniz ödeme kuruluşunun kendi sayfasında alınır, RASTLA sunucularına hiçbir zaman ulaşmaz. Aktiviteye 24 saatten fazla varken iptal ederseniz ücret iade edilir.'
+              : 'Rezervasyonunuz oluşturulduğunda QR kodlu biletiniz hazırlanır. Ödeme deneyim yerinde alınır.'}
           </p>
         </main>
 
@@ -430,7 +435,12 @@ export function BookingView({
             <span className="block text-label-sm text-on-surface-variant">Toplam Tutar</span>
             <span className="text-title-price text-on-surface">{formatPrice(total)}</span>
           </div>
-          <BookingAction ready={ready} pending={pending} verifying={state.step === 'verify'} />
+          <BookingAction
+            ready={ready}
+            pending={pending}
+            verifying={state.step === 'verify'}
+            payOnline={payOnline}
+          />
         </div>
       </form>
     </div>
@@ -447,12 +457,15 @@ function BookingAction({
   ready,
   pending,
   verifying = false,
+  payOnline = false,
   className = '',
 }: {
   ready: boolean;
   pending: boolean;
   /** Kod ekranı açıkken buton metni değişir; iş aynı gönderimle sürüyor. */
   verifying?: boolean;
+  /** Ödeme adımına gidilecekse buton bunu söylemeli; sürpriz yönlendirme olmasın. */
+  payOnline?: boolean;
   className?: string;
 }) {
   const disabled = !ready || pending;
@@ -467,8 +480,12 @@ function BookingAction({
       {pending
         ? 'Oluşturuluyor…'
         : verifying
-          ? 'Kodu Doğrula ve Tamamla'
-          : 'Rezervasyonu Tamamla'}
+          ? payOnline
+            ? 'Kodu Doğrula ve Ödemeye Geç'
+            : 'Kodu Doğrula ve Tamamla'
+          : payOnline
+            ? 'Ödemeye Geç'
+            : 'Rezervasyonu Tamamla'}
     </button>
   );
 }

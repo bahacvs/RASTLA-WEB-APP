@@ -4,10 +4,11 @@ import Link from 'next/link';
 import { Icon } from '@/components/Icon';
 import { TicketQr } from '@/components/TicketQr';
 import { CancelButton } from './CancelButton';
-import { getBookingByCode } from '@/lib/db/bookings';
+import { getBookingByCode, type BookingStatus } from '@/lib/db/bookings';
 import { getUser } from '@/lib/db/users';
 import { getActivityBySlug } from '@/lib/db/activities';
 import { getOperator } from '@/lib/db/operators';
+import { getSucceededPayment } from '@/lib/db/payments';
 import { formatPrice } from '@/lib/format';
 import { SITE_URL } from '@/lib/site';
 
@@ -17,7 +18,15 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-const STATUS_STYLES = {
+const STATUS_STYLES: Record<
+  BookingStatus,
+  { label: string; className: string; icon: 'check_circle' | 'close' }
+> = {
+  pending_payment: {
+    label: 'Ödeme bekleniyor',
+    className: 'bg-tertiary-container text-on-tertiary-container',
+    icon: 'close',
+  },
   confirmed: {
     label: 'Geçerli bilet',
     className: 'bg-secondary-container text-on-secondary-container',
@@ -33,6 +42,11 @@ const STATUS_STYLES = {
     className: 'bg-error-container text-on-error-container',
     icon: 'close' as const,
   },
+  expired: {
+    label: 'Süresi doldu',
+    className: 'bg-surface-container-high text-on-surface-variant',
+    icon: 'close' as const,
+  },
 };
 
 export default async function TicketPage({ params }: { params: Promise<{ code: string }> }) {
@@ -44,6 +58,9 @@ export default async function TicketPage({ params }: { params: Promise<{ code: s
   const operator = await getOperator(booking.operatorId);
   const user = await getUser(booking.userId);
   const status = STATUS_STYLES[booking.status];
+  // Ödemenin online alınıp alınmadığı kayda bakılarak söylenir, ayarlara
+  // değil: ayar sonradan değişse bile bu biletin geçmişi değişmez.
+  const payment = await getSucceededPayment(booking.id);
 
   return (
     <div className="min-h-screen px-container-margin py-lg">
@@ -85,7 +102,11 @@ export default async function TicketPage({ params }: { params: Promise<{ code: s
                 <p className="px-4 text-center text-body-md text-on-surface-variant">
                   {booking.status === 'redeemed'
                     ? 'Bu bilet kullanıldı'
-                    : 'Bu bilet iptal edildi'}
+                    : booking.status === 'pending_payment'
+                      ? 'Ödeme tamamlanmadı; bilet henüz geçerli değil'
+                      : booking.status === 'expired'
+                        ? 'Ödeme süresi dolduğu için rezervasyon düştü'
+                        : 'Bu bilet iptal edildi'}
                 </p>
               </div>
             )}
@@ -128,8 +149,10 @@ export default async function TicketPage({ params }: { params: Promise<{ code: s
         </div>
 
         <p className="mt-lg text-center text-label-sm text-on-surface-variant">
-          Bu bilet tek kullanımlıktır ve yalnızca bir kez onaylanabilir. Ödeme deneyim yerinde
-          alınır.
+          Bu bilet tek kullanımlıktır ve yalnızca bir kez onaylanabilir.{' '}
+          {payment
+            ? `Ödemeniz alındı${payment.cardLastFour ? ` (•••• ${payment.cardLastFour})` : ''}.`
+            : 'Ödeme deneyim yerinde alınır.'}
         </p>
       </div>
     </div>
