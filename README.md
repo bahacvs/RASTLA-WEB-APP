@@ -154,9 +154,15 @@ Bilet onayı, iptal ve fiyat değişikliği geri alınamaz işlemlerdir. `audit_
 IP ve tarayıcı bilgisi kişisel veridir; 12 ay sonunda silinir:
 
 ```bash
-npm run retention              # ne silineceğini gösterir
-npm run retention -- --uygula  # gerçekten siler
+npm run gorev                        # işleri listeler
+npm run gorev -- saklama             # ne silineceğini gösterir, SİLMEZ
+npm run gorev -- saklama --uygula    # gerçekten siler
 ```
+
+Aynı işler `/api/gorevler/<ad>` üzerinden de çalışır (Vercel Cron buraya çağrı
+yapar) ve **tam olarak aynı kodu** çağırır. Uç `CRON_SECRET` ile korunur;
+**sır tanımlı değilse uç tamamen kapalıdır** — yapılandırmayı unutmak sessiz
+bir güvenlik açığına dönüşmesin diye.
 
 ### Kişisel veri hakları (KVKK md. 11)
 
@@ -238,6 +244,7 @@ node scripts/verify-offline-ticket.mjs # bağlantı kesikken bilet ve QR açıl�
 node scripts/verify-offline.mjs       # harita karoları dışında dış istek var mı
 node scripts/verify-audit.mjs         # işlem günlüğü: ne kaydediliyor, ne KAYDEDİLMİYOR
 node scripts/verify-rate-limit.mjs    # hız sınırı ve 30 süreçli eşzamanlılık
+node scripts/verify-jobs.mjs          # zamanlayıcı ucunun yetkilendirmesi
 node scripts/verify-account-rights.mjs # veri indirme ve hesap silme (KVKK md. 11)
 
 # Postgres'e karşı (DATABASE_URL tanımlıyken):

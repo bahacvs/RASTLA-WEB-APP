@@ -262,15 +262,8 @@ export function countRecentLoginFailures(operatorId: string, hours = 24): Promis
   return countAudit({ operatorId, action: 'operator.login_failed', since });
 }
 
-/**
- * Saklama süresi dolan kayıtları siler.
- *
- * Günlük tutmak KVKK'da bir yükümlülük (md. 12 güvenlik tedbirleri) ama
- * süresiz tutmak ayrı bir ihlal: IP ve tarayıcı bilgisi kişisel veridir.
- * veri-saklama-imha-politikasi.md ile aynı süre kullanılmalı.
+/*
+ * Saklama süresi dolan kayıtların imhası bilinçli olarak burada değil,
+ * `lib/jobs/index.mjs` içinde: hem zamanlayıcı hem komut satırı aynı kodu
+ * çağırabilsin diye. Süreler legal/veri-saklama-imha-politikasi.md ile aynı.
  */
-export async function purgeAuditOlderThan(days: number): Promise<number> {
-  const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
-  const result = await (await db()).run('DELETE FROM audit_log WHERE at < ?', [cutoff]);
-  return result.changes;
-}

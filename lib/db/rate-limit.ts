@@ -165,18 +165,12 @@ export async function reset(bucket: string): Promise<void> {
   await (await db()).run('DELETE FROM rate_limits WHERE bucket = ?', [bucket]);
 }
 
-/**
- * Penceresi çoktan dolmuş satırları temizler.
- *
+/*
+ * Penceresi dolmuş sayaç satırlarının temizliği `lib/jobs/index.mjs` içinde.
  * Tablo aksi hâlde her IP ve e-posta için sonsuza kadar bir satır tutardı —
  * hem gereksiz büyürdü hem de IP adresi kişisel veri olduğu için saklama
  * politikasına aykırı olurdu.
  */
-export async function purgeExpired(olderThanSeconds = 24 * 60 * 60): Promise<number> {
-  const cutoff = new Date(Date.now() - olderThanSeconds * 1000).toISOString();
-  const result = await (await db()).run('DELETE FROM rate_limits WHERE window_start < ?', [cutoff]);
-  return result.changes;
-}
 
 /** Kova adı. Girdi ayracı içerse bile kovalar karışmasın diye kodlanır. */
 export function bucketKey(kind: string, value: string): string {
