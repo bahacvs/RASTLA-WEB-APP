@@ -11,6 +11,7 @@
 import { chromium } from 'playwright';
 import { execFileSync } from 'node:child_process';
 import { emailFor, ensureTestAccounts, loginAs } from './lib/test-accounts.mjs';
+import { book as bookWithVerification } from './lib/booking.mjs';
 
 const BASE = process.env.BASE_URL ?? 'http://127.0.0.1:3000';
 
@@ -95,24 +96,17 @@ const slug = href.split('/').pop();
 // ---------- Rezervasyon: kapasiteyi doldur ----------
 // capacity_mode = per_booking olduğu için her rezervasyon 1 yer düşer.
 async function book(page, name, phone) {
-  await page.goto(`${BASE}/rezervasyon/${slug}`, { waitUntil: 'networkidle' });
-  await page.waitForTimeout(400);
-
-  const slotButton = page.locator('button[aria-pressed]').filter({ hasText: 'yer' }).first();
-  if ((await slotButton.count()) === 0) return { full: true };
-
-  const before = await slotButton.innerText();
-  await slotButton.click();
-  await page.getByLabel('Ad Soyad').fill(name);
-  await page.getByLabel('Telefon').fill(phone);
-  await page.getByRole('button', { name: 'Rezervasyonu Tamamla' }).first().click();
-
-  try {
-    await page.waitForURL(/\/bilet\//, { timeout: 15000 });
-    return { code: decodeURIComponent(new URL(page.url()).pathname.split('/').pop()), before };
-  } catch {
-    return { error: await page.locator('[role="alert"]').innerText() };
-  }
+  // Doğrulama adımı dahil; kod sunucu günlüğünden okunur (bkz. lib/booking.mjs).
+  const result = await bookWithVerification(page, {
+    baseUrl: BASE,
+    slug,
+    name,
+    phone,
+    slotLabel: true,
+  });
+  return result.code
+    ? { code: result.code, before: result.slotLabel }
+    : { error: result.error, full: result.error === 'boş slot yok' };
 }
 
 const first = await book(cp, 'Test Müşteri 1', '0532 000 00 01');

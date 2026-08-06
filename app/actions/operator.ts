@@ -10,9 +10,23 @@ import {
   type Booking,
 } from '@/lib/db/bookings';
 import { displayContact, getUser } from '@/lib/db/users';
-import { authenticateOperatorUser, normalizeEmail, recordLogin } from '@/lib/db/operators';
+import {
+  authenticateOperatorUser,
+  getOperatorUser,
+  normalizeEmail,
+  recordLogin,
+} from '@/lib/db/operators';
+import { sendVerificationCode, verifyCode } from '@/lib/verification';
+import { operatorCodeMessage } from '@/lib/sms/messages';
+import { maskPhone } from '@/lib/sms';
 import { currentOperator } from '@/lib/auth';
-import { clearOperatorSession, setOperatorSession } from '@/lib/session';
+import {
+  clearOperatorSession,
+  clearPendingOperator,
+  getPendingOperator,
+  setOperatorSession,
+  setPendingOperator,
+} from '@/lib/session';
 import { getActivityBySlug } from '@/lib/db/activities';
 import { record } from '@/lib/db/audit';
 import { requestContext } from '@/lib/request-context';
@@ -26,7 +40,12 @@ import {
   type LimitRule,
 } from '@/lib/db/rate-limit';
 
-export type LoginState = { error?: string };
+/**
+ * `step` alanı arayüzün hangi ekranı göstereceğini belirler:
+ *   undefined -> e-posta + parola
+ *   'code'    -> ikinci faktör kodu
+ */
+export type LoginState = { error?: string; step?: 'code'; phoneHint?: string };
 
 export async function operatorLoginAction(
   _prev: LoginState,
@@ -98,6 +117,34 @@ export async function operatorLoginAction(
   // yapılan denemeler, buradan başarılı bir girişle silinmemeli.
   await reset(emailBucket);
 
+  // ---- İkinci faktör ----
+  //
+  // Parola doğru olsa bile oturum HENÜZ AÇILMAZ. Bilet onayı geri alınamaz bir
+  // işlem; parolası ele geçmiş bir hesabın tek başına girebilmesi, bu projedeki
+  // en pahalı hatanın kapısı olurdu.
+  //
+  // Numarası olmayan hesaplar (bu özellikten önce açılmış olanlar) parolayla
+  // girmeye devam eder ve ekip ekranında yüksek sesle uyarılır. Onları burada
+  // kilitlemek, çalışan bir işletmeyi sahada dışarıda bırakmak olurdu.
+  if (result.user.phone) {
+    const sent = await sendVerificationCode({
+      phone: result.user.phone,
+      purpose: 'operator_login',
+      operatorUserId: result.user.id,
+      message: operatorCodeMessage,
+      context,
+    });
+
+    if (!sent.ok) return { error: sent.error };
+
+    // Yarım kalmış giriş ayrı ve kısa ömürlü bir çerezde taşınır; asıl oturum
+    // çerezine yazılsaydı ikinci faktörü geçmemiş biri korunan sayfalara
+    // girebilirdi.
+    await setPendingOperator(result.user.id);
+
+    return { step: 'code', phoneHint: maskPhone(result.user.phone) };
+  }
+
   await recordLogin(result.user.id);
   await record({
     action: 'operator.login',
@@ -105,10 +152,87 @@ export async function operatorLoginAction(
     actorId: result.user.id,
     operatorId: result.operator.id,
     ...context,
+    meta: { secondFactor: false },
   });
 
   await setOperatorSession(result.user.id);
   redirect('/isletme/tara');
+}
+
+/**
+ * İkinci faktör kodunu doğrular ve oturumu asıl o zaman açar.
+ *
+ * Bekleyen giriş kimliği FORMDAN DEĞİL, imzalı çerezden okunur: form alanına
+ * güvenilseydi kod bilen biri istediği hesabın oturumunu açabilirdi.
+ */
+export async function operatorVerifyAction(
+  _prev: LoginState,
+  formData: FormData
+): Promise<LoginState> {
+  const context = await requestContext();
+
+  const pendingId = await getPendingOperator();
+  if (!pendingId) {
+    return { error: 'Giriş oturumu zaman aşımına uğradı. Baştan deneyin.' };
+  }
+
+  const user = await getOperatorUser(pendingId);
+  if (!user || user.status !== 'active' || !user.phone) {
+    await clearPendingOperator();
+    return { error: 'Hesaba erişilemedi. Baştan deneyin.' };
+  }
+
+  const result = await verifyCode({
+    phone: user.phone,
+    purpose: 'operator_login',
+    code: String(formData.get('code') ?? ''),
+    context,
+  });
+
+  if (!result.ok) {
+    await record({
+      action: 'operator.login_failed',
+      actorType: 'anonymous',
+      operatorId: user.operatorId,
+      outcome: 'failure',
+      ...context,
+      meta: { email: user.email, reason: 'second_factor' },
+    });
+    return { error: result.error, step: 'code', phoneHint: maskPhone(user.phone) };
+  }
+
+  // Kod, girişi başlatan hesap için üretilmiş olmalı. Aynı numarayı paylaşan
+  // iki hesap varsa birinin kodu diğerinin girişini açmamalı.
+  if (result.operatorUserId && result.operatorUserId !== user.id) {
+    await clearPendingOperator();
+    return { error: 'Kod bu hesap için geçerli değil.' };
+  }
+
+  await clearPendingOperator();
+  await recordLogin(user.id);
+  await record({
+    action: 'operator.login',
+    actorType: 'operator',
+    actorId: user.id,
+    operatorId: user.operatorId,
+    ...context,
+    meta: { secondFactor: true },
+  });
+
+  await setOperatorSession(user.id);
+  redirect('/isletme/tara');
+}
+
+/**
+ * Yarım kalmış girişi iptal eder.
+ *
+ * Yalnızca ekranı değiştirmek yetmez: bekleyen giriş çerezi sunucuda da
+ * geçersiz kılınmalı, aksi hâlde 5 dakika boyunca ortada kod bekleyen bir
+ * hesap kalırdı.
+ */
+export async function operatorCancelLoginAction() {
+  await clearPendingOperator();
+  redirect('/isletme');
 }
 
 export async function operatorLogoutAction() {

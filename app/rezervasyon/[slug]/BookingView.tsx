@@ -61,6 +61,14 @@ export function BookingView({
   const [adults, setAdults] = useState(2);
   const [children, setChildren] = useState(0);
 
+  // Ad ve telefon KONTROLLÜ alanlar.
+  //
+  // React, form eylemi tamamlandığında formu sıfırlar. Kontrolsüz bıraksaydık
+  // doğrulama kodu ekranı geldiği anda müşterinin yazdığı ad ve telefon
+  // silinir, kişi ikisini de baştan yazmak zorunda kalırdı.
+  const [name, setName] = useState('');
+  const [phone, setPhone] = useState('');
+
   const cells = useMemo(() => buildMonthGrid(year, month), [year, month]);
 
   const total = (adults + children) * activity.priceTRY;
@@ -314,6 +322,8 @@ export function BookingView({
                   required
                   minLength={2}
                   autoComplete="name"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
                   className="h-12 w-full rounded-lg border border-outline-variant bg-surface px-3 text-body-md text-on-surface focus:ring-2 focus:ring-primary focus:outline-none"
                 />
               </div>
@@ -329,6 +339,8 @@ export function BookingView({
                   required
                   autoComplete="tel"
                   placeholder="05XX XXX XX XX"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
                   className="h-12 w-full rounded-lg border border-outline-variant bg-surface px-3 text-body-md text-on-surface focus:ring-2 focus:ring-primary focus:outline-none"
                 />
               </div>
@@ -354,6 +366,38 @@ export function BookingView({
               .
             </p>
 
+            {/*
+              Numara doğrulama aynı formun içinde. Ayrı bir form olsaydı
+              doğrulama sonrası rezervasyonun yeniden gönderilmesi gerekir ve
+              seçilen tarih/saat kaybolabilirdi; burada tek gönderimde bitiyor.
+            */}
+            {state.step === 'verify' && (
+              <div className="mt-md rounded-lg border border-primary bg-surface-container p-3">
+                <label
+                  htmlFor="code"
+                  className="mb-1 block text-label-bold text-on-surface-variant"
+                >
+                  Doğrulama kodu
+                </label>
+                <p className="mb-2 text-body-md text-on-surface-variant">
+                  {state.phoneHint ?? 'Telefonunuza'} numarasına 6 haneli bir kod gönderdik.
+                  Rezervasyonu tamamlamak için kodu girin — numaranızın doğru olduğundan emin
+                  olmamız gerekiyor, biletiniz ve olası iptal bildirimi oraya gidecek.
+                </p>
+                <input
+                  id="code"
+                  name="code"
+                  required
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  maxLength={6}
+                  pattern="[0-9]{6}"
+                  autoFocus
+                  className="h-12 w-full rounded-lg border border-outline-variant bg-surface px-3 text-center font-mono text-headline-md tracking-[0.4em] text-on-surface focus:ring-2 focus:ring-primary focus:outline-none"
+                />
+              </div>
+            )}
+
             {state.error && (
               <p
                 role="alert"
@@ -365,7 +409,12 @@ export function BookingView({
 
             {/* Masaüstünde yapışkan çubuk gizli olduğu için aksiyon burada durur. */}
             <div className="mt-md hidden md:block">
-              <BookingAction ready={ready} pending={pending} className="w-full" />
+              <BookingAction
+                ready={ready}
+                pending={pending}
+                verifying={state.step === 'verify'}
+                className="w-full"
+              />
             </div>
           </section>
 
@@ -381,7 +430,7 @@ export function BookingView({
             <span className="block text-label-sm text-on-surface-variant">Toplam Tutar</span>
             <span className="text-title-price text-on-surface">{formatPrice(total)}</span>
           </div>
-          <BookingAction ready={ready} pending={pending} />
+          <BookingAction ready={ready} pending={pending} verifying={state.step === 'verify'} />
         </div>
       </form>
     </div>
@@ -397,10 +446,13 @@ export function BookingView({
 function BookingAction({
   ready,
   pending,
+  verifying = false,
   className = '',
 }: {
   ready: boolean;
   pending: boolean;
+  /** Kod ekranı açıkken buton metni değişir; iş aynı gönderimle sürüyor. */
+  verifying?: boolean;
   className?: string;
 }) {
   const disabled = !ready || pending;
@@ -412,7 +464,11 @@ function BookingAction({
       title={ready ? undefined : 'Önce müsait bir tarih ve saat seçin'}
       className={`inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-6 py-3 text-center text-headline-sm text-on-primary shadow-sm transition-all hover:bg-primary-container active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 ${className}`}
     >
-      {pending ? 'Oluşturuluyor…' : 'Rezervasyonu Tamamla'}
+      {pending
+        ? 'Oluşturuluyor…'
+        : verifying
+          ? 'Kodu Doğrula ve Tamamla'
+          : 'Rezervasyonu Tamamla'}
     </button>
   );
 }

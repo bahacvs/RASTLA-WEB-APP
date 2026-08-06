@@ -21,6 +21,8 @@ export type OperatorUser = {
   operatorId: string;
   email: string;
   name: string;
+  /** İkinci faktörün gideceği numara. Eski hesaplarda null olabilir. */
+  phone: string | null;
   role: OperatorRole;
   status: OperatorUserStatus;
   createdAt: string;
@@ -34,6 +36,7 @@ type UserRow = {
   operator_id: string;
   email: string;
   name: string;
+  phone: string | null;
   password_hash: string;
   role: OperatorRole;
   status: OperatorUserStatus;
@@ -51,6 +54,7 @@ function toUser(row: UserRow): OperatorUser {
     operatorId: row.operator_id,
     email: row.email,
     name: row.name,
+    phone: row.phone,
     role: row.role,
     status: row.status,
     createdAt: row.created_at,
@@ -135,6 +139,7 @@ export async function createOperatorUser(input: {
   operatorId: string;
   email: string;
   name: string;
+  phone?: string | null;
   password: string;
   role: OperatorRole;
 }): Promise<CreateUserResult> {
@@ -151,13 +156,14 @@ export async function createOperatorUser(input: {
       await db()
     ).run(
       `INSERT INTO operator_users
-         (id, operator_id, email, name, password_hash, role, status, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, 'active', ?)`,
+         (id, operator_id, email, name, phone, password_hash, role, status, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?)`,
       [
         id,
         input.operatorId,
         email,
         input.name.trim(),
+        input.phone ?? null,
         hashPassword(input.password),
         input.role,
         new Date().toISOString(),
@@ -242,6 +248,11 @@ export async function checkPassword(userId: string, password: string): Promise<b
   ]);
 
   return row ? verifyPassword(password, row.password_hash) : false;
+}
+
+/** İkinci faktörün gideceği numarayı ayarlar. */
+export async function setOperatorUserPhone(userId: string, phone: string): Promise<void> {
+  await (await db()).run('UPDATE operator_users SET phone = ? WHERE id = ?', [phone, userId]);
 }
 
 export async function setPassword(userId: string, password: string): Promise<void> {

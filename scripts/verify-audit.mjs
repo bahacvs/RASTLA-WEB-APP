@@ -19,6 +19,7 @@
  */
 import { chromium } from 'playwright';
 import { ensureTestAccounts, loginAs, TEST_PASSWORD, emailFor } from './lib/test-accounts.mjs';
+import { book } from './lib/booking.mjs';
 import { db as connect, usingPostgres } from '../lib/db/index.mjs';
 
 const BASE = process.env.BASE_URL ?? 'http://127.0.0.1:3000';
@@ -139,14 +140,14 @@ const GUEST_NAME = `Gunluk Testi ${unique}`;
 // diye bu betiğe özgü bir numara kullanılır.
 const GUEST_PHONE = '0532 777 88 99';
 
-await cp.goto(`${BASE}/rezervasyon/${slug}`, { waitUntil: 'networkidle' });
-await cp.waitForTimeout(400);
-await cp.locator('button[aria-pressed]').filter({ hasText: 'yer' }).first().click();
-await cp.getByLabel('Ad Soyad').fill(GUEST_NAME);
-await cp.getByLabel('Telefon').fill(GUEST_PHONE);
-await cp.getByRole('button', { name: 'Rezervasyonu Tamamla' }).first().click();
-await cp.waitForURL(/\/bilet\//, { timeout: 15000 });
-const code = decodeURIComponent(new URL(cp.url()).pathname.split('/').pop());
+const booked = await book(cp, {
+  baseUrl: BASE,
+  slug,
+  name: GUEST_NAME,
+  phone: GUEST_PHONE,
+});
+check('rezervasyon oluşturuldu', Boolean(booked.code), booked.code ?? booked.error);
+const code = booked.code;
 
 const bookings = await audit(...since("action = 'booking.created'"));
 check('rezervasyon oluşturma kaydedildi', bookings.length >= 1);
@@ -233,22 +234,22 @@ await staffCtx.close();
 
 const cancelCtx = await browser.newContext({ viewport: { width: 390, height: 844 } });
 const cancelPage = await cancelCtx.newPage();
-await cancelPage.goto(`${BASE}/rezervasyon/${slug}`, { waitUntil: 'networkidle' });
-await cancelPage.waitForTimeout(400);
-const freeSlot = cancelPage.locator('button[aria-pressed]:not([disabled])').filter({ hasText: 'yer' }).first();
-if ((await freeSlot.count()) > 0) {
-  await freeSlot.click();
-  await cancelPage.getByLabel('Ad Soyad').fill(`Iptal Testi ${unique}`);
-  await cancelPage.getByLabel('Telefon').fill('0532 777 00 11');
-  await cancelPage.getByRole('button', { name: 'Rezervasyonu Tamamla' }).first().click();
+
+const toCancel = await book(cancelPage, {
+  baseUrl: BASE,
+  slug,
+  name: `Iptal Testi ${unique}`,
+  phone: '0532 777 00 11',
+});
+
+if (toCancel.code) {
   // İptal düğmesi biletin kendi sayfasında; geri alınamaz olduğu için önce
   // onay ister.
-  await cancelPage.waitForURL(/\/bilet\//, { timeout: 15000 });
-
   await cancelPage.getByRole('button', { name: 'Rezervasyonu İptal Et' }).click();
   await cancelPage.getByRole('button', { name: /Evet, iptal et/ }).click();
   await cancelPage.waitForTimeout(1500);
 }
+check('iptal edilecek rezervasyon oluşturuldu', Boolean(toCancel.code), toCancel.error);
 await cancelCtx.close();
 
 check(

@@ -29,6 +29,11 @@ export type Outcome = 'success' | 'failure' | 'denied';
  * "bir ihlalde tüm onayları bul" sorgusu sessizce eksik sonuç verirdi.
  */
 export const AUDIT_ACTIONS = [
+  // Telefon doğrulama. KODUN KENDİSİ hiçbir zaman yazılmaz.
+  'otp.sent',
+  'otp.verified',
+  'otp.failed',
+
   // Kimlik
   'operator.login',
   'operator.login_failed',
@@ -38,6 +43,7 @@ export const AUDIT_ACTIONS = [
   // Ekip yönetimi
   'operator_user.created',
   'operator_user.password_reset',
+  'operator_user.phone_set',
   'operator_user.suspended',
   'operator_user.reactivated',
 

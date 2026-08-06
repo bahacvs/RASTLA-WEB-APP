@@ -75,3 +75,42 @@ export async function getOperatorUserId(): Promise<string | null> {
 export async function clearOperatorSession() {
   (await cookies()).delete(OPERATOR_COOKIE);
 }
+
+/**
+ * Yarım kalmış işletme girişi — parola doğru, ikinci faktör bekleniyor.
+ *
+ * Ayrı ve **kısa ömürlü** bir çerezde taşınır. Asıl oturum çerezine
+ * yazılsaydı, ikinci faktörü geçmemiş biri o çerezle korunan sayfalara
+ * girebilirdi: parola doğrulaması tek başına giriş sayılmamalı.
+ *
+ * Değer `<hesapKimliği>.<sonKullanma>` biçiminde ve imzalıdır; süre çerezin
+ * ömrüne değil imzalı içeriğe yazılır — çerez süresi tarayıcı tarafından
+ * uzatılabilir, imzalı içerik uzatılamaz.
+ */
+const PENDING_OPERATOR_COOKIE = 'rastla_operator_pending';
+const PENDING_MAX_AGE = 5 * 60;
+
+export async function setPendingOperator(operatorUserId: string) {
+  const expiresAt = Date.now() + PENDING_MAX_AGE * 1000;
+  (await cookies()).set(PENDING_OPERATOR_COOKIE, pack(`${operatorUserId}.${expiresAt}`), {
+    ...COOKIE_OPTIONS,
+    maxAge: PENDING_MAX_AGE,
+  });
+}
+
+export async function getPendingOperator(): Promise<string | null> {
+  const value = unpack((await cookies()).get(PENDING_OPERATOR_COOKIE)?.value);
+  if (!value) return null;
+
+  const separator = value.lastIndexOf('.');
+  if (separator <= 0) return null;
+
+  const expiresAt = Number(value.slice(separator + 1));
+  if (!Number.isFinite(expiresAt) || expiresAt < Date.now()) return null;
+
+  return value.slice(0, separator);
+}
+
+export async function clearPendingOperator() {
+  (await cookies()).delete(PENDING_OPERATOR_COOKIE);
+}

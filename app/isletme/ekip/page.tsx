@@ -45,6 +45,11 @@ export default async function TeamPage() {
                     )}
                   </p>
                   <p className="truncate text-body-md text-on-surface-variant">{member.email}</p>
+                  {member.phone && (
+                    <p className="truncate text-label-sm text-on-surface-variant">
+                      {member.phone}
+                    </p>
+                  )}
                   <p className="mt-1 text-label-sm text-on-surface-variant">
                     {member.lastLoginAt
                       ? `Son giriş: ${new Date(member.lastLoginAt).toLocaleString('tr-TR')}`
@@ -69,6 +74,7 @@ export default async function TeamPage() {
                 name={member.name}
                 status={member.status}
                 isSelf={member.id === session.user.id}
+                hasPhone={Boolean(member.phone)}
               />
             </li>
           ))}

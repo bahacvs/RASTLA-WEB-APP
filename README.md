@@ -164,6 +164,21 @@ yapar) ve **tam olarak aynı kodu** çağırır. Uç `CRON_SECRET` ile korunur;
 **sır tanımlı değilse uç tamamen kapalıdır** — yapılandırmayı unutmak sessiz
 bir güvenlik açığına dönüşmesin diye.
 
+### SMS doğrulama
+
+İki yerde:
+
+- **Müşteri** rezervasyondan önce numarasını doğrular. Doğrulama **kapasite tutulmadan önce** yapılır; sonra yapılsaydı doğrulamayan biri slotları tutup bırakmayarak işletmenin gününü doldurabilirdi. Oturum 90 gün yaşadığı için geri dönen müşteriden her rezervasyonda kod istenmez — yalnızca numara değiştiğinde.
+- **İşletme personeli** parolaya ek olarak kod girer. Parola doğru olsa bile oturum açılmaz; yarım kalan giriş ayrı ve 5 dakikalık imzalı bir çerezde taşınır, asıl oturum çerezine yazılsaydı ikinci faktörü geçmemiş biri korunan sayfalara girebilirdi.
+
+Üç karar:
+
+- **Kod düz metin saklanmaz**, tuzlu SHA-256 özeti saklanır. Bir veritabanı sızıntısı yalnızca geçmişi değil, o an bekleyen doğrulamaları da ele verirdi. Parola özetindeki scrypt burada kullanılmadı: kod 6 haneli ve 5 dakika yaşıyor, çevrimdışı kırma penceresi yok; buna karşılık her denemede 100 ms scrypt çalıştırmak ekranı gözle görülür yavaşlatırdı.
+- **Kod hiçbir koşulda tarayıcıya döndürülmez.** "Yalnızca geliştirmede" diye eklenmiş bir yol, yanlış yapılandırılmış bir üretim dağıtımında ikinci faktörü tamamen anlamsız kılardı. Sağlayıcı yokken kod sunucu günlüğüne düşer; doğrulama betikleri oradan okur.
+- **OTP mesajına pazarlama içeriği eklenmez.** Tek cümle kampanya metni, mesajın tamamını 6563 sayılı Kanun anlamında ticari ileti hâline getirir ve İYS onayı gerektirir. Şablonlar `lib/sms/messages.ts` içinde toplandı ve kural orada yazılı.
+
+`verify-otp.mjs` (25 kontrol) kodun veritabanında ve işlem günlüğünde geçmediğini tüm tabloyu tarayarak doğrular, 5 yanlış denemeden sonra kodun yandığını gösterir ve 10 ayrı süreçle aynı kodun yalnızca bir kez tüketilebildiğini kanıtlar.
+
 ### Kişisel veri hakları (KVKK md. 11)
 
 `/hesabim` üzerinden misafir kendi verisini indirebilir ve hesabını silebilir. İkisi de elle karşılanan talep olmaktan çıktı.
@@ -223,8 +238,7 @@ Erişim katmanı (`lib/db/index.mjs`) iki ağız farkını kapatır: yer tutucul
 
 Aşağıdakiler **pilot seviyesindedir** ve üretime çıkmadan önce değişmelidir:
 
-1. **Misafir kimliği doğrulanmıyor.** Kullanıcı adını ve telefonunu beyan eder, doğrulanmaz; oturum imzalı çerezle aynı cihaza bağlıdır. SMS OTP gerekir.
-2. **İşletme girişi tek katmanlı.** Hesaplar kişiye özel (e-posta + parola, scrypt özeti) ama ikinci faktör (SMS/TOTP) yok.
+1. **İkinci faktörü olmayan eski hesaplar.** Bu özellikten önce açılmış işletme hesaplarında numara yok; parolayla girmeye devam ederler ve ekip ekranında uyarı görürler. Numara eklenene kadar tek katmanlıdırlar.
 3. **İhlal uyarısı otomatik değil.** İşlem günlüğü ve hız sınırı var; şüpheli bir örüntüde kimseye bildirim gitmiyor, günlük elle inceleniyor.
 4. **Ödeme yoktur.** Tutar hesaplanır ama tahsil edilmez; ödeme deneyim yerinde alınır.
 5. **Fotoğraf yükleme yoktur.** İşletme metin alanlarını ve takvimi yönetir; görselleri RASTLA ekler.
@@ -245,6 +259,7 @@ node scripts/verify-offline.mjs       # harita karoları dışında dış istek 
 node scripts/verify-audit.mjs         # işlem günlüğü: ne kaydediliyor, ne KAYDEDİLMİYOR
 node scripts/verify-rate-limit.mjs    # hız sınırı ve 30 süreçli eşzamanlılık
 node scripts/verify-jobs.mjs          # zamanlayıcı ucunun yetkilendirmesi
+SERVER_LOG=… node scripts/verify-otp.mjs  # SMS doğrulama ve işletme 2FA
 node scripts/verify-account-rights.mjs # veri indirme ve hesap silme (KVKK md. 11)
 
 # Postgres'e karşı (DATABASE_URL tanımlıyken):

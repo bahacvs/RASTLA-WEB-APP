@@ -67,6 +67,20 @@ export const LIMITS = {
    * kötüye kullanıma karşı geniş bir emniyet ağıdır; gerçek sınır numarada.
    */
   bookingByIp: { limit: 40, windowSeconds: 60 * 60 },
+
+  /**
+   * Aynı numaraya doğrulama kodu gönderimi: saatte 5.
+   *
+   * İki şeyi birden korur. Birincisi kullanıcının cebi: SMS ücretlidir ve
+   * sınırsız gönderim, numarayı bilen birinin başkasına bedel yükleyip
+   * telefonunu yağdırmasına izin verirdi. İkincisi deneme havuzu: sınır
+   * olmasaydı saldırgan sürekli yeni kod isteyip "kod başına 5 deneme"
+   * sınırını istediği kadar çoğaltabilirdi.
+   */
+  otpByPhone: { limit: 5, windowSeconds: 60 * 60 },
+
+  /** Aynı IP'den kod isteme: saatte 30. CGNAT yüzünden geniş (bkz. yukarısı). */
+  otpByIp: { limit: 30, windowSeconds: 60 * 60 },
 } as const satisfies Record<string, LimitRule>;
 
 export type LimitResult =

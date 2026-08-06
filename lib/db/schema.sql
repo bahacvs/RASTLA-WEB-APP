@@ -40,6 +40,11 @@ CREATE TABLE IF NOT EXISTS operator_users (
   email          TEXT NOT NULL UNIQUE,   -- küçük harfe indirgenmiş
   name           TEXT NOT NULL,
 
+  -- İkinci faktörün gideceği numara. Sonradan eklendi, bu yüzden NULL olabilir:
+  -- eski hesaplar parolayla girmeye devam eder ve ekip ekranında "ikinci
+  -- faktör yok" uyarısı alır. Yeni hesaplarda zorunlu.
+  phone          TEXT,
+
   -- scrypt$N$r$p$salt$hash — parametreler kaydın içinde taşınır, böylece
   -- maliyet ilerideki donanıma göre artırıldığında eski kayıtlar da
   -- doğrulanmaya devam eder.
@@ -261,6 +266,36 @@ CREATE TABLE IF NOT EXISTS audit_log (
   -- BURAYA YAZILMAZ — günlük zaten hangi kaydı işaret ettiğini biliyor.
   meta         TEXT
 );
+
+-- Telefon doğrulama kodları (OTP).
+--
+-- Kod DÜZ METİN SAKLANMAZ, özeti saklanır. Veritabanı sızarsa yalnızca geçmiş
+-- kayıtlar değil, o an CANLI olan doğrulama kodları da sızmış olurdu; saldırgan
+-- bekleyen bir girişi tamamlayabilirdi.
+--
+-- Parola özetindeki scrypt burada bilinçli olarak kullanılmıyor: kod 6 haneli
+-- ve 5 dakika yaşıyor, dolayısıyla çevrimdışı kırma penceresi yok; buna karşılık
+-- her kod denemesinde 100 ms scrypt çalıştırmak doğrulama ekranını gözle
+-- görülür biçimde yavaşlatırdı. Tuzlu SHA-256 bu iş için doğru denge.
+CREATE TABLE IF NOT EXISTS phone_verifications (
+  id           TEXT PRIMARY KEY,
+  phone        TEXT NOT NULL,        -- normalize edilmiş (90…)
+  code_hash    TEXT NOT NULL,        -- sha256$<tuz>$<özet>
+  purpose      TEXT NOT NULL CHECK (purpose IN ('booking', 'operator_login')),
+
+  -- İşletme 2FA'sında kodun hangi hesap için üretildiği. Müşteri akışında NULL.
+  operator_user_id TEXT,
+
+  expires_at   TEXT NOT NULL,
+  attempts     INTEGER NOT NULL DEFAULT 0 CHECK (attempts >= 0),
+  consumed_at  TEXT,
+  created_at   TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_phone_verifications_lookup
+  ON phone_verifications(phone, purpose, consumed_at);
+CREATE INDEX IF NOT EXISTS idx_phone_verifications_expiry
+  ON phone_verifications(expires_at);
 
 -- Hız sınırı sayaçları.
 --

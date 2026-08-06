@@ -3,10 +3,13 @@
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { cancelBooking, createBooking, getBookingByCode } from '@/lib/db/bookings';
-import { findOrCreateUser, normalizePhone } from '@/lib/db/users';
+import { findOrCreateUser, getUser, normalizePhone } from '@/lib/db/users';
 import { getSlot, listSlots, releaseCapacity, reserveCapacity, type Slot } from '@/lib/db/slots';
 import { getUserId, setUserSession } from '@/lib/session';
 import { currentUserId } from '@/lib/auth';
+import { sendVerificationCode, verifyCode } from '@/lib/verification';
+import { bookingCodeMessage } from '@/lib/sms/messages';
+import { maskPhone } from '@/lib/sms';
 import { getActivityBySlug } from '@/lib/db/activities';
 import { record } from '@/lib/db/audit';
 import { requestContext } from '@/lib/request-context';
@@ -18,7 +21,18 @@ import {
   type LimitRule,
 } from '@/lib/db/rate-limit';
 
-export type BookingFormState = { error?: string };
+/**
+ * `step === 'verify'` arayüzün kod ekranına geçmesini söyler.
+ *
+ * Doğrulama rezervasyondan ÖNCE yapılır: kapasite tutulduktan sonra
+ * doğrulama istenseydi, doğrulamayan biri slotları tutup bırakmayarak
+ * işletmenin gününü doldurabilirdi.
+ */
+export type BookingFormState = {
+  error?: string;
+  step?: 'verify';
+  phoneHint?: string;
+};
 
 /** Seçilen aktivitenin kapasite moduna göre slottan kaç birim düşeceğini hesaplar. */
 function unitsFor(capacityMode: 'per_person' | 'per_booking', party: number): number {
@@ -62,6 +76,45 @@ export async function createBookingAction(
   if (!slotId) return { error: 'Lütfen tarih ve saat seçin.' };
   if (!Number.isInteger(adults) || adults < 1) return { error: 'En az bir yetişkin gerekli.' };
   if (!Number.isInteger(children) || children < 0) return { error: 'Çocuk sayısı geçersiz.' };
+
+  const normalizedPhone = normalizePhone(phone);
+
+  // ---- Numara doğrulaması ----
+  //
+  // Doğrulanmış oturumu olan ve AYNI numarayı giren kişiden yeniden kod
+  // istenmez: oturum 90 gün yaşıyor, her rezervasyonda kod istemek geri dönen
+  // müşteriyi cezalandırmak olurdu. Numara değiştiyse yeni numara doğrulanır —
+  // bilet ve iptal bildirimleri oraya gidecek.
+  const sessionUserId = await currentUserId();
+  const sessionUser = sessionUserId ? await getUser(sessionUserId) : null;
+
+  if (!sessionUser || sessionUser.phone !== normalizedPhone) {
+    const code = String(formData.get('code') ?? '').trim();
+
+    // Kod girilmemişse gönder ve kod ekranını iste. Girilmişse doğrula.
+    // İkisi tek eylemde: ayrı bir doğrulama eylemi olsaydı "hangi numara
+    // doğrulandı" kuralı iki yerde yaşar ve biri gevşetilebilirdi.
+    if (!code) {
+      const sent = await sendVerificationCode({
+        phone: normalizedPhone,
+        purpose: 'booking',
+        message: bookingCodeMessage,
+      });
+
+      if (!sent.ok) return { error: sent.error };
+      return { step: 'verify', phoneHint: maskPhone(normalizedPhone) };
+    }
+
+    const verified = await verifyCode({ phone: normalizedPhone, purpose: 'booking', code });
+    if (!verified.ok) {
+      // Yanlış kodda YENİ kod gönderilmez: her denemede yeniden göndermek
+      // hem hız sınırını tüketirdi hem de kullanıcının elindeki kodu
+      // geçersiz kılıp onu sonsuz döngüye sokardı.
+      return { error: verified.error, step: 'verify', phoneHint: maskPhone(normalizedPhone) };
+    }
+
+    // Doğrulandı; oturum aşağıda rezervasyonla birlikte kurulur.
+  }
 
   // Sınır, kapasite düşülmeden önce uygulanır: sonra uygulansaydı reddedilen
   // istek yine bir slotu doldurup geri vermiş olurdu.
