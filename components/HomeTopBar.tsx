@@ -22,13 +22,11 @@ export function HomeTopBar() {
           className="h-8 w-8 object-contain"
           priority
         />
-        <button
-          type="button"
-          aria-label="Bildirimler"
-          className="rounded-full p-2 text-on-surface-variant transition-transform hover:bg-surface-container-low active:scale-95"
-        >
-          <Icon name="notifications" />
-        </button>
+        {/*
+          Bildirim düğmesi kaldırıldı. Arkasında bildirim sistemi yok ve
+          olmayan bir özelliğe zil simgesi koymak, kullanıcıya okunmamış bir
+          şey olabileceğini düşündürüp her seferinde boşa tıklatıyordu.
+        */}
       </div>
     </header>
   );

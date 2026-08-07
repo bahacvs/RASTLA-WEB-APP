@@ -12,6 +12,37 @@ import { Icon } from '@/components/Icon';
 export function DetailHeader() {
   const router = useRouter();
   const [scrolled, setScrolled] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  /**
+   * Telefonda işletim sisteminin paylaşım sayfasını açar; masaüstünde ya da
+   * desteklenmeyen tarayıcıda adresi panoya kopyalar ve düğme kısa süre onay
+   * simgesine döner.
+   *
+   * `navigator.share` kullanıcı iptal ettiğinde de hata fırlatır — bu bir
+   * arıza değil, karar. O yüzden sessizce yutuluyor; panoya kopyalama da
+   * başarısız olursa yapacak bir şey kalmıyor.
+   */
+  async function share() {
+    const url = window.location.href;
+
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: document.title, url });
+        return;
+      } catch {
+        return;
+      }
+    }
+
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Pano da yoksa yapılacak bir şey yok.
+    }
+  }
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 50);
@@ -35,22 +66,21 @@ export function DetailHeader() {
         <Icon name="arrow_back" filled />
       </button>
 
-      <div className="flex gap-2">
-        <button
-          type="button"
-          aria-label="Paylaş"
-          className="flex h-10 w-10 items-center justify-center rounded-full bg-surface/80 text-on-surface shadow-sm backdrop-blur-md transition-transform active:scale-95"
-        >
-          <Icon name="share" />
-        </button>
-        <button
-          type="button"
-          aria-label="Favorilere ekle"
-          className="flex h-10 w-10 items-center justify-center rounded-full bg-surface/80 text-on-surface shadow-sm backdrop-blur-md transition-transform active:scale-95"
-        >
-          <Icon name="favorite" />
-        </button>
-      </div>
+      {/*
+        Favori düğmesi kaldırıldı: arkasında hiçbir şey yoktu ve favori
+        saklamak hesap ile kalıcılık gerektiriyor — yani bu fazda olmayan bir
+        özellik. Duran ama çalışmayan bir düğme, olmayan özellikten kötü.
+        Paylaş ise gerçekten uygulandı; pazaryeri için karşılığı olan tek
+        düğme oydu.
+      */}
+      <button
+        type="button"
+        onClick={share}
+        aria-label="Paylaş"
+        className="flex h-10 w-10 items-center justify-center rounded-full bg-surface/80 text-on-surface shadow-sm backdrop-blur-md transition-transform active:scale-95"
+      >
+        <Icon name={copied ? 'check_circle' : 'share'} />
+      </button>
     </header>
   );
 }

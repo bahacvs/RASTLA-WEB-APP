@@ -55,22 +55,14 @@ export function SearchView({
     <div className="pb-[80px]">
       {/* Yapışkan üst alan: başlık, arama, filtreler, görünüm anahtarı */}
       <div className="sticky top-0 z-40 rounded-b-xl border-b border-surface-variant bg-surface pb-md shadow-sm">
-        <header className="mx-auto flex h-16 w-full max-w-7xl items-center justify-between px-container-margin text-primary">
-          <button
-            type="button"
-            aria-label="Konumu değiştir"
-            className="rounded-full p-2 transition-colors hover:bg-surface-container-low active:scale-95"
-          >
-            <Icon name="location_on" />
-          </button>
+        {/*
+          Yanlardaki iki düğme kaldırıldı. "Konumu değiştir" arkasında bölge
+          seçimi olmadığı için hiçbir şey yapmıyordu — uygulama tek bölgede
+          çalışıyor ve konum zaten ana sayfada yazılı. "Bildirimler" de aynı
+          şekilde boştu. İkisi de gidince başlık ortalanıyor.
+        */}
+        <header className="mx-auto flex h-16 w-full max-w-7xl items-center justify-center px-container-margin text-primary">
           <div className="text-display-lg tracking-tighter text-primary">RASTLA</div>
-          <button
-            type="button"
-            aria-label="Bildirimler"
-            className="rounded-full p-2 transition-colors hover:bg-surface-container-low active:scale-95"
-          >
-            <Icon name="notifications" />
-          </button>
         </header>
 
         <div className="mt-xs px-container-margin">

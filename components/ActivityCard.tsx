@@ -26,15 +26,10 @@ export function ActivityCard({ activity }: { activity: Activity }) {
       </div>
 
       <div className="p-4">
-        <div className="mb-2 flex items-start justify-between">
+        {/* Favori düğmesi kaldırıldı: arkasında kalıcılık yok, tıklama hiçbir
+            şey yapmıyordu. Aynı gerekçe DetailHeader'da yazılı. */}
+        <div className="mb-2">
           <h3 className="text-headline-sm text-on-surface">{activity.title}</h3>
-          <button
-            type="button"
-            aria-label="Favorilere ekle"
-            className="text-on-surface-variant transition-transform active:scale-90"
-          >
-            <Icon name="favorite" />
-          </button>
         </div>
 
         <p className="mb-4 flex items-center gap-2 text-body-md text-on-surface-variant">
