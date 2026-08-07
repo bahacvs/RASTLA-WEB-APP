@@ -96,12 +96,17 @@ export function ActivityMap({
     setMoved(false);
   }
 
+  // Anahtar yokken bu ekrana normalde hiç gelinmez: /ara harita düğmesini
+  // çizmiyor. Yine de savunma olarak duruyor — bileşen başka bir yerden
+  // çağrılabilir. Metin ziyaretçiye göre yazılı: eskiden burada ortam
+  // değişkeninin adı yazıyordu ve bunu okuyan kişi siteyi bozuk sanıyordu.
+  // Eksikliğin görülmesi gereken yer arayüz değil, `/api/saglik`.
   if (!isMapEnabled) {
     return (
       <div className="flex h-full w-full items-center justify-center bg-surface-container p-lg text-center">
         <p className="text-body-md text-on-surface-variant">
-          Harita yapılandırılmamış. Sunucuda{' '}
-          <code className="font-mono text-label-sm">NEXT_PUBLIC_MAPTILER_KEY</code> tanımlanmalı.
+          Harita görünümü şu an kullanılamıyor. Aktiviteleri liste görünümünden
+          inceleyebilirsiniz.
         </p>
       </div>
     );

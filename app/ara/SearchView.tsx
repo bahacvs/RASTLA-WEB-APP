@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react';
 import { Icon } from '@/components/Icon';
 import { ActivityMap } from '@/components/ActivityMap';
+import { isMapEnabled } from '@/lib/map';
 import { SearchResultCard } from '@/components/SearchResultCard';
 import { BottomNavBar } from '@/components/BottomNavBar';
 import { FilterModal } from './FilterModal';
@@ -119,6 +120,14 @@ export function SearchView({
           })}
         </div>
 
+        {/*
+          Harita anahtarı yoksa geçiş düğmesi hiç çizilmez.
+          Yapılandırılmamış bir özelliği düğme olarak sunmak, ziyaretçiye
+          bozukmuş gibi görünen boş bir kutu göstermek demekti. Eksikliğin
+          fark edilmesi gereken yer arayüz değil `/api/saglik`; orası
+          `harita: false` diyor.
+        */}
+        {isMapEnabled && (
         <div className="mt-md flex justify-center px-container-margin">
           <div className="flex w-full max-w-[240px] rounded-full bg-surface-container-low p-1">
             {(['list', 'map'] as const).map((v) => (
@@ -138,10 +147,11 @@ export function SearchView({
             ))}
           </div>
         </div>
+        )}
       </div>
 
       <main className="relative min-h-[calc(100vh-250px)] w-full">
-        {view === 'list' ? (
+        {view === 'list' || !isMapEnabled ? (
           <div className="flex flex-col gap-md p-container-margin">
             <p className="text-body-md text-on-surface-variant" aria-live="polite">
               {results.length > 0

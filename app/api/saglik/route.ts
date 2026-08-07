@@ -1,5 +1,6 @@
 import { db, toCount, usingPostgres } from '@/lib/db/index.mjs';
 import { IS_DEMO } from '@/lib/demo';
+import { isMapEnabled } from '@/lib/map';
 
 /**
  * Dağıtım sağlık ucu.
@@ -39,6 +40,9 @@ export async function GET() {
       ok: veritabani.erisilebilir,
       motor: usingPostgres ? 'postgres' : 'sqlite',
       demo: IS_DEMO,
+      // Harita anahtarı yoksa arayüz artık sessizce liste görünümüne düşüyor.
+      // Sessiz olması iyi — ama eksikliğin bir yerden görülmesi gerekiyor.
+      harita: isMapEnabled,
       veritabani,
     },
     {
