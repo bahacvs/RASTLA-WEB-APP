@@ -202,6 +202,37 @@ verisi silinir.** İşletmenin telefonuyla çektiği fotoğraf çekim koordinat�
 taşır; bu bilgi işletme adına yayımlanmamalı. `verify-uploads.mjs` bunu her
 koşumda GPS taşıyan gerçek bir dosyayla doğrular.
 
+## 6d. Tanıtım (demo) sürümü
+
+Siteyi gerçek veriyle açmadan önce gezip incelemek için ayrı bir kip var.
+
+```bash
+DEMO_MODE=1 node scripts/demo-seed.mjs
+```
+
+Betik **uydurma** üç işletme, altı ilan, 60 günlük takvim ve her işletme için
+**sahip + personel** hesabı üretir; parolayı çalıştırma sonunda bir kez yazar
+(`--parola "..."` ile kendiniz de belirleyebilirsiniz).
+
+`DEMO_MODE=1` tanımlıyken:
+
+- robots.txt her şeyi kapatır, sitemap boşalır, sayfalar `noindex` olur
+- her sayfanın üstünde "TANITIM SÜRÜMÜ" şeridi görünür
+
+**Bu ikisi isteğe bağlı değil.** Uydurma işletme adları arama motorlarına açık
+kalsaydı, var olmayan işletmeler Büyükçekmece'de gerçekten hizmet veriyormuş
+gibi indekslenir; biri rezervasyon yapmaya çalışır, kimse karşılamaz.
+
+> **Derleme anı uyarısı:** `robots.txt`, `sitemap.xml`, ana sayfa ve aktivite
+> sayfaları **derleme sırasında** üretilir. Yani `DEMO_MODE` derleme sırasında
+> da tanımlı olmalı ve **veritabanı derlemeden önce doldurulmuş olmalıdır.**
+> Vercel'de sıra şu: önce veritabanını oluştur → `demo-seed` ile doldur →
+> ortam değişkenlerini gir → yeniden dağıt.
+
+Gerçek kullanıma geçerken `DEMO_MODE` değişkenini **silin**, demo işletmelerin
+hesaplarını `/isletme/ekip` üzerinden askıya alın ve demo ilanlarını yayından
+kaldırın.
+
 ## 7. İlk işletme hesapları
 
 Sunucuda bir kez:
@@ -269,6 +300,7 @@ proje ayarlarından girilir.
 | `PAYMENT_PROVIDER` | **Hayır — üretimde asla** | Yalnızca test. `fake` verilirse ödeme alınmadan bilet üretilir. |
 | `BLOB_READ_WRITE_TOKEN` | **Evet** (görsel yüklenecekse) | Yüklenen görsellerin deposu. Yoksa dosya sistemi kullanılır ve **sunucusuz ortamda dosyalar kaybolur.** |
 | `STORAGE_PROVIDER` / `UPLOAD_PATH` | Hayır | Depoyu `local`'a zorlar; yerel kök dizini belirler. |
+| `DEMO_MODE` | Hayır | `1` verilirse tanıtım kipi: site tamamen `noindex`, her sayfada uyarı şeridi. Gerçek kullanımda **tanımlanmamalı**. |
 
 ---
 

@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from 'next';
 import { SITE_DESCRIPTION, SITE_NAME, SITE_URL } from '@/lib/site';
 import { ServiceWorker } from '@/components/ServiceWorker';
+import { DemoBanner } from '@/components/DemoBanner';
+import { IS_DEMO } from '@/lib/demo';
 
 // Inter, npm paketinden yerel olarak servis edilir; Google Fonts'a istek atılmaz.
 import '@fontsource/inter/400.css';
@@ -43,6 +45,11 @@ export const metadata: Metadata = {
   twitter: {
     card: 'summary_large_image',
   },
+
+  // Demo kipinde SİTENİN TAMAMI arama motorlarına kapatılır. Uydurma
+  // işletmelerin ve ilanların indekslenmesi, var olmayan bir hizmetin
+  // gerçekmiş gibi görünmesi demek olurdu.
+  ...(IS_DEMO ? { robots: { index: false, follow: false } } : {}),
 };
 
 export const viewport: Viewport = {
@@ -60,6 +67,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         yerine yapışkan rezervasyon çubuğu bulunur, ikisi üst üste binmemeli.
       */}
       <body className="bg-background text-body-md text-on-background">
+        <DemoBanner />
         {children}
         <ServiceWorker />
       </body>
