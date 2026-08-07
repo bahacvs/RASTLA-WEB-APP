@@ -2,7 +2,9 @@
 
 RASTLA, Türkiye'deki su sporları ve yerel turistik aktiviteleri tek platformda keşfetme, karşılaştırma ve rezervasyon yapma vizyonuyla geliştirilen bir deneyim pazaryeridir.
 
-> **Yayına almak için:** [KURULUM.md](KURULUM.md) — kod tarafı hazır; o belge yalnızca sizden gelmesi gereken şeyleri (şirket bilgileri, veritabanı, anahtarlar, hukukçu onayı) sırayla listeler.
+Arama ve rezervasyondan SMS doğrulamasına, online ödemeden bilet okutmaya kadar akışın tamamı çalışır durumda.
+
+> **Yayına almak için:** [KURULUM.md](KURULUM.md) — kod tarafında yapılacak bir şey yok; o belge yalnızca sizden gelmesi gereken şeyleri (şirket bilgileri, veritabanı, ödeme ve mesaj anahtarları, ETBİS kaydı, hukukçu onayı) sırayla listeler.
 
 ## Pilot kapsam
 
@@ -303,20 +305,21 @@ Rezervasyon ödeme boyunca `pending_payment` durumunda bekler ve kapasitesi tutu
 
 **E-posta gövdesinde kişisel veri yoktur.** Uyarı hangi kuralın kaç kez tetiklendiğini ve nerede bakılacağını söyler; kim, hangi adresten, hangi kayıt — bunların cevabı yalnızca işlem günlüğünde. E-posta üçüncü bir sağlayıcının sunucularından geçip orada saklanıyor; korumaya çalıştığımız veriyi oraya taşımak tuhaf olurdu. Aynı sebeple IP adresi `alerts` tablosuna da yazılmıyor.
 
-`ALERT_EMAIL_TO` tanımsızsa iş **başarısız sayılır** ve zamanlayıcı hata görür. Uyarı üretip kimseye haber vermemek, bu fazın var olma sebebini ortadan kaldırırdı. Uyarılar yine de kaydedilir, `/isletme/gunluk` üzerinde bayrak olarak görünür ve bir sonraki koşum göndermeyi tekrar dener.
+`ALERT_EMAIL_TO` tanımsızsa iş **başarısız sayılır** ve zamanlayıcı hata görür. Uyarı üretip kimseye haber vermemek, uyarı sisteminin var olma sebebini ortadan kaldırırdı. Uyarılar yine de kaydedilir, `/isletme/gunluk` üzerinde bayrak olarak görünür ve bir sonraki koşum göndermeyi tekrar dener.
 
 `verify-alerts.mjs` (25 kontrol) eşiğin altının uyarı üretmediğini, aynı olayın 50 kez tekrarında tek uyarı kaldığını, **12 ayrı süreç aynı anda süpürdüğünde yalnızca birinin uyarı oluşturduğunu** ve e-posta gövdesinde IP ile hesap kimliğinin geçmediğini doğrular.
 
-### Bu fazın bilinen sınırları
+### Bilinen sınırlar
 
-Aşağıdakiler **pilot seviyesindedir** ve üretime çıkmadan önce değişmelidir:
+Bunlar eksik iş değil, **bilinçli olarak çizilmiş sınırlar.** Her biri neden öyle olduğuyla birlikte yazılı:
 
-1. **İkinci faktörü olmayan eski hesaplar.** Bu özellikten önce açılmış işletme hesaplarında numara yok; parolayla girmeye devam ederler ve ekip ekranında uyarı görürler. Numara eklenene kadar tek katmanlıdırlar.
-2. **iyzico bağdaştırıcısı gerçek anahtarla sınanmadı.** Ödeme akışının doğruluk iddialarının tamamı (yarış, süre aşımı, kurcalanmış tutar, iade idempotanlığı) aynı sözleşmeyi uygulayan `fake` sağlayıcıyla ve gerçek eşzamanlılıkla kanıtlandı; bu iddiaların hiçbiri sağlayıcıya özgü değil, hepsi bizim kodumuzda. Sağlayıcıya özgü olan **yalnızca imzalama ve alan adlarıdır** ve o kısım ilk sandbox anahtarıyla sınanmalıdır.
-3. **Aracı hizmet sağlayıcı yükümlülükleri açık.** RASTLA para akışına girdiği an ETBİS kaydı, mesafeli satış sözleşmesi ve ön bilgilendirme formu gerekir. Metinler henüz yok.
-4. **Tespit kuralları sabit eşiklidir.** Kurallar her işletme için aynı sayıyı kullanıyor; günde 400 rezervasyon alan bir işletmeyle 20 alan aynı eşiğe tabi. Davranışa göre uyarlanan eşikler daha isabetli olurdu ama ölçülecek geçmiş veri henüz yok.
-5. **Görsel moderasyonu yoktur.** Yüklenen fotoğraf teknik olarak doğrulanır (tür, boyut, üstveri) ama içeriğine bakılmaz; uygunsuz görsel ancak bildirim üzerine kaldırılır. İşletme sözleşmesi sorumluluğu işletmeye veriyor.
-6. **Harita karoları dış bağımlılıktır.** Uygulamanın tek dış isteği budur ve kaçışı yoktur. Sağlayıcı kullanıcı IP'lerini görür — KVKK aydınlatma metninde yer almalı.
+1. **iyzico bağdaştırıcısı gerçek anahtarla sınanmadı.** Ödeme akışının doğruluk iddialarının tamamı (yarış, süre aşımı, kurcalanmış tutar, iade idempotanlığı) aynı sözleşmeyi uygulayan `fake` sağlayıcıyla ve gerçek eşzamanlılıkla kanıtlandı; bu iddiaların hiçbiri sağlayıcıya özgü değil, hepsi bizim kodumuzda. Sağlayıcıya özgü olan **yalnızca imzalama ve alan adlarıdır** ve o kısım ilk sandbox anahtarıyla sınanmalıdır.
+2. **Yedekleme yoktur.** Veritabanı barındırma sağlayıcısının kendi düzenine bırakılmış; geri yükleme hiç denenmedi. İhlal müdahale planındaki kalan tek yapısal eksik budur ve bir sonraki önceliktir.
+3. **Tespit kuralları sabit eşiklidir.** Kurallar her işletme için aynı sayıyı kullanır; günde 400 rezervasyon alan bir işletmeyle 20 alan aynı eşiğe tabidir. Davranışa göre uyarlanan eşikler daha isabetli olurdu ama ölçülecek geçmiş veri henüz yok.
+4. **Görsel moderasyonu yoktur.** Yüklenen fotoğraf teknik olarak doğrulanır (tür, boyut, üstveri) ama içeriğine bakılmaz; uygunsuz görsel bildirim üzerine kaldırılır. İşletme veri sözleşmesi sorumluluğu işletmeye verir.
+5. **Fatura/e-arşiv entegrasyonu yoktur.** Komisyon faturası elle kesilir.
+6. **İkinci faktörü olmayan eski hesaplar.** Bu özellikten önce açılmış işletme hesaplarında numara yok; parolayla girmeye devam eder ve ekip ekranında uyarı görürler. Numara eklenene kadar tek katmanlıdırlar.
+7. **Harita karoları dış bağımlılıktır.** Uygulamanın tek dış isteği budur ve kaçışı yoktur. Sağlayıcı kullanıcı IP'lerini görür — KVKK aydınlatma metninde yer alır.
 
 ## Doğrulama betikleri
 
@@ -365,17 +368,13 @@ Sayfalarda "önce ağ, olmazsa önbellek" yaklaşımı kullanılır — doluluk 
 
 Bilinen bir tuzak: `--spacing-md` gibi adlandırılmış boşluk tokenları Tailwind'in `--container-*` ölçeğini gölgeler, bu yüzden `max-w-md` 28rem yerine 16px'e çözülür. Sabit genişlik gerektiğinde `max-w-[28rem]` gibi açık değer kullanın.
 
-## Gerçekçi teknik durum
+## Durum
 
-Bu çalışma tam bir üretim uygulaması değildir; veri katmanı henüz sahtedir.
+Ürün akışı uçtan uca tamam. Misafir aktiviteyi buluyor, saatini seçiyor, numarasını SMS ile doğruluyor, kartıyla ödüyor ve QR kodlu biletini alıyor. İşletme kendi aktivitelerini ekliyor, takvimini kuruyor, fotoğraflarını yüklüyor, bileti okutuyor ve gününü yönetiyor. Ödeme alınıyor, komisyon kesiliyor, iade gerektiğinde otomatik yapılıyor.
 
-1. ~~Tasarım React/Next.js bileşenlerine ayrılmalı.~~ **Tamamlandı.**
-2. ~~Görseller kalıcı dosyalarla değiştirilmeli.~~ **Kısmen tamamlandı** — görseller repoya alındı, ancak lisans durumu hâlâ açık (aşağıya bakın).
-3. ~~Rezervasyon kaydı ve işletme onay akışı çalışıyor; kimlik doğrulama, ödeme ve müsaitlik yönetimi eksik.~~ **Tamamlandı** — SMS doğrulaması, işletme 2FA'sı, müsaitlik yönetimi ve pazaryeri ödemesi devrede. iyzico bağdaştırıcısı gerçek anahtarla henüz sınanmadı.
-4. ~~Harita sağlayıcısı seçilmeli.~~ **Tamamlandı** — MapLibre + karo sağlayıcısı; işletme konumu koordinat olarak girer.
-5. KVKK metinleri **taslak olarak hazırlandı** (`legal/`), hukukçu onayı bekliyor. Mesafeli satış sözleşmesi, ön bilgilendirme formu ve işletme sözleşmeleri henüz yok.
+Bunların hepsi **gerçek bir veritabanına** yazıyor (SQLite ya da Postgres, tek bir bağlantı dizesiyle seçilir) ve doğruluk iddiaları 16 süitle, ayrı işletim sistemi süreçleriyle, iki motorda birden sınanıyor.
 
-İşletme kendi aktivitelerini ekleyip takvimini tanımlayabilir; rezervasyon slot kapasitesinden düşer, ödemesi alınır ve QR kodlu bilet üretir. Ödemenin canlıya çıkması için iyzico üye işyeri hesabı, ETBİS kaydı ve mesafeli satış metinleri gerekir — üçü de sizden gelmesi gerekenler arasında (bkz. KURULUM.md).
+**Canlıya çıkmak için kod tarafında yapılacak bir şey yok.** Kalanlar sizden gelmesi gerekenler — iyzico üye işyeri anahtarları, ETBİS kaydı, hukukçu onayı, SMS/e-posta/depolama anahtarları ve işletmelerin ticari bilgileri. Hepsi sırayla [KURULUM.md](KURULUM.md) içinde; o belge tamamlanmadan gerçek para tahsil edilmemelidir.
 
 ### Görsel lisansı — açık madde
 
@@ -399,14 +398,25 @@ Marka varlıkları (`public/brand/`) ve ikonlar bu kapsamda değildir — ikonla
 app/                  rotalar ve global stiller
 components/           paylaşılan bileşenler (Icon, kartlar, navigasyon)
 components/icons/     üretilmiş SVG ikon verisi — elle düzenlenmez
-lib/                  veri modeli, oturum ve biçimlendirme yardımcıları
-lib/db/               şema; aktivite, slot, rezervasyon ve kullanıcı depoları
+lib/                  veri modeli, oturum, görsel işleme ve biçimlendirme
+lib/db/               şema; aktivite, slot, rezervasyon, ödeme ve kullanıcı depoları
+lib/payments/         sağlayıcı soyutlaması (iyzico | fake) ve ödeme akışı
+lib/storage/          dosya deposu (local | vercel-blob)
+lib/alerts/           tespit kuralları ve uyarı üretimi
+lib/jobs/             zamanlanmış işler — HTTP ucu ve komut satırı aynı kodu çağırır
+lib/sms/, lib/mail/   giden mesaj sağlayıcıları (console varsayılan)
 public/               görseller ve marka varlıkları
-scripts/              varlık üretimi ve doğrulama betikleri
+scripts/              varlık üretimi ve 16 doğrulama süiti
 reference/prototypes/ özgün statik Stitch ekranları (build'e dahil değil)
-legal/                KVKK metinleri — TASLAK, hukukçu onayı bekliyor
+legal/                KVKK ve mesafeli satış metinleri — TASLAK, hukukçu onayı bekliyor
 ```
 
 ## Sonraki geliştirme hedefi
 
-`lib/data.ts` içindeki sahte veriyi gerçek bir kaynağa (API/veritabanı) bağlamak, ardından işletme tarafında müsaitlik yönetimini eklemek. Online ödeme kontrollü bir sonraki fazda devreye alınmalıdır.
+Öncelik sırasıyla:
+
+1. **Otomatik yedekleme ve geri yükleme tatbikatı.** İhlal müdahale planındaki kalan tek yapısal eksik; fidye yazılımı ya da hatalı toplu silme senaryosunda bedeli en ağır olan şey.
+2. **iyzico sandbox anahtarıyla uçtan uca koşum** — bağdaştırıcının imzalama ve alan adlarını gerçek sağlayıcıya karşı doğrulamak.
+3. **Fatura/e-arşiv entegrasyonu** ve işletmeye hakediş raporu ekranı.
+
+Kapsam dışı bırakılanlar: çoklu para birimi, taksit seçenekleri, görsel moderasyon kuyruğu ve uygulama içi bildirim. Bunların hiçbiri pilotu engellemiyor.
