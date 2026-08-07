@@ -439,6 +439,50 @@ CREATE INDEX IF NOT EXISTS idx_phone_verifications_lookup
 CREATE INDEX IF NOT EXISTS idx_phone_verifications_expiry
   ON phone_verifications(expires_at);
 
+-- Otomatik güvenlik uyarıları.
+--
+-- İşlem günlüğü tutulmakla iş bitmiyor: kimse bakmazsa bir saldırı orada
+-- sessizce durur. Bu tablo, kurallardan (lib/alerts/rules.ts) çıkan bulguları
+-- tutar ve e-postayla haber verilenleri işaretler.
+--
+-- **`dedupe_key` bu tablonun tamamının dayandığı fikirdir.** İçinde bir ZAMAN
+-- KOVASI var (`kural:hedef:saat`) ve ekleme `ON CONFLICT DO NOTHING` ile
+-- yapılıyor. Bunun iki sonucu var:
+--
+--   1. Bekleme süresi bedavaya geliyor — aynı kural aynı hedef için aynı saat
+--      içinde kaç kez tetiklenirse tetiklensin tek satır oluşur. Yoksa 500
+--      başarısız giriş 500 e-posta demek olurdu ve o e-postalar okunmazdı.
+--   2. "Önce bak, sonra yaz" yarışı hiç doğmuyor. İki süpürme aynı anda
+--      çalışsa bile ikinci ekleme veritabanı tarafından sessizce düşürülür.
+--      Kontrol kodda olsaydı ikisi de "yok" görüp ikisi de yazabilirdi.
+CREATE TABLE IF NOT EXISTS alerts (
+  id           TEXT PRIMARY KEY,
+  at           TEXT NOT NULL,
+
+  -- Kuralın kimliği (lib/alerts/rules.ts içindeki `id`).
+  rule         TEXT NOT NULL,
+  severity     TEXT NOT NULL CHECK (severity IN ('info', 'warning', 'critical')),
+
+  -- Uyarının ilgili olduğu işletme. NULL = sistem geneli.
+  operator_id  TEXT,
+
+  -- Kural + hedef + zaman kovası. UNIQUE olması uyarı fırtınasını önler.
+  dedupe_key   TEXT NOT NULL UNIQUE,
+
+  -- İnsanın okuyacağı özet ve sayısal ayrıntı (JSON).
+  summary      TEXT NOT NULL,
+  details      TEXT,
+
+  -- E-posta gönderildiği an. NULL ise henüz haber verilmemiş.
+  notified_at  TEXT,
+  -- İşletme "gördüm" dediğinde dolar; açık uyarılar ekranda bayrak gösterir.
+  resolved_at  TEXT,
+  resolved_by  TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_alerts_open ON alerts(resolved_at, at DESC);
+CREATE INDEX IF NOT EXISTS idx_alerts_operator ON alerts(operator_id, at DESC);
+
 -- Hız sınırı sayaçları.
 --
 -- Sabit pencere sayacı: her kova (ör. "login:ip:1.2.3.4") bir pencere

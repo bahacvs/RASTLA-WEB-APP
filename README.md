@@ -280,6 +280,29 @@ Rezervasyon ödeme boyunca `pending_payment` durumunda bekler ve kapasitesi tutu
 
 `verify-uploads.mjs` (29 kontrol) bunu iddia etmekle kalmıyor: **GPS ve cihaz bilgisi taşıyan gerçek bir JPEG üretip yüklüyor, sonra sunucudan indirilen baytlarda EXIF'in kalmadığını gösteriyor** — hem sunulan kopyada hem depodaki dosyada. Ayrıca sahte dosyanın, bombanın ve adet sınırının reddedildiğini, sınırın arayüz engelleri DOM üzerinden kaldırıldığında bile **sunucuda** tutulduğunu doğruluyor.
 
+### Otomatik ihlal uyarısı
+
+İşlem günlüğü tutmak tek başına yetmiyordu: kimse bakmazsa bir saldırı orada sessizce durur. `uyarilar` işi on beş dakikada bir tespit kurallarını çalıştırıyor.
+
+**Kurallar kod, veri değil** (`lib/alerts/rules.mjs`). Veritabanında yapılandırılabilir olsalardı kimsenin gözden geçirmediği eşiklere dönüşürlerdi; kodda oldukları için her değişiklik incelemeden geçiyor ve gerekçesi yanında yazıyor.
+
+| Kural | Eşik | Önem |
+| --- | --- | --- |
+| Başarısız giriş yoğunluğu | 1 saatte 20 (işletme başına) | kritik |
+| Reddedilen bilet onayı | 1 saatte 15 (kişi başına) | uyarı |
+| Toplu iptal | 10 dakikada 20 (işletme başına) | kritik |
+| Sık veri dışa aktarma | 24 saatte 6 (kişi başına) | uyarı |
+| Ödeme tutarı uyuşmazlığı | 1 (tek bir tanesi bile) | kritik |
+| Yeni adresten giriş | ilk kez görülen adres | bilgi |
+
+**Uyarı fırtınası olmuyor.** `alerts.dedupe_key` içinde bir **zaman kovası** var (`kural:hedef:saat`) ve ekleme `ON CONFLICT (dedupe_key) DO NOTHING` ile yapılıyor. Bunun iki sonucu var: bekleme süresi bedavaya geliyor (500 başarısız giriş tek uyarı üretir, 500 e-posta değil), ve "önce bak, sonra yaz" yarışı hiç doğmuyor — kontrol veritabanında, kodda değil.
+
+**E-posta gövdesinde kişisel veri yoktur.** Uyarı hangi kuralın kaç kez tetiklendiğini ve nerede bakılacağını söyler; kim, hangi adresten, hangi kayıt — bunların cevabı yalnızca işlem günlüğünde. E-posta üçüncü bir sağlayıcının sunucularından geçip orada saklanıyor; korumaya çalıştığımız veriyi oraya taşımak tuhaf olurdu. Aynı sebeple IP adresi `alerts` tablosuna da yazılmıyor.
+
+`ALERT_EMAIL_TO` tanımsızsa iş **başarısız sayılır** ve zamanlayıcı hata görür. Uyarı üretip kimseye haber vermemek, bu fazın var olma sebebini ortadan kaldırırdı. Uyarılar yine de kaydedilir, `/isletme/gunluk` üzerinde bayrak olarak görünür ve bir sonraki koşum göndermeyi tekrar dener.
+
+`verify-alerts.mjs` (25 kontrol) eşiğin altının uyarı üretmediğini, aynı olayın 50 kez tekrarında tek uyarı kaldığını, **12 ayrı süreç aynı anda süpürdüğünde yalnızca birinin uyarı oluşturduğunu** ve e-posta gövdesinde IP ile hesap kimliğinin geçmediğini doğrular.
+
 ### Bu fazın bilinen sınırları
 
 Aşağıdakiler **pilot seviyesindedir** ve üretime çıkmadan önce değişmelidir:
@@ -287,7 +310,7 @@ Aşağıdakiler **pilot seviyesindedir** ve üretime çıkmadan önce değişmel
 1. **İkinci faktörü olmayan eski hesaplar.** Bu özellikten önce açılmış işletme hesaplarında numara yok; parolayla girmeye devam ederler ve ekip ekranında uyarı görürler. Numara eklenene kadar tek katmanlıdırlar.
 2. **iyzico bağdaştırıcısı gerçek anahtarla sınanmadı.** Ödeme akışının doğruluk iddialarının tamamı (yarış, süre aşımı, kurcalanmış tutar, iade idempotanlığı) aynı sözleşmeyi uygulayan `fake` sağlayıcıyla ve gerçek eşzamanlılıkla kanıtlandı; bu iddiaların hiçbiri sağlayıcıya özgü değil, hepsi bizim kodumuzda. Sağlayıcıya özgü olan **yalnızca imzalama ve alan adlarıdır** ve o kısım ilk sandbox anahtarıyla sınanmalıdır.
 3. **Aracı hizmet sağlayıcı yükümlülükleri açık.** RASTLA para akışına girdiği an ETBİS kaydı, mesafeli satış sözleşmesi ve ön bilgilendirme formu gerekir. Metinler henüz yok.
-4. **İhlal uyarısı otomatik değil.** İşlem günlüğü ve hız sınırı var; şüpheli bir örüntüde kimseye bildirim gitmiyor, günlük elle inceleniyor.
+4. **Tespit kuralları sabit eşiklidir.** Kurallar her işletme için aynı sayıyı kullanıyor; günde 400 rezervasyon alan bir işletmeyle 20 alan aynı eşiğe tabi. Davranışa göre uyarlanan eşikler daha isabetli olurdu ama ölçülecek geçmiş veri henüz yok.
 5. **Görsel moderasyonu yoktur.** Yüklenen fotoğraf teknik olarak doğrulanır (tür, boyut, üstveri) ama içeriğine bakılmaz; uygunsuz görsel ancak bildirim üzerine kaldırılır. İşletme sözleşmesi sorumluluğu işletmeye veriyor.
 6. **Harita karoları dış bağımlılıktır.** Uygulamanın tek dış isteği budur ve kaçışı yoktur. Sağlayıcı kullanıcı IP'lerini görür — KVKK aydınlatma metninde yer almalı.
 
@@ -314,6 +337,9 @@ PAYMENT_PROVIDER=fake npm start > server.log &
 SERVER_LOG=server.log node scripts/verify-payment.mjs  # yarış, süre aşımı, kurcalama, iade
 
 node scripts/verify-uploads.mjs       # sahte dosya, bomba, EXIF/GPS temizliği, adet sınırı
+
+# Otomatik uyarılar (sunucu CRON_SECRET ve ALERT_EMAIL_TO ile başlatılmış olmalı):
+SERVER_LOG=server.log node scripts/verify-alerts.mjs  # eşik, tekilleştirme, yarış, e-posta içeriği
 
 # Postgres'e karşı (DATABASE_URL tanımlıyken):
 DATABASE_URL=… node scripts/verify-postgres.mjs   # eşzamanlılık ve ağız farkları

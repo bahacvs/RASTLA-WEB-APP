@@ -22,6 +22,7 @@ Yazılım tarafında yapılacak bir iş kalmadıysa, sıra bu listede.
 | 6d | `CRON_SECRET` | Kendiniz üretirsiniz | Zamanlanmış işler kapalı kalır; ödemesi yarım kalan rezervasyonlar slotları kilitler |
 | 6e | SMS sağlayıcı anahtarı (Netgsm) | Sağlayıcıdan | Doğrulama kodları kimseye ulaşmaz, yalnızca sunucu günlüğüne yazılır |
 | 6f | Vercel Blob anahtarı | Vercel panelinden | Yüklenen görseller her dağıtımda kaybolur, sayfada kırık kutular kalır |
+| 6g | E-posta sağlayıcısı + `ALERT_EMAIL_TO` | Resend + ihlal planındaki sorumlular | Güvenlik uyarıları üretilir ama kimseye gitmez; `uyarilar` işi hata verir |
 | 7 | İlk işletme hesapları | Sizden | İşletmeler giriş yapamaz |
 | 8 | Yurt dışına aktarım sözleşmesi | Avukatınızdan | KVKK md. 9 ihlali |
 
@@ -293,6 +294,26 @@ npm run gorev -- odeme-suresi
 Bu iş çalışmıyorsa yerler boşuna kilitli kalır — doğrudan kaybedilen satış
 demektir. `CRON_SECRET` tanımlı değilse uç kapalıdır ve iş hiç tetiklenmez.
 
+### On beş dakikada bir: güvenlik uyarıları
+
+`uyarilar` işi tespit kurallarını çalıştırır ve yeni bulguları
+`ALERT_EMAIL_TO` adreslerine bildirir. Bu adresler **ihlal müdahale planındaki
+sorumlular** olmalı (bkz. `legal/veri-ihlali-mudahale-plani.md`, Bölüm 3).
+
+```bash
+npm run gorev -- uyarilar
+```
+
+`ALERT_EMAIL_TO` tanımsızsa iş **hata verir** ve zamanlayıcı bunu görür.
+Bilinçli: uyarı üretip kimseye haber vermemek, uyarı sisteminin var olma
+sebebini ortadan kaldırırdı. Uyarılar yine de kaydedilir ve işletme
+`/isletme/gunluk` ekranında bayrak olarak görür.
+
+**Uyarı e-postaları kişisel veri içermez** — kim, hangi adresten ve hangi
+kayıt sorularının cevabı yalnızca işlem günlüğündedir. Bu yüzden bir uyarı
+geldiğinde günlüğe bakılması gerekir; e-posta tek başına yeterli bilgi
+vermez ve vermemelidir.
+
 İşlem günlüğündeki IP ve tarayıcı bilgisi kişisel veridir; 12 ay sonunda
 silinir. Hız sınırı sayaçları 24 saat sonra temizlenir. **Veri tutmak kadar
 zamanında silmek de bir yükümlülüktür.**
@@ -351,6 +372,9 @@ SERVER_LOG=server.log node scripts/verify-payment.mjs
 
 # Görsel yükleme: sahte dosya, sıkıştırma bombası, EXIF/GPS temizliği
 node scripts/verify-uploads.mjs
+
+# Otomatik uyarılar (sunucu ALERT_EMAIL_TO ile de başlatılmış olmalı)
+SERVER_LOG=server.log node scripts/verify-alerts.mjs
 
 # Postgres'e karşı
 DATABASE_URL=… node scripts/verify-postgres.mjs
