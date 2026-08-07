@@ -12,7 +12,8 @@
     "seed": "node scripts/seed.mjs",
     "operator:create": "node scripts/operator-account.mjs",
     "retention": "node scripts/gorev.mjs saklama",
-    "gorev": "node scripts/gorev.mjs"
+    "gorev": "node scripts/gorev.mjs",
+    "prebuild": "node scripts/copy-maplibre-worker.mjs"
   },
   "dependencies": {
     "@fontsource/inter": "^5.3.0",

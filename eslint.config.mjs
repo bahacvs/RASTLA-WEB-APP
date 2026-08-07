@@ -5,7 +5,9 @@ const eslintConfig = [
   ...coreWebVitals,
   ...typescript,
   {
-    ignores: ['.next/**', 'node_modules/**', 'reference/**'],
+    // public/maplibre: derleme öncesinde node_modules'ten kopyalanan MapLibre
+    // worker dosyaları. Bizim kodumuz değil ve depoya da girmiyor.
+    ignores: ['.next/**', 'node_modules/**', 'reference/**', 'public/maplibre/**'],
   },
 ];
 

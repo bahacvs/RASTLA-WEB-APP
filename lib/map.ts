@@ -17,6 +17,19 @@ export const isMapEnabled = MAPTILER_KEY.length > 0;
 /** Karoların geldiği host — ağ izolasyon testinin izin verdiği tek dış adres. */
 export const TILE_HOST = 'api.maptiler.com';
 
+/**
+ * MapLibre worker'ının adresi — kendi alan adımızdan.
+ *
+ * Kütüphane bu adresi normalde `import.meta.url`'den türetiyor ama paketleme
+ * sonrası o değer bir http(s) adresi olmadığı için boş dize dönüyor ve worker
+ * sayfanın kendisini JavaScript sanıp sessizce ölüyor. Sonuç: karolar hiç
+ * istenmiyor, harita boş görünüyor, hata da üretilmiyor.
+ *
+ * Dosyalar `scripts/copy-maplibre-worker.mjs` ile derleme öncesinde
+ * `public/maplibre/` altına kopyalanır.
+ */
+export const WORKER_URL = '/maplibre/maplibre-gl-worker.mjs';
+
 export function styleUrl(): string {
   return `https://${TILE_HOST}/maps/streets-v2/style.json?key=${MAPTILER_KEY}`;
 }
