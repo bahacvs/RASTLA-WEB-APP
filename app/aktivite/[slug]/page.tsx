@@ -133,6 +133,24 @@ export default async function ActivityDetailPage({
                 <div className="flex items-center gap-1">
                   <Icon name="location_on" size={18} />
                   {activity.location}
+                  {/*
+                    Yol tarifi burada, konumun yanında duruyor — çünkü koşulu
+                    koordinat olması. Aşağıdaki buluşma noktası fotoğrafının
+                    üstünde de bir bağlantı var, ama o blok yalnızca işletme
+                    fotoğraf yüklediyse çiziliyor. Yol tarifini oraya bağlamak,
+                    yerini tam bildiğimiz bir aktivitede bile tarifi
+                    gizlemek olurdu.
+                  */}
+                  {activity.lat !== null && activity.lng !== null && (
+                    <a
+                      href={directionsUrl(activity.lat, activity.lng)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="ml-1 font-semibold text-primary hover:underline"
+                    >
+                      Yol tarifi
+                    </a>
+                  )}
                 </div>
               </div>
             </div>
