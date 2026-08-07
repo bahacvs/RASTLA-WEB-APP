@@ -27,7 +27,7 @@ import { chromium } from 'playwright';
 import { db as connect } from '../lib/db/index.mjs';
 import { ensureTestAccounts, TEST_PASSWORD } from './lib/test-accounts.mjs';
 // Gönderme butonunun metni ödeme açıkken değişiyor; deseni tek yerde tutuyoruz.
-import { SUBMIT } from './lib/booking.mjs';
+import { acceptTerms, SUBMIT } from './lib/booking.mjs';
 
 const BASE = process.env.BASE_URL ?? 'http://127.0.0.1:3000';
 const LOG = process.env.SERVER_LOG;
@@ -95,6 +95,9 @@ async function fillBooking(target) {
   await slot.click();
   await target.getByLabel('Ad Soyad').fill(NAME);
   await target.getByLabel('Telefon').fill(DISPLAY_PHONE);
+  // Ödeme açıkken mesafeli satış onayı zorunlu; işaretlenmezse tarayıcı formu
+  // hiç göndermez ve bu süitin sınadığı OTP akışına sıra gelmez.
+  await acceptTerms(target);
   return true;
 }
 

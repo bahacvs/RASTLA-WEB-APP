@@ -18,6 +18,19 @@ import { existsSync, readFileSync } from 'node:fs';
  */
 export const SUBMIT = /Rezervasyonu Tamamla|Ödemeye Geç|Kodu Doğrula/;
 
+/**
+ * Mesafeli satış onay kutusunu işaretler.
+ *
+ * Kutu yalnızca online ödeme açıkken görünür ve **zorunludur**; işaretlenmezse
+ * tarayıcı formu hiç göndermez ve test "kod ekranı gelmedi" diye takılır.
+ * Testin gerçek kullanıcının yolunu izlemesi için işaretleniyor;
+ * işaretlenmediğinde ne olduğu verify-payment.mjs içinde ayrıca sınanıyor.
+ */
+export async function acceptTerms(page) {
+  const terms = page.locator('input[name="sozlesme"]');
+  if ((await terms.count()) > 0 && !(await terms.isChecked())) await terms.check();
+}
+
 /** Sunucu günlüğünden bir numaraya gönderilen SON kodu okur. */
 export function codeFromLog(phone, logPath = process.env.SERVER_LOG) {
   if (!logPath || !existsSync(logPath)) return null;
@@ -34,16 +47,45 @@ export function codeFromLog(phone, logPath = process.env.SERVER_LOG) {
   return null;
 }
 
-/** Yeterli yeri olan ilk slotu seçer. Varsayılan seçime güvenmek kırılgandır:
- *  önceki koşumlar o slotu doldurmuş olabilir. */
-export async function pickAvailableSlot(page) {
-  const slot = page
-    .locator('button[aria-pressed]:not([disabled])')
-    .filter({ hasText: 'yer' })
-    .first();
-  if ((await slot.count()) === 0) return false;
-  await slot.click();
-  return true;
+/**
+ * Yeterli yeri olan bir slot seçer ve formun GERÇEKTEN hazır olduğunu doğrular.
+ *
+ * Tek bir tıklama yetmiyor: slot listesi tarih seçimiyle birlikte yeniden
+ * çiziliyor ve sunucu yükluyken tıklama, listeden az sonra kaybolacak eski bir
+ * düğmeye denk gelebiliyor. O durumda `slotId` artık listede olmayan bir
+ * kimliği gösteriyor ve gönder düğmesi sessizce kapalı kalıyor — testler
+ * "önce müsait bir tarih ve saat seçin" diyerek zaman aşımına uğruyordu.
+ *
+ * Bu yüzden seçimden sonra düğmenin açıldığı doğrulanıyor; açılmazsa sıradaki
+ * slot deneniyor.
+ */
+export async function pickAvailableSlot(page, attempts = 5) {
+  const submit = page.getByRole('button', { name: SUBMIT }).first();
+
+  for (let i = 0; i < attempts; i++) {
+    const slots = page.locator('button[aria-pressed]:not([disabled])').filter({ hasText: 'yer' });
+    const count = await slots.count();
+    if (count === 0) return false;
+
+    await slots.nth(Math.min(i, count - 1)).click();
+
+    try {
+      await submit.waitFor({ state: 'attached', timeout: 3000 });
+      await page.waitForFunction(
+        () => {
+          const buttons = [...document.querySelectorAll('button[type="submit"]')];
+          return buttons.some((b) => !b.disabled);
+        },
+        { timeout: 3000 }
+      );
+      return true;
+    } catch {
+      // Seçim tutmadı; sıradaki slotu dene.
+      await page.waitForTimeout(300);
+    }
+  }
+
+  return false;
 }
 
 /**
@@ -96,17 +138,19 @@ export async function book(page, options) {
   await page.goto(`${baseUrl}/rezervasyon/${slug}`, { waitUntil: 'networkidle' });
   await page.waitForTimeout(400);
 
-  const slot = page
+  const first = page
     .locator('button[aria-pressed]:not([disabled])')
     .filter({ hasText: 'yer' })
     .first();
-  if ((await slot.count()) === 0) return { error: 'boş slot yok' };
+  if ((await first.count()) === 0) return { error: 'boş slot yok' };
 
-  const label = slotLabel ? await slot.innerText() : undefined;
-  await slot.click();
+  const label = slotLabel ? await first.innerText() : undefined;
+  if (!(await pickAvailableSlot(page))) return { error: 'slot seçilemedi', slotLabel: label };
 
   await page.getByLabel('Ad Soyad').fill(name);
   await page.getByLabel('Telefon').fill(phone);
+
+  await acceptTerms(page);
   // Butonun metni işletme online ödemeye açıksa değişiyor. Test hangi
   // kurulumda koştuğunu bilmek zorunda kalmasın diye ikisi de kabul edilir.
   await page.getByRole('button', { name: SUBMIT }).first().click();

@@ -30,6 +30,29 @@ export const LEGAL_DOCUMENTS: LegalDocument[] = [
     description: 'Hangi bilgilerinizi neden işlediğimizin sade anlatımı.',
     file: 'gizlilik-politikasi.md',
   },
+  // ---- Mesafeli satış metinleri ----
+  //
+  // Bu üçü ödeme adımında onaylatılıyor ve onay zamanı rezervasyonla birlikte
+  // kaydediliyor. Yayımlanmaları zorunlu: onaylatılan bir metin, onaylayanın
+  // okuyabileceği bir yerde durmak zorunda.
+  {
+    slug: 'on-bilgilendirme',
+    title: 'Ön Bilgilendirme Formu',
+    description: 'Sipariş öncesi bilmeniz gerekenler: fiyat, cayma hakkı istisnası, iptal koşulları.',
+    file: 'on-bilgilendirme-formu.md',
+  },
+  {
+    slug: 'mesafeli-satis',
+    title: 'Mesafeli Satış Sözleşmesi',
+    description: 'Rezervasyon ve tahsilatın koşulları; tarafların yükümlülükleri.',
+    file: 'mesafeli-satis-sozlesmesi.md',
+  },
+  {
+    slug: 'iptal-iade',
+    title: 'İptal ve İade Politikası',
+    description: 'Hangi durumda ne kadar iade yapıldığı ve neden.',
+    file: 'iptal-iade-politikasi.md',
+  },
   {
     slug: 'cerez-politikasi',
     title: 'Çerez Politikası',

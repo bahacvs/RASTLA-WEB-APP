@@ -17,7 +17,9 @@
 
 ## 2. İşlenen kişisel verileriniz
 
-RASTLA, hizmetin gerektirdiği asgari veriyi işler. Kimlik numarası, doğum tarihi, adres, sağlık bilgisi veya banka/kart bilgisi **toplanmaz**.
+RASTLA, hizmetin gerektirdiği asgari veriyi işler. Kimlik numarası, doğum tarihi, adres ve sağlık bilgisi **toplanmaz**.
+
+**Kart bilgileriniz RASTLA'ya hiç ulaşmaz** — ayrıntı için bölüm 2.4.
 
 ### 2.1 Rezervasyon yaptığınızda
 
@@ -40,13 +42,42 @@ Katılımcı sayısı yalnızca **sayı** olarak tutulur; yanınızdaki kişiler
 
 Ziyaretçi davranışını izleyen analitik ya da reklam aracı **kullanılmamaktadır**.
 
-### 2.3 Harita kullanıldığında
+### 2.3 Numaranızı doğruladığınızda
+
+| Veri kategorisi | İşlenen veri |
+| --- | --- |
+| İletişim | Cep telefonu numarası |
+| İşlem güvenliği | Doğrulama kodunun **özeti** (kodun kendisi değil), gönderim ve deneme zamanları, deneme sayısı |
+
+Doğrulama kodu **düz metin olarak saklanmaz**; yalnızca tuzlanmış özeti tutulur ve kayıt en geç 24 saat sonra silinir. Kod hiçbir işlem günlüğü kaydına yazılmaz.
+
+Numaranız SMS sağlayıcısına gönderilir. Bu mesaj **ticari ileti değildir**; kendi başlattığınız bir güvenlik işleminin cevabıdır ve İYS kapsamı dışındadır.
+
+### 2.4 Ödeme yaptığınızda
+
+| Veri kategorisi | İşlenen veri |
+| --- | --- |
+| Finans | Ödeme tutarı, para birimi, ödemenin durumu, ödeme kuruluşunun işlem numarası |
+| Finans | Kartınızın **son dört hanesi** ve kart ailesi (Visa/Mastercard gibi) |
+| Müşteri işlem | Mesafeli satış sözleşmesini onayladığınız an |
+
+**Kart numaranız, son kullanma tarihi ve CVV bilgisi RASTLA'nın sunucularına hiçbir zaman ulaşmaz.** Bu bilgileri lisanslı ödeme kuruluşunun kendi sayfasına girersiniz. Bize yalnızca işlemin sonucu ve yukarıdaki maskeli bilgi bildirilir.
+
+Bu ayrımın hukuki sonucu şudur: **kart verileriniz bakımından veri sorumlusu RASTLA değil, ödeme kuruluşudur.** Kart verinize ilişkin haklarınızı doğrudan ona karşı da kullanabilirsiniz.
+
+İade talebinizde ödeme yalnızca **aynı karta** yapılabilir; bu, kart bilgisini bizim saklamamızı gerektirmez, ödeme kuruluşu işlemi kendi kaydı üzerinden yürütür.
+
+### 2.5 Harita kullanıldığında
 
 Arama ekranındaki harita, karo görüntülerini yurt dışındaki bir sağlayıcıdan (MapTiler) alır. Bu istekler tarayıcınızdan doğrudan gittiği için sağlayıcı **IP adresinizi** görür. Ayrıntı için bkz. bölüm 6.
+
+İşletmelerin yüklediği aktivite fotoğrafları **RASTLA'nın kendi alan adından** sunulur; görsel görüntülemek için tarayıcınız başka bir sunucuya istek atmaz.
 
 ## 3. Kişisel verilerinizin işlenme amaçları
 
 - Rezervasyonunuzun oluşturulması, biletinizin üretilmesi ve size iletilmesi
+- Telefon numaranızın size ait olduğunun doğrulanması
+- Rezervasyon bedelinin tahsil edilmesi ve gerektiğinde iade edilmesi
 - Hizmeti verecek işletmenin sizi tanıması ve biletinizi doğrulaması
 - Rezervasyon iptali, değişikliği ve müsaitlik yönetimi
 - Sizinle rezervasyonunuz hakkında iletişim kurulması
@@ -59,6 +90,9 @@ Arama ekranındaki harita, karo görüntülerini yurt dışındaki bir sağlayı
 | Amaç | KVKK md. 5 dayanağı |
 | --- | --- |
 | Rezervasyonun kurulması ve ifası, biletin üretilmesi, işletmeyle paylaşılması | **md. 5/2-c** — sözleşmenin kurulması veya ifasıyla doğrudan doğruya ilgili olması |
+| Ödemenin tahsili ve iadesi | **md. 5/2-c** — sözleşmenin ifası |
+| Numara doğrulaması (SMS kodu) | **md. 5/2-c** ve **md. 5/2-f** — ifanın doğru kişiye yapılması ve kötüye kullanımın önlenmesi |
+| Ödeme ve fatura kayıtlarının saklanması | **md. 5/2-ç** — VUK ve TTK kaynaklı hukuki yükümlülük |
 | Hukuki yükümlülüklerin yerine getirilmesi | **md. 5/2-ç** — veri sorumlusunun hukuki yükümlülüğü |
 | Uyuşmazlıklarda hak tesisi ve savunma | **md. 5/2-e** — hakkın tesisi, kullanılması veya korunması |
 | Hizmet güvenliği, kötüye kullanımın önlenmesi | **md. 5/2-f** — meşru menfaat |
@@ -72,6 +106,8 @@ Açık rıza yalnızca **isteğe bağlı** işlemler için alınır (örneğin t
 | Alıcı | Aktarılan veri | Sebep |
 | --- | --- | --- |
 | Rezervasyon yaptığınız işletme | Ad soyad, telefon, rezervasyon detayları, bilet kodu | Hizmetin verilmesi ve biletin doğrulanması (md. 8, sözleşmenin ifası) |
+| Ödeme kuruluşu | Ad soyad, telefon, tutar, rezervasyon kimliği. **Kart bilgisi zaten doğrudan ona verilir, bizden geçmez** | Ödemenin alınması (md. 8, sözleşmenin ifası) |
+| SMS sağlayıcısı | Cep telefonu numarası ve doğrulama kodu | Numaranın doğrulanması |
 | Barındırma sağlayıcısı | Sistemde işlenen tüm veriler (teknik erişim) | Altyapı hizmeti |
 | Harita sağlayıcısı | IP adresi | Harita görüntüleme |
 | Yetkili kamu kurum ve kuruluşları | Talep edilen veriler | Hukuki yükümlülük (md. 8/2-a) |

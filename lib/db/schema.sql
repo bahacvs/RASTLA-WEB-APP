@@ -232,6 +232,15 @@ CREATE TABLE IF NOT EXISTS bookings (
                  CHECK (status IN ('pending_payment', 'confirmed', 'redeemed', 'cancelled', 'expired')),
 
   created_at     TEXT NOT NULL,
+
+  -- Mesafeli satış sözleşmesi ve ön bilgilendirme formunun onaylandığı an.
+  --
+  -- Mevzuat, tüketicinin bu metinleri sipariş ÖNCESİNDE onayladığının
+  -- ispatlanabilmesini istiyor. "Onay kutusu vardı" demek yeterli değil;
+  -- onayın zamanı kayda geçmeli. Ödemesiz rezervasyonlarda NULL kalır —
+  -- mesafeli satış yoksa onaylanacak bir sözleşme de yoktur.
+  terms_accepted_at TEXT,
+
   -- Ödemenin onaylandığı an. `confirmed` durumuna geçişin zamanı.
   confirmed_at   TEXT,
   -- Ödeme süresi dolduğu için düşürüldüğü an.

@@ -1,6 +1,6 @@
 'use client';
 
-import { useActionState, useMemo, useState, useTransition } from 'react';
+import { useActionState, useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Icon } from '@/components/Icon';
@@ -71,6 +71,20 @@ export function BookingView({
   // silinir, kişi ikisini de baştan yazmak zorunda kalırdı.
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
+  // Sözleşme onayı da korunmalı, aynı sebeple: kod ekranı geldiğinde React
+  // formu sıfırlıyor ve kutu sessizce boşalıyordu. Kullanıcı onayladığını
+  // sanarken "sözleşmeyi onaylayın" hatası alırdı.
+  //
+  // Metin alanlarından farklı olarak kutuyu `checked` ile kontrol etmek
+  // YETMİYOR: `form.reset()` DOM'u boşaltıyor ama React durum değişmediği için
+  // yeniden yazmıyor ve iki taraf ayrışıyor. Bu yüzden her render'dan sonra
+  // DOM'daki değer elle durumla eşitleniyor.
+  const [terms, setTerms] = useState(false);
+  const termsRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (termsRef.current) termsRef.current.checked = terms;
+  });
 
   const cells = useMemo(() => buildMonthGrid(year, month), [year, month]);
 
@@ -368,6 +382,48 @@ export function BookingView({
               </Link>
               .
             </p>
+
+            {/*
+              Mesafeli satış onayı — yalnızca ödeme alınacaksa.
+              Ödeme yoksa mesafeli satış da yoktur ve onaylatılacak bir
+              sözleşme olmadan kutu göstermek, anlamı olmayan bir onay
+              toplamak olurdu.
+
+              Yukarıdaki KVKK bilgilendirmesinden farkı: bu GERÇEK bir onay
+              kutusu ve zorunlu. Sözleşmenin kurulması için tüketicinin
+              metinleri sipariş öncesinde onaylaması gerekiyor; onay zamanı
+              rezervasyonla birlikte kaydediliyor.
+            */}
+            {payOnline && (
+              <label className="mt-md flex items-start gap-2 text-body-md text-on-surface-variant">
+                <input
+                  ref={termsRef}
+                  type="checkbox"
+                  name="sozlesme"
+                  value="onay"
+                  required
+                  defaultChecked={terms}
+                  onChange={(e) => setTerms(e.target.checked)}
+                  className="mt-1 size-4 shrink-0 accent-primary"
+                />
+                <span>
+                  <Link href="/on-bilgilendirme" className="text-primary underline">
+                    Ön Bilgilendirme Formu
+                  </Link>
+                  {'’nu ve '}
+                  <Link href="/mesafeli-satis" className="text-primary underline">
+                    Mesafeli Satış Sözleşmesi
+                  </Link>
+                  {'’ni okudum, onaylıyorum. Bu hizmet belirli bir tarihte verildiği için '}
+                  <strong className="text-on-surface">14 günlük cayma hakkı kapsamı dışındadır</strong>
+                  {'; iade koşulları '}
+                  <Link href="/iptal-iade" className="text-primary underline">
+                    İptal ve İade Politikası
+                  </Link>
+                  {'’nda yazılıdır.'}
+                </span>
+              </label>
+            )}
 
             {/*
               Numara doğrulama aynı formun içinde. Ayrı bir form olsaydı

@@ -39,7 +39,7 @@ import { join } from 'node:path';
 import { chromium } from 'playwright';
 import { db as connect } from '../lib/db/index.mjs';
 import { ensureTestAccounts, TEST_PASSWORD, emailFor } from './lib/test-accounts.mjs';
-import { book, testPhone } from './lib/booking.mjs';
+import { book, codeFromLog, pickAvailableSlot, testPhone } from './lib/booking.mjs';
 
 const BASE = process.env.BASE_URL ?? 'http://127.0.0.1:3000';
 
@@ -216,6 +216,14 @@ if (pending.error) {
     `booked: ${slot.booked}`
   );
 
+  // Mesafeli satış metinlerinin onay ZAMANI kayıtlı olmalı: mevzuat
+  // "kutu vardı" demeyi yeterli saymıyor, onayın ispatını istiyor.
+  check(
+    'Mesafeli satış sözleşmesinin onay zamanı kaydedildi',
+    Boolean(pending.booking.terms_accepted_at),
+    pending.booking.terms_accepted_at ?? 'kayıt yok'
+  );
+
   check(
     'Komisyon tam sayı: tutar = komisyon + işletme payı',
     Number(pending.payment.commission_try) === Math.floor((Number(pending.payment.amount_try) * 1000) / 10000) &&
@@ -358,6 +366,69 @@ if (pending.error) {
       ''
     );
   }
+}
+
+// ---------- Sözleşme onaylanmadan ödemeye geçilemiyor ----------
+
+{
+  // Arayüzdeki `required` işareti DOM üzerinden kaldırılıp gönderim
+  // zorlanıyor. Sınanan şey sunucunun kararı: istemcideki her kısıt
+  // atlanabilir ve atlandığında ne olduğunu sınamayan bir test, kutuyu
+  // test etmiş olur, kuralı değil.
+  const { context, page } = await freshPage();
+  const phone = testPhone('5556');
+
+  await page.goto(`${BASE}/rezervasyon/${PAID_SLUG}`, { waitUntil: 'networkidle' });
+  await page.waitForTimeout(400);
+
+  if (!(await pickAvailableSlot(page))) {
+    check('Sözleşme onaylanmadan ödemeye geçilemiyor', false, 'boş slot yok');
+  } else {
+    await page.getByLabel('Ad Soyad').fill('Onaysiz Misafir');
+    await page.getByLabel('Telefon').fill(phone.display);
+
+    // Kutu işaretlenmiyor; tarayıcının zorunluluk kontrolü devre dışı.
+    await page.evaluate(() => {
+      for (const el of document.querySelectorAll('[required]')) el.removeAttribute('required');
+      document.querySelector('form')?.setAttribute('novalidate', 'novalidate');
+    });
+
+    await page.getByRole('button', { name: /Ödemeye Geç|Kodu Doğrula/ }).first().click();
+    await page.waitForTimeout(2000);
+
+    // İlk gönderimde numara doğrulaması isteniyor; kodu girip yeniden
+    // gönderiyoruz ki sözleşme kontrolüne kadar gelinsin.
+    if ((await page.locator('#code').count()) > 0) {
+      const code = codeFromLog(phone.normalized, 'server.log');
+      if (code) {
+        await page.fill('#code', code);
+        await page.evaluate(() => {
+          for (const el of document.querySelectorAll('[required]')) el.removeAttribute('required');
+        });
+        await page.getByRole('button', { name: /Ödemeye Geç|Kodu Doğrula/ }).first().click();
+        await page.waitForTimeout(2500);
+      }
+    }
+
+    const text = await page.locator('body').innerText();
+    const created = await store.get(
+      `SELECT b.id FROM bookings b JOIN users u ON u.id = b.user_id WHERE u.phone = ?`,
+      [phone.normalized]
+    );
+
+    check(
+      'Sözleşme onaylanmadan rezervasyon OLUŞMUYOR',
+      !created,
+      created ? 'rezervasyon oluştu (!)' : 'kayıt yok'
+    );
+    check(
+      'Kullanıcıya sebebi söyleniyor',
+      /mesafeli satış sözleşmesini onaylayın|onaylayın/i.test(text),
+      'sunucu reddi arayüzde görünüyor'
+    );
+  }
+
+  await context.close();
 }
 
 // ---------- 6. Süre aşımı kapasiteyi tam olarak bir kez iade eder ----------

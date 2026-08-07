@@ -172,6 +172,23 @@ export async function createBookingAction(
   const online = totalTRY > 0 ? await onlinePaymentFor(activity.operatorId) : null;
   const payOnline = online?.available === true;
 
+  // Mesafeli satış metinleri onaylanmadan ödeme adımına geçilemez.
+  //
+  // Kontrol SUNUCUDA: formdaki `required` işareti istemcide kaldırılabilir ve
+  // mevzuat bakımından ispatlanması gereken şey kutunun varlığı değil,
+  // onayın alınmış olması. Onay zamanı rezervasyonla birlikte kaydediliyor.
+  let termsAcceptedAt: string | null = null;
+  if (payOnline) {
+    if (formData.get('sozlesme') !== 'onay') {
+      return {
+        error: 'Devam etmek için ön bilgilendirme formunu ve mesafeli satış sözleşmesini onaylayın.',
+        step: 'verify',
+        phoneHint: maskPhone(normalizedPhone),
+      };
+    }
+    termsAcceptedAt = new Date().toISOString();
+  }
+
   try {
     const user = await findOrCreateUser(name, phone);
     if ((await getUserId()) !== user.id) await setUserSession(user.id);
@@ -191,6 +208,7 @@ export async function createBookingAction(
       // `redeemBooking` yalnızca 'confirmed' kaydı okutur; ödemesi
       // tamamlanmamış bir QR kapıda çalışmaz.
       status: payOnline ? 'pending_payment' : 'confirmed',
+      termsAcceptedAt,
     });
 
     // Misafirin adı ve telefonu günlüğe KOPYALANMAZ; kayıt zaten hangi

@@ -57,8 +57,15 @@ Genel bir liste değil — bu uygulamanın gerçek zayıf noktaları:
 | **İşletme personeli misafir listesini dışarı çıkardı** | Misafir şikâyeti, beklenmeyen pazarlama iletisi | İşletme erişimini askıya al, sözleşme md. 4.1 ihlali | Orta-yüksek |
 | **Bilet kodu tahmin edilmeye çalışıldı** | `/isletme/gunluk` içinde yoğun "Bilet onayı reddedildi" kaydı | Hız sınırı zaten devrede (5 dakikada 20 başarısız deneme); ilgili personel hesabını inceleyin | Düşük — kod 160 bit rastgele; pratikte tahmin edilemez |
 | **Yanlış misafire bildirim gitti** | Misafir şikâyeti | Kaydı düzelt | Düşük-orta |
+| **Ödeme tutarı kurcalanmaya çalışıldı** | Otomatik uyarı: `payment.denied` (tek bir tanesi bile uyarı üretir) | Uyarı e-postası gelir; günlükte ilgili rezervasyonu ve IP'yi inceleyin. Ödeme zaten reddedilmiştir, para alınmamıştır | Orta — **veri ihlali değil**, mali saldırı denemesidir. Kurul'a bildirim gerekmez ama kaydedilmelidir |
+| **Ödeme sağlayıcısı anahtarları (`IYZICO_SECRET_KEY`) sızdı** | Beklenmeyen işlem, sağlayıcı uyarısı | Anahtarları sağlayıcı panelinden **derhal** döndür; sağlayıcıdan işlem dökümü iste | **Kritik** — sahte iade/işlem üretilebilir. Kart verisi sızmaz (bizde yok) ama **mali zarar doğar** |
+| **İşletmenin IBAN/vergi bilgisi sızdı** | Veritabanı ihlaliyle birlikte | İşletmeleri bilgilendir; IBAN değişikliği önerilir | Orta — gerçek kişi/şahıs şirketi işletmelerde **TCKN kişisel veridir**, o hâlde Kurul'a bildirim gerekebilir |
+| **Blob deposu anahtarı (`BLOB_READ_WRITE_TOKEN`) sızdı** | Sağlayıcı uyarısı, beklenmeyen dosya | Anahtarı döndür; yüklenen dosyaları gözden geçir | Düşük-orta — görseller zaten herkese açık içerik; EXIF silindiği için konum verisi taşımıyorlar |
+| **Uyarı e-postaları kimseye gitmiyor** | `uyarilar` işi hata veriyor, `ALERT_EMAIL_TO` boş | Adresleri tanımla; iş bir sonraki koşumda göndermeyi tekrar dener | Yüksek — ihlal tespiti kâğıt üzerinde kalır |
 
-> **Not:** Ödeme altyapısı henüz yok, kart verisi işlenmiyor. Ödeme devreye girdiğinde bu tablo yeniden yazılmalıdır.
+> **Kart verisi hakkında:** Kart numarası, son kullanma tarihi ve CVV bu sistemde **hiçbir zaman işlenmez.** Ödeme, lisanslı ödeme kuruluşunun barındırdığı formda alınır; bize yalnızca işlem sonucu ve kartın son dört hanesi gelir.
+>
+> Bunun ihlal senaryosundaki karşılığı önemli: **veritabanımızın tamamı sızsa bile hiç kimsenin kartı kullanılamaz.** Kart verisi bakımından veri sorumlusu ödeme kuruluşudur; onların tarafındaki bir ihlalde bildirim yükümlülüğü de onlardadır. Yine de misafirlerimizi ilgilendiren bir olay olduğu için sağlayıcıdan kapsam bilgisi istenmeli ve gerekiyorsa Bölüm 5'teki bildirim yapılmalıdır.
 
 ## 5. Müdahale adımları
 
@@ -162,19 +169,28 @@ Her kayıt şunları içerir:
 | Bilet kodları kriptografik rastgelelikle üretiliyor (160 bit) | ✅ var |
 | İşletme yalnızca kendi rezervasyonlarını görüyor | ✅ var |
 | Bilet ve rezervasyon sayfaları arama motorlarına kapalı | ✅ var |
-| Kart verisi işlenmiyor | ✅ var (ödeme yok) |
+| Kart verisi **hiç işlenmiyor** — ödeme sağlayıcının barındırdığı formda alınır, bize yalnızca son dört hane gelir | ✅ var |
+| Ödeme geri çağrısının sonucu **sağlayıcıdan sorulur**, geri çağrının gövdesine güvenilmez | ✅ var |
+| Ödeme tutarı, para birimi ve eşleştirme kimliği kendi kaydımızla karşılaştırılır; uyuşmazsa reddedilir ve günlüğe düşer | ✅ var |
+| Yüklenen görsellerden **tüm EXIF/GPS üstverisi silinir** | ✅ var |
+| Yüklenen dosyanın türü **gerçek sihirli baytlarından** doğrulanır; sıkıştırma bombasına karşı piksel sınırı var | ✅ var |
 | Kişi bazında işletme hesabı (e-posta + scrypt parola özeti) | ✅ var |
 | Rol ayrımı: personel bilet okutur, yalnızca sahip fiyat/takvim/ekip yönetir | ✅ var |
 | Askıya alınan hesabın oturumu anında geçersizleşir | ✅ var |
 | Bileti onaylayan **kişi** kayıtlı (işletme değil) | ✅ var |
-| **SMS ile kimlik doğrulama (OTP)** | ❌ yok — oturum cihaza bağlı |
+| **SMS ile numara doğrulama (müşteri)** ve **işletme girişinde ikinci faktör** | ✅ var |
+| Doğrulama kodu düz metin saklanmıyor (tuzlu özet), günlüğe hiç yazılmıyor | ✅ var |
 | İşlem günlüğü: giriş, bilet onayı, iptal, katalog değişikliği kişi bazında kayıtlı | ✅ var — `/isletme/gunluk` |
 | Başarısız giriş denemeleri kayıtlı; günlük ekranı 24 saatte 10'u aşınca uyarı gösterir | ✅ var |
-| **Otomatik anormallik tespiti ve uyarı bildirimi** | ❌ yok — günlük elle incelenir |
+| **Otomatik anormallik tespiti ve e-posta bildirimi** | ✅ var — altı kural, 15 dakikada bir (`uyarilar` işi) |
 | **Otomatik yedekleme ve geri yükleme testi** | ❌ yok |
-| Hız sınırı: başarısız giriş, bilet onayı ve rezervasyon | ✅ var |
+| Hız sınırı: başarısız giriş, bilet onayı, rezervasyon ve doğrulama kodu | ✅ var |
 
-> Sağ sütundaki ❌'ler bu planın kalan zayıf noktalarıdır. Adım 3'teki kapsam tespiti artık mümkün: işlem günlüğü "kim ne zaman neye erişti" sorusunu cevaplıyor. Eksik olan, ihlali **kendiliğinden** fark edip haber verecek mekanizma — günlük hâlâ elle inceleniyor. Öncelik sırası: otomatik uyarı → OTP.
+> Adım 3'teki kapsam tespiti mümkün: işlem günlüğü "kim ne zaman neye erişti" sorusunu cevaplıyor ve otomatik kurallar şüpheli örüntüyü **kendiliğinden** haber veriyor (Bölüm 3'teki sorumlulara).
+>
+> **Kalan tek yapısal eksik yedeklemedir.** Veritabanı barındırma sağlayıcısının kendi yedekleme düzenine bırakılmış durumda; geri yükleme hiç denenmedi. Fidye yazılımı ya da hatalı toplu silme senaryosunda bunun bedeli ağır olur. Bir sonraki öncelik budur.
+>
+> **Uyarı e-postaları kişisel veri içermez** — hangi kuralın kaç kez tetiklendiğini ve günlüğe bakılması gerektiğini söyler. Bu bilinçli: e-posta üçüncü bir sağlayıcının sunucularında saklanıyor ve korumaya çalıştığımız veriyi oraya taşımak tuhaf olurdu. Uyarı geldiğinde **mutlaka `/isletme/gunluk` ekranına bakılmalıdır.**
 
 ## 8. Tatbikat
 

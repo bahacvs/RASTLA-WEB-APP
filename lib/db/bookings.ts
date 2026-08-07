@@ -36,6 +36,8 @@ export type Booking = {
   totalTRY: number;
   status: BookingStatus;
   createdAt: string;
+  /** Mesafeli satış sözleşmesinin onaylandığı an. Ödemesiz rezervasyonda null. */
+  termsAcceptedAt: string | null;
   /** Ödemenin onaylandığı an. Ödeme kapalıyken oluşturma anıyla aynıdır. */
   confirmedAt: string | null;
   /** Ödeme süresi dolduğu için düşürüldüğü an. */
@@ -62,6 +64,7 @@ type Row = {
   total_try: number;
   status: BookingStatus;
   created_at: string;
+  terms_accepted_at: string | null;
   confirmed_at: string | null;
   expired_at: string | null;
   redeemed_at: string | null;
@@ -86,6 +89,7 @@ function toBooking(row: Row): Booking {
     totalTRY: row.total_try,
     status: row.status,
     createdAt: row.created_at,
+    termsAcceptedAt: row.terms_accepted_at,
     confirmedAt: row.confirmed_at,
     expiredAt: row.expired_at,
     redeemedAt: row.redeemed_at,
@@ -132,6 +136,14 @@ export async function createBooking(input: {
    * geçerli olmazdı.
    */
   status?: 'pending_payment' | 'confirmed';
+  /**
+   * Mesafeli satış metinlerinin onaylandığı an.
+   *
+   * Ödeme alınıyorsa zorunlu: mevzuat, tüketicinin metinleri sipariş
+   * ÖNCESİNDE onayladığının ispatlanmasını istiyor ve "kutu vardı" demek
+   * yeterli değil. Ödemesiz rezervasyonda null kalır.
+   */
+  termsAcceptedAt?: string | null;
 }): Promise<Booking> {
   const now = new Date().toISOString();
   const status = input.status ?? 'confirmed';
@@ -151,6 +163,7 @@ export async function createBooking(input: {
     total_try: input.totalTRY,
     status,
     created_at: now,
+    terms_accepted_at: input.termsAcceptedAt ?? null,
     // Ödeme kapalıyken rezervasyon doğrudan onaylı doğuyor; onay anı da o an.
     confirmed_at: status === 'confirmed' ? now : null,
     expired_at: null,
@@ -165,12 +178,12 @@ export async function createBooking(input: {
   ).run(
     `INSERT INTO bookings
        (id, code, user_id, activity_slug, operator_id, slot_id, units, booking_date,
-        booking_time, adults, children, total_try, status, created_at, confirmed_at, expired_at,
-        redeemed_at, redeemed_by, cancelled_at, cancel_reason)
+        booking_time, adults, children, total_try, status, created_at, terms_accepted_at,
+        confirmed_at, expired_at, redeemed_at, redeemed_by, cancelled_at, cancel_reason)
      VALUES
        (@id, @code, @user_id, @activity_slug, @operator_id, @slot_id, @units, @booking_date,
-        @booking_time, @adults, @children, @total_try, @status, @created_at, @confirmed_at,
-        @expired_at, @redeemed_at, @redeemed_by, @cancelled_at, @cancel_reason)`,
+        @booking_time, @adults, @children, @total_try, @status, @created_at, @terms_accepted_at,
+        @confirmed_at, @expired_at, @redeemed_at, @redeemed_by, @cancelled_at, @cancel_reason)`,
     row
   );
 

@@ -42,9 +42,45 @@ RASTLA, platformu üzerinden alınan rezervasyonlara ilişkin misafir verilerini
 | Rezervasyon detayları (aktivite, tarih, saat, katılımcı sayısı, tutar) | Hizmetin planlanması ve verilmesi |
 | Bilet kodu ve durumu | Biletin doğrulanması, tek kullanımın sağlanması |
 
-RASTLA, İŞLETME'ye bunların dışında kişisel veri aktarmaz. Misafirin kimlik numarası, adresi, doğum tarihi, sağlık verisi veya ödeme bilgisi aktarılmaz — bu veriler RASTLA tarafından da işlenmez.
+RASTLA, İŞLETME'ye bunların dışında kişisel veri aktarmaz. Misafirin kimlik numarası, adresi, doğum tarihi veya sağlık verisi aktarılmaz.
+
+**Kart verisi hiçbir tarafa aktarılmaz.** Kart bilgisi ödeme kuruluşunun kendi sayfasında alınır; ne RASTLA'nın ne de İŞLETME'nin sunucularına ulaşır. İŞLETME yalnızca ödemenin **alınıp alınmadığını** ve tutarı görür.
 
 **Erişim sınırı:** İŞLETME, platform üzerinde yalnızca **kendi aktivitelerine** ait rezervasyonları görebilir. Diğer işletmelerin misafirlerine teknik olarak erişimi yoktur.
+
+## 3.A İŞLETME'ye ait ticari veriler
+
+Pazaryeri modeliyle birlikte RASTLA, İŞLETME'ye ait aşağıdaki verileri de işlemeye başlamıştır. Bunlar misafir verisi değildir; **İŞLETME'nin kendi verisidir** ve burada ayrıca sayılması, veri envanterinin eksik kalmaması içindir.
+
+| Veri | İşlenme amacı | Kime aktarılır |
+| --- | --- | --- |
+| Vergi numarası / T.C. kimlik numarası | Alt üye işyeri başvurusu | Ödeme kuruluşu |
+| Vergi dairesi, unvan, açık adres | Aynı | Ödeme kuruluşu |
+| IBAN | Hakedişin aktarılması | Ödeme kuruluşu |
+| Yetkili kişinin adı, e-postası, telefonu | Başvuru ve iletişim | Ödeme kuruluşu |
+| Komisyon oranı ve hakediş kayıtları | Mutabakat, muhasebe | Aktarılmaz |
+
+Gerçek kişi ya da şahıs şirketi İŞLETME'lerde **T.C. kimlik numarası kişisel veridir** ve bu protokolün koruma yükümlülüklerine tabidir.
+
+RASTLA bu verileri yalnızca ödeme kuruluşuna iletmek ve hakedişi aktarmak için işler; **başka hiçbir amaçla kullanmaz ve üçüncü kişilerle paylaşmaz.** Bilgiler İŞLETME tarafından `/isletme/odeme-ayarlari` ekranında, aktarımı açıkça onaylayarak girilir.
+
+## 3.B Görsel içerik
+
+İŞLETME, aktivite fotoğraflarını platforma kendisi yükler.
+
+**İŞLETME şunları taahhüt eder:**
+
+- Yüklediği görsellerin **kullanım hakkına sahip olduğunu** (kendi çektiği ya da hakkını devraldığı)
+- Görsellerde **tanınabilir kişi varsa** o kişilerin açık rızasını aldığını
+- Görsellerin aktiviteyi **doğru temsil ettiğini** — yanıltıcı görsel tüketici mevzuatı bakımından İŞLETME'nin sorumluluğundadır
+
+**RASTLA'nın yaptığı ve yapmadığı:**
+
+- Yüklenen her görsel sunucuda yeniden kodlanır ve **konum dahil tüm EXIF üstverisi silinir.** Bu, İŞLETME'nin çekim konumunun ve cihaz bilgisinin istemeden yayımlanmasını önler.
+- Dosya türü, boyutu ve çözünürlüğü teknik olarak doğrulanır.
+- **İçerik denetimi yapılmaz.** RASTLA görselin uygunluğunu önceden incelemez; bildirim üzerine kaldırır.
+
+Üçüncü kişi hak sahibinden gelen talepler nedeniyle RASTLA'nın uğrayacağı zararlardan İŞLETME sorumludur.
 
 ## 4. İŞLETME'nin yükümlülükleri
 

@@ -33,8 +33,17 @@ Kişisel veri içeren **fiziksel/kâğıt ortam bulunmamaktadır.**
 | İşlem günlüğü (IP ve tarayıcı bilgisi dahil) | [12 ay] | Kayıt anı | KVKK md. 12 güvenlik tedbiri; ihlal tespiti ve kapsam belirleme. Süresiz tutmak ayrıca ihlal olurdu. |
 | Hız sınırı sayaçları (IP, e-posta, telefon) | 24 saat | Sayaç penceresinin başlangıcı | Kaba kuvvet ve kötüye kullanımın engellenmesi; pencere kapandıktan sonra hiçbir işlevi kalmaz |
 | Ticari elektronik ileti izni / ret kaydı | Mevzuatın öngördüğü süre | İznin alınması / reddi | 6563 sayılı Kanun |
+| **Ödeme kayıtları** (tutar, durum, sağlayıcı işlem no, kartın son dört hanesi) | [10 yıl] | İşlem tarihi | VUK md. 253 (5 yıl) ve TTK md. 82 (10 yıl) kesişimi; uzun olan esas alındı |
+| **İade kayıtları** | [10 yıl] | İade tarihi | Aynı |
+| **Mesafeli satış sözleşmesi onay zamanı** | [10 yıl] | Onay tarihi | Sözleşmenin kurulduğunun ispatı |
+| Telefon doğrulama kayıtları (numara + kodun **özeti**) | **24 saat** | Kaydın oluşturulması | Kod 5 dakika yaşıyor; kayıt bir gün sonra hiçbir işe yaramaz ve telefon numarası içerdiği için bekletilmez |
+| İşletmenin ticari verileri (vergi no, TCKN, IBAN, adres) | Sözleşme süresi + [10 yıl] | Sözleşmenin sona ermesi | Ticari defter ve hakediş uyuşmazlıkları |
+| **Güvenlik uyarıları** (`alerts`) | [12 ay] | Uyarının oluşması | İşlem günlüğüyle aynı; uyarı zaten günlüğe işaret ediyor ve ondan uzun yaşamasının anlamı yok |
+| Aktivite görselleri | Aktivite silinene kadar | — | İşletmenin kendi içeriği; kişisel veri içermemesi için EXIF üstverisi yükleme anında silinir |
 
-> **[Hukukçu notu:** 10 yıllık süre TBK md. 146 genel zamanaşımı esas alınarak önerilmiştir. Vergi Usul Kanunu ve TTK'daki defter/belge saklama yükümlülükleriyle kesişimi ve ödeme altyapısı devreye girdiğinde değişip değişmeyeceği değerlendirilmelidir.]
+**Kart numarası, son kullanma tarihi ve CVV hiçbir süre saklanmaz — hiç işlenmez.** Ödeme lisanslı kuruluşun kendi sayfasında alınır; bu veriler bakımından saklama yükümlülüğü de ona aittir.
+
+> **[Hukukçu notu:** 10 yıllık süre TBK md. 146 genel zamanaşımı esas alınarak önerilmiştir. Ödeme kayıtları için VUK md. 253 (5 yıl) ile TTK md. 82 (10 yıl) kesişiyor; uzun olan alındı. Ancak **KVKK'nın "gerekli olan süreden fazla saklamama" ilkesi** ile ticari saklama yükümlülüğü arasındaki denge, özellikle kartın son dört hanesi gibi işlevi tartışmalı alanlar için değerlendirilmelidir — bu bilgi vergi mevzuatı bakımından zorunlu olmayabilir ve öyleyse daha kısa tutulmalıdır.]
 
 ## 4. İmha yöntemleri
 
