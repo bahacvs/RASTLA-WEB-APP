@@ -147,6 +147,8 @@ Kural `scripts/verify-redemption.mjs` ile sınanır — 12 ayrı süreç aynı a
 | `PAYMENT_TIMEOUT_MINUTES` | Ödemesi bekleyen rezervasyonun düşürüleceği süre (varsayılan 20). |
 | `FREE_CANCELLATION_HOURS` | Müşteri iptalinde tam iade eşiği (varsayılan 24). Ön bilgilendirme formuyla aynı olmalı. |
 | `CRON_SECRET` | Zamanlanmış iş uçlarını korur. **Tanımsızsa uçlar tamamen kapalıdır.** |
+| `BLOB_READ_WRITE_TOKEN` | Yüklenen görsellerin deposu. Tanımsızsa dosya sistemi kullanılır — sunucusuz ortamda kalıcı değildir. |
+| `STORAGE_PROVIDER` / `UPLOAD_PATH` | Depoyu `local`'a zorlar; yerel kök dizini belirler. |
 
 ### İşlem günlüğü
 
@@ -265,6 +267,19 @@ Rezervasyon ödeme boyunca `pending_payment` durumunda bekler ve kapasitesi tutu
 
 `verify-payment.mjs` (22 kontrol) bunların hepsini sınar: 12 ayrı süreç aynı geri çağrıyı işlediğinde rezervasyonun tam olarak bir kez onaylandığını, kurcalanmış tutarın reddedilip günlüğe `denied` düştüğünü, süre aşımının kapasiteyi tam olarak bir kez iade ettiğini ve ödemesi bekleyen biletin okutulamadığını gösterir.
 
+### Görsel yükleme
+
+İşletme aktivite başına en fazla 8 görsel yükleyebilir, her biri en fazla 6 MB. Yüklenen dosya **olduğu gibi saklanmaz**; sunucuda yeniden kodlanır. Dört gerçek riskin dördü de burada kapanıyor:
+
+1. **Sahte içerik türü.** Karar, tarayıcının bildirdiği MIME'a ya da uzantıya değil, dosyanın **gerçek sihirli baytlarına** dayanır. `.jpg` uzantılı bir betik reddedilir.
+2. **Sıkıştırma bombası.** Piksel sınırı (40 MP) görüntü belleğe açılmadan uygulanır; birkaç yüz kilobaytlık bir dosyanın yüzlerce megabayt istemesi engellenir.
+3. **EXIF'te konum.** İşletmenin telefonuyla çektiği fotoğraf çekim koordinatını ve çoğu zaman cihaz seri numarasını taşır. Yeniden kodlama bunların **hepsini** düşürür. Bu bir mahremiyet meselesi: işletme fotoğraf koyduğunda kendi adresini yayımlamış olmamalı.
+4. **Boyut ve adet.** Uzun kenar 1600 piksele indirilir, çıktı WebP olur.
+
+**Görseller kendi alan adımızdan sunulur** (`/gorsel/[id]`). Doğrudan blob adresi verilseydi tarayıcı yeni bir dış host'a istek atardı; bu hem `verify-offline.mjs`'in koruduğu "harita dışında dış istek yok" güvencesini bozar hem de üçüncü bir tarafa her ziyaretçinin IP adresini gösterirdi. Bedeli fazladan bant genişliği, karşılığı mevcut mahremiyet iddiasının korunması.
+
+`verify-uploads.mjs` (29 kontrol) bunu iddia etmekle kalmıyor: **GPS ve cihaz bilgisi taşıyan gerçek bir JPEG üretip yüklüyor, sonra sunucudan indirilen baytlarda EXIF'in kalmadığını gösteriyor** — hem sunulan kopyada hem depodaki dosyada. Ayrıca sahte dosyanın, bombanın ve adet sınırının reddedildiğini, sınırın arayüz engelleri DOM üzerinden kaldırıldığında bile **sunucuda** tutulduğunu doğruluyor.
+
 ### Bu fazın bilinen sınırları
 
 Aşağıdakiler **pilot seviyesindedir** ve üretime çıkmadan önce değişmelidir:
@@ -273,7 +288,7 @@ Aşağıdakiler **pilot seviyesindedir** ve üretime çıkmadan önce değişmel
 2. **iyzico bağdaştırıcısı gerçek anahtarla sınanmadı.** Ödeme akışının doğruluk iddialarının tamamı (yarış, süre aşımı, kurcalanmış tutar, iade idempotanlığı) aynı sözleşmeyi uygulayan `fake` sağlayıcıyla ve gerçek eşzamanlılıkla kanıtlandı; bu iddiaların hiçbiri sağlayıcıya özgü değil, hepsi bizim kodumuzda. Sağlayıcıya özgü olan **yalnızca imzalama ve alan adlarıdır** ve o kısım ilk sandbox anahtarıyla sınanmalıdır.
 3. **Aracı hizmet sağlayıcı yükümlülükleri açık.** RASTLA para akışına girdiği an ETBİS kaydı, mesafeli satış sözleşmesi ve ön bilgilendirme formu gerekir. Metinler henüz yok.
 4. **İhlal uyarısı otomatik değil.** İşlem günlüğü ve hız sınırı var; şüpheli bir örüntüde kimseye bildirim gitmiyor, günlük elle inceleniyor.
-5. **Fotoğraf yükleme yoktur.** İşletme metin alanlarını ve takvimi yönetir; görselleri RASTLA ekler.
+5. **Görsel moderasyonu yoktur.** Yüklenen fotoğraf teknik olarak doğrulanır (tür, boyut, üstveri) ama içeriğine bakılmaz; uygunsuz görsel ancak bildirim üzerine kaldırılır. İşletme sözleşmesi sorumluluğu işletmeye veriyor.
 6. **Harita karoları dış bağımlılıktır.** Uygulamanın tek dış isteği budur ve kaçışı yoktur. Sağlayıcı kullanıcı IP'lerini görür — KVKK aydınlatma metninde yer almalı.
 
 ## Doğrulama betikleri
@@ -297,6 +312,8 @@ node scripts/verify-account-rights.mjs # veri indirme ve hesap silme (KVKK md. 1
 # Ödeme (sunucu PAYMENT_PROVIDER=fake ile başlatılmış olmalı):
 PAYMENT_PROVIDER=fake npm start > server.log &
 SERVER_LOG=server.log node scripts/verify-payment.mjs  # yarış, süre aşımı, kurcalama, iade
+
+node scripts/verify-uploads.mjs       # sahte dosya, bomba, EXIF/GPS temizliği, adet sınırı
 
 # Postgres'e karşı (DATABASE_URL tanımlıyken):
 DATABASE_URL=… node scripts/verify-postgres.mjs   # eşzamanlılık ve ağız farkları

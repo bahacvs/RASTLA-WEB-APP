@@ -330,6 +330,44 @@ CREATE TABLE IF NOT EXISTS refunds (
 
 CREATE INDEX IF NOT EXISTS idx_refunds_payment ON refunds(payment_id);
 
+-- İşletmenin yüklediği aktivite görselleri.
+--
+-- Dosyanın KENDİSİ burada değil; burada yalnızca depodaki anahtarı ve
+-- görüntülemek için gereken bilgi var. İkili veriyi veritabanına koymak
+-- yedekleri şişirir ve her sorguyu yavaşlatırdı.
+--
+-- Yüklenen dosya OLDUĞU GİBİ saklanmaz: sunucuda yeniden kodlanır. Sebebi
+-- mahremiyet — işletmenin telefonuyla çektiği fotoğraf EXIF içinde çekim
+-- konumunu ve çoğu zaman cihaz seri numarasını taşır. Yeniden kodlama bunların
+-- hepsini düşürür (bkz. lib/images.ts).
+CREATE TABLE IF NOT EXISTS activity_images (
+  id            TEXT PRIMARY KEY,
+  activity_id   TEXT NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
+
+  -- Depodaki anahtar. Yerel depoda dosya adı, Vercel Blob'da yol.
+  storage_key   TEXT NOT NULL,
+  content_type  TEXT NOT NULL,
+
+  -- Görme engelli kullanıcılar ve görsel yüklenmediğinde gösterilecek metin.
+  -- Boş bırakılabilir ama işletmeye doldurması söylenir.
+  alt           TEXT,
+
+  width         INTEGER NOT NULL CHECK (width > 0),
+  height        INTEGER NOT NULL CHECK (height > 0),
+  bytes         INTEGER NOT NULL CHECK (bytes > 0),
+
+  -- Sıralama. 0 kapak görselidir; aktivite kartlarında ve listede o görünür.
+  position      INTEGER NOT NULL DEFAULT 0,
+
+  -- Yükleyen personelin hesabı. Bir uyuşmazlıkta "bu fotoğrafı kim koydu"
+  -- sorusunun cevabı olmalı.
+  uploaded_by   TEXT,
+  created_at    TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_activity_images_activity
+  ON activity_images(activity_id, position);
+
 -- İşlem günlüğü.
 --
 -- Veri ihlali müdahale planının 3. adımı "hangi veriler, kaç kişi, gerçekten

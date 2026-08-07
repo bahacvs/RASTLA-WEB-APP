@@ -74,6 +74,8 @@ export const AUDIT_ACTIONS = [
   'schedule.rule_created',
   'schedule.rule_toggled',
   'schedule.slot_toggled',
+  'activity.image_uploaded',
+  'activity.image_deleted',
 
   // Kişisel veri hakları
   'account.exported',

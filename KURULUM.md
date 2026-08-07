@@ -21,6 +21,7 @@ Yazılım tarafında yapılacak bir iş kalmadıysa, sıra bu listede.
 | 6c | İşletmelerin vergi no, IBAN ve yetkili bilgisi | İşletmelerden | O işletmenin aktiviteleri online ödemeye açılamaz |
 | 6d | `CRON_SECRET` | Kendiniz üretirsiniz | Zamanlanmış işler kapalı kalır; ödemesi yarım kalan rezervasyonlar slotları kilitler |
 | 6e | SMS sağlayıcı anahtarı (Netgsm) | Sağlayıcıdan | Doğrulama kodları kimseye ulaşmaz, yalnızca sunucu günlüğüne yazılır |
+| 6f | Vercel Blob anahtarı | Vercel panelinden | Yüklenen görseller her dağıtımda kaybolur, sayfada kırık kutular kalır |
 | 7 | İlk işletme hesapları | Sizden | İşletmeler giriş yapamaz |
 | 8 | Yurt dışına aktarım sözleşmesi | Avukatınızdan | KVKK md. 9 ihlali |
 
@@ -173,6 +174,33 @@ eşiğidir. **Bu değer ön bilgilendirme formunda yazan süreyle aynı olmalı*
 farklı olursa formdaki taahhüt bağlayıcıdır. Hava ve işletme kaynaklı
 iptalde iade koşulsuz ve tamdır; müşteri kusurlu değildir.
 
+## 6c. Görsel deposu
+
+İşletmeler kendi aktivite fotoğraflarını yükleyebiliyor. Dosyalar bir depoda,
+kayıtları veritabanında tutulur.
+
+```
+BLOB_READ_WRITE_TOKEN=vercel_blob_rw_...
+```
+
+Vercel panelinden **Storage → Blob** ile oluşturulur ve anahtar projeye
+otomatik eklenir.
+
+**Anahtar tanımsızsa dosya sistemi kullanılır ve bu üretimde yeterli
+DEĞİLDİR:** Vercel'in sunucusuz ortamında yazılan dosya bir sonraki dağıtımda
+kaybolur. Kayıt veritabanında durduğu için sayfada kırık görsel kutuları
+görünür. `DATABASE_URL` için geçerli uyarının aynısı.
+
+**KVKK notu:** Görseller **bizim alan adımızdan** sunulur (`/gorsel/[id]`),
+doğrudan blob adresinden değil. Böylece ziyaretçinin tarayıcısı yeni bir dış
+host'a istek atmaz ve depo sağlayıcısı kullanıcı IP'lerini görmez. Aydınlatma
+metninde ek bir alıcı saymanız gerekmiyor.
+
+Yüklenen her fotoğraf sunucuda yeniden kodlanır ve **konum dahil tüm EXIF
+verisi silinir.** İşletmenin telefonuyla çektiği fotoğraf çekim koordinatını
+taşır; bu bilgi işletme adına yayımlanmamalı. `verify-uploads.mjs` bunu her
+koşumda GPS taşıyan gerçek bir dosyayla doğrular.
+
 ## 7. İlk işletme hesapları
 
 Sunucuda bir kez:
@@ -238,6 +266,8 @@ proje ayarlarından girilir.
 | `PAYMENT_TIMEOUT_MINUTES` | Hayır | Ödemesi bekleyen rezervasyonun düşürülme süresi (varsayılan 20). |
 | `FREE_CANCELLATION_HOURS` | Hayır | Müşteri iptalinde tam iade eşiği (varsayılan 24). Ön bilgilendirme formuyla aynı olmalı. |
 | `PAYMENT_PROVIDER` | **Hayır — üretimde asla** | Yalnızca test. `fake` verilirse ödeme alınmadan bilet üretilir. |
+| `BLOB_READ_WRITE_TOKEN` | **Evet** (görsel yüklenecekse) | Yüklenen görsellerin deposu. Yoksa dosya sistemi kullanılır ve **sunucusuz ortamda dosyalar kaybolur.** |
+| `STORAGE_PROVIDER` / `UPLOAD_PATH` | Hayır | Depoyu `local`'a zorlar; yerel kök dizini belirler. |
 
 ---
 
@@ -318,6 +348,9 @@ SERVER_LOG=server.log node scripts/verify-otp.mjs
 
 # Sunucu PAYMENT_PROVIDER=fake ile başlatılmışken
 SERVER_LOG=server.log node scripts/verify-payment.mjs
+
+# Görsel yükleme: sahte dosya, sıkıştırma bombası, EXIF/GPS temizliği
+node scripts/verify-uploads.mjs
 
 # Postgres'e karşı
 DATABASE_URL=… node scripts/verify-postgres.mjs

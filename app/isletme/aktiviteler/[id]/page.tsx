@@ -5,6 +5,8 @@ import { OperatorNav } from '@/components/OperatorNav';
 import { ActivityForm } from '../ActivityForm';
 import { currentOperator } from '@/lib/auth';
 import { getActivityById } from '@/lib/db/activities';
+import { listImages } from '@/lib/db/activity-images';
+import { ImageManager } from './ImageManager';
 
 export const metadata: Metadata = {
   title: 'Aktiviteyi Düzenle',
@@ -37,6 +39,10 @@ export default async function EditActivityPage({ params }: { params: Promise<{ i
           </Link>
         </div>
         <ActivityForm activity={activity} />
+
+        <div className="mt-lg border-t border-outline-variant pt-lg">
+          <ImageManager activityId={activity.id} images={await listImages(activity.id)} />
+        </div>
       </main>
     </div>
   );
