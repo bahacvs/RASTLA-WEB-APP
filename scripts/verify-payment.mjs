@@ -399,7 +399,12 @@ if (pending.error) {
     // İlk gönderimde numara doğrulaması isteniyor; kodu girip yeniden
     // gönderiyoruz ki sözleşme kontrolüne kadar gelinsin.
     if ((await page.locator('#code').count()) > 0) {
-      const code = codeFromLog(phone.normalized, 'server.log');
+      // Günlük yolu SERVER_LOG'dan gelir. Buraya sabit 'server.log' yazılıydı;
+      // başlıktaki kullanım örneği SERVER_LOG diyor ama kod onu okumuyordu.
+      // Sunucu günlüğü başka bir yoldaysa kod okunamıyor, doğrulama adımı
+      // geçilemiyor ve sözleşme kontrolüne hiç ulaşılamıyordu — süit,
+      // sınamayı amaçladığı şeyi sessizce atlıyordu.
+      const code = codeFromLog(phone.normalized, process.env.SERVER_LOG ?? 'server.log');
       if (code) {
         await page.fill('#code', code);
         await page.evaluate(() => {
