@@ -24,3 +24,4 @@ data/
 # Doğrulama betikleri sunucu günlüğünü buradan okur (SMS sağlayıcısı
 # yokken doğrulama kodları oraya düşer). Repoya girmemeli.
 *.log
+public/maplibre/

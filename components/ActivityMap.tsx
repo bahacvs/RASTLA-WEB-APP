@@ -2,9 +2,9 @@
 
 import { useEffect, useRef, useState } from 'react';
 // maplibre-gl v6 varsayılan dışa aktarım sunmaz; yalnızca adlandırılmış dışa aktarımlar.
-import { Map as MapLibreMap, Marker, NavigationControl } from 'maplibre-gl';
+import { Map as MapLibreMap, Marker, NavigationControl, setWorkerUrl } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
-import { MAP_DEFAULT, isMapEnabled, styleUrl } from '@/lib/map';
+import { MAP_DEFAULT, WORKER_URL, isMapEnabled, styleUrl } from '@/lib/map';
 import { formatPrice } from '@/lib/format';
 import { IS_DEMO } from '@/lib/demo';
 import type { Activity } from '@/lib/catalog';
@@ -61,6 +61,13 @@ export function ActivityMap({
   // Haritayı bir kez kur.
   useEffect(() => {
     if (!container.current || map.current || !isMapEnabled) return;
+
+    // Worker adresini haritayı kurmadan ÖNCE ver.
+    //
+    // Kütüphane bunu kendisi türetmeye çalışıyor ve paketleme sonrası boş
+    // dize üretiyor; o hâlde worker sayfanın kendisini yüklemeye çalışıp
+    // sessizce ölüyor, karolar hiç istenmiyor. Ayrıntı lib/map.ts'de.
+    setWorkerUrl(WORKER_URL);
 
     const instance = new MapLibreMap({
       container: container.current,
