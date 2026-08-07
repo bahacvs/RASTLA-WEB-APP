@@ -233,11 +233,14 @@ export default async function ActivityDetailPage({
 
             {activity.reviews && activity.reviews.length > 0 && (
               <div className="mb-xl md:mb-0">
-                <div className="mb-sm flex items-center justify-between">
+                {/*
+                  "Tümünü Gör" kaldırıldı. Aşağıdaki liste zaten TÜM
+                  değerlendirmeleri basıyor (kırpma yok), yani düğmenin
+                  götüreceği bir yer yoktu — daha fazlası varmış izlenimi
+                  veriyordu.
+                */}
+                <div className="mb-sm">
                   <h2 className="text-headline-sm text-on-surface">Değerlendirmeler</h2>
-                  <button type="button" className="text-label-bold text-primary hover:underline">
-                    Tümünü Gör
-                  </button>
                 </div>
 
                 {activity.reviews.map((review) => (

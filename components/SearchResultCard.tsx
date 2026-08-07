@@ -36,13 +36,8 @@ export function SearchResultCard({ activity }: { activity: Activity }) {
           )
         )}
 
-        <button
-          type="button"
-          aria-label="Favorilere ekle"
-          className="absolute top-sm right-sm flex h-8 w-8 items-center justify-center rounded-full bg-surface-container-lowest/80 text-on-surface-variant backdrop-blur-sm transition-transform active:scale-90"
-        >
-          <Icon name="favorite" size={20} />
-        </button>
+        {/* Favori düğmesi kaldırıldı: kalıcılık yok, tıklama hiçbir şey
+            yapmıyordu. Aynı gerekçe DetailHeader'da yazılı. */}
       </div>
 
       <div className="flex flex-col gap-sm p-md">
