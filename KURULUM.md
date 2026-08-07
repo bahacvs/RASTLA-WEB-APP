@@ -229,6 +229,40 @@ gibi indekslenir; biri rezervasyon yapmaya çalışır, kimse karşılamaz.
 > Vercel'de sıra şu: önce veritabanını oluştur → `demo-seed` ile doldur →
 > ortam değişkenlerini gir → yeniden dağıt.
 
+> **Ortam değişkenleri geriye dönük uygulanmaz.** Vercel her dağıtıma o anki
+> değişkenlerin bir anlık görüntüsünü bağlar. Panelden `DATABASE_URL` eklemek
+> **zaten yayında olan** dağıtımı düzeltmez; yeni bir dağıtım gerekir
+> (Deployments → ⋯ → Redeploy, ya da yeni bir commit).
+>
+> Bu, tanınması zor bir arıza üretir: ana sayfa ve aktivite sayfaları
+> derlemede üretildiği için **açılmaya devam eder**, ama `/ara`, `/isletme`
+> gibi veritabanına dokunan her sayfa 500 verir. "Site açıldı ama çalışmıyor"
+> tablosu genellikle budur.
+
+### Bir dağıtım çalışmıyorsa: `/api/saglik`
+
+Tek istekle hangi katmanın bozuk olduğunu söyler:
+
+```bash
+curl https://<alan-adiniz>/api/saglik
+```
+
+```json
+{ "ok": true, "motor": "postgres", "demo": true,
+  "veritabani": { "erisilebilir": true, "aktivite": 6 } }
+```
+
+| Dönen | Anlamı |
+| --- | --- |
+| `"motor": "sqlite"` | `DATABASE_URL` bu dağıtımda yok — yukarıdaki anlık görüntü tuzağı |
+| `"demo": false` (demo beklerken) | `DEMO_MODE` derleme anında yoktu |
+| `erisilebilir: false`, `ENOTFOUND` / `ETIMEDOUT` | Bağlantı dizesindeki sunucuya ulaşılamıyor |
+| `erisilebilir: false`, `28P01` | Kullanıcı adı veya parola yanlış |
+
+Uç **hiçbir sır döndürmez**: bağlantı dizesi, sunucu adı ve hata metni dışarı
+verilmez, hata yalnızca sınıf adı ve sürücü koduna indirgenir. Tam hata
+Vercel'in Runtime Logs bölümünde durur.
+
 Gerçek kullanıma geçerken `DEMO_MODE` değişkenini **silin**, demo işletmelerin
 hesaplarını `/isletme/ekip` üzerinden askıya alın ve demo ilanlarını yayından
 kaldırın.
