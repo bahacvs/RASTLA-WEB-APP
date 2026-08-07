@@ -6,7 +6,28 @@ import { Map as MapLibreMap, Marker, NavigationControl } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { MAP_DEFAULT, isMapEnabled, styleUrl } from '@/lib/map';
 import { formatPrice } from '@/lib/format';
+import { IS_DEMO } from '@/lib/demo';
 import type { Activity } from '@/lib/catalog';
+
+/**
+ * MapLibre hatasını tek satırlık okunur bir özete indirger.
+ *
+ * Sorgu dizesi atılıyor: hata metinleri başarısız olan adresi olduğu gibi
+ * taşıyor ve o adres API anahtarını içeriyor. Anahtar zaten istemci
+ * paketinde açık (NEXT_PUBLIC_), yani sır değil — ama ekrana basmanın da
+ * gereği yok; hangi ucun düştüğünü görmek için yol yeterli.
+ */
+function describeMapError(detail: unknown): string {
+  const status = (detail as { status?: unknown } | null)?.status;
+  const url = (detail as { url?: unknown } | null)?.url;
+  const message = detail instanceof Error ? detail.message : String(detail ?? 'bilinmeyen hata');
+
+  const parts = [message.split('\n')[0].slice(0, 160)];
+  if (typeof status === 'number') parts.push(`HTTP ${status}`);
+  if (typeof url === 'string') parts.push(url.split('?')[0].replace(/^https?:\/\//, ''));
+
+  return parts.join(' — ');
+}
 
 /**
  * Arama sonuçlarını gerçek harita üzerinde gösterir.
@@ -32,6 +53,7 @@ export function ActivityMap({
   const map = useRef<MapLibreMap | null>(null);
   const markers = useRef<Marker[]>([]);
   const [moved, setMoved] = useState(false);
+  const [mapError, setMapError] = useState<string | null>(null);
 
   const withCoords = activities.filter((a) => a.lat !== null && a.lng !== null);
   const missing = activities.length - withCoords.length;
@@ -51,6 +73,24 @@ export function ActivityMap({
     instance.addControl(new NavigationControl({ showCompass: false }), 'top-right');
     instance.on('dragend', () => setMoved(true));
     instance.on('zoomend', () => setMoved(true));
+
+    // MapLibre hatalarını yutmayı bırak.
+    //
+    // Stil ya da karo yüklenemediğinde harita çökmüyor: arka plan katmanını
+    // boyuyor, pinleri koyuyor ve susuyor. Ekranda kalan şey "boş ama bozuk
+    // değilmiş gibi duran" bir alan oluyor — bakan kişi neyin yanlış
+    // olduğunu göremiyor, biz de göremiyoruz.
+    instance.on('error', (event) => {
+      const detail = event?.error ?? event;
+      console.error('[harita]', detail);
+      setMapError(describeMapError(detail));
+    });
+
+    // Karolar gelmeye başladığı an uyarı düşer; geçici bir ağ hatası
+    // ekranda takılı kalmamalı.
+    instance.on('data', (event) => {
+      if (event.dataType === 'source' && event.isSourceLoaded) setMapError(null);
+    });
 
     map.current = instance;
 
@@ -115,6 +155,23 @@ export function ActivityMap({
   return (
     <div className="relative h-full w-full">
       <div ref={container} className="h-full w-full" />
+
+      {mapError && (
+        <div className="absolute inset-x-2 top-2 rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2 shadow-md">
+          <p className="text-body-md text-on-surface">Harita katmanı yüklenemedi.</p>
+          {/*
+            Teknik ayrıntı yalnızca tanıtım sürümünde. Gerçek ziyaretçiye
+            sağlayıcı hatası göstermenin faydası yok; tanıtım sürümünü ise
+            telefondan inceleyen kişi konsolu açamıyor, sebebi burada
+            görebilmeli.
+          */}
+          {IS_DEMO && (
+            <p className="mt-1 font-mono text-label-sm break-words text-on-surface-variant">
+              {mapError}
+            </p>
+          )}
+        </div>
+      )}
 
       {(moved || filtered) && (
         <div className="absolute top-sm left-1/2 flex -translate-x-1/2 gap-2">
