@@ -267,7 +267,7 @@ UPDATE bookings SET status='confirmed', confirmed_at=?
 
 Rezervasyon ödeme boyunca `pending_payment` durumunda bekler ve kapasitesi tutulur. Tek kullanım güvencesi burada bedavaya geliyor: bilet onayı zaten `WHERE code=? AND status='confirmed'` koşuluna dayandığı için **ödemesi tamamlanmamış bir rezervasyon hiçbir ek kod yazılmadan okutulamaz.**
 
-Ödeme süresi dolan kayıtları `odeme-suresi` işi düşürür ve kapasiteyi geri verir; iade de durum değişikliği gerçekten olduysa yapıldığı için iki süpürme aynı yeri iki kez serbest bırakamaz.
+Ödeme süresi dolan kayıtları `odeme-suresi` işi düşürür ve kapasiteyi geri verir. **Bu işin sık çalışması gerekir** (önerilen: beş dakikada bir); `vercel.json` içindeki zamanlama Vercel'in Hobby planı günlükten sık cron'a izin vermediği için günlüğe ayarlı ve ödeme canlıya çıkarken Pro plana geçilip değiştirilmelidir (bkz. KURULUM.md). Kapasite iadesi, durum değişikliği gerçekten olduysa yapıldığı için iki süpürme aynı yeri iki kez serbest bırakamaz.
 
 İptalde iade politikası: **hava ve işletme kaynaklı iptalde koşulsuz tam iade** (müşteri kusurlu değil), müşteri iptalinde aktiviteden `FREE_CANCELLATION_HOURS` saat öncesine kadar tam iade. Belirli tarihte yapılan eğlence ve dinlenme hizmetleri Mesafeli Sözleşmeler Yönetmeliği md. 15 uyarınca cayma hakkı istisnasındadır; bu eşiğin ön bilgilendirme formunda açıkça yazılması gerekir. Aynı ödeme aynı sebeple iki kez iade edilemez — güvence kodda değil, `refunds` tablosundaki `UNIQUE (payment_id, reason)` kısıtındadır.
 

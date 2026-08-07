@@ -326,6 +326,27 @@ npm run gorev -- odeme-suresi
 Bu iş çalışmıyorsa yerler boşuna kilitli kalır — doğrudan kaybedilen satış
 demektir. `CRON_SECRET` tanımlı değilse uç kapalıdır ve iş hiç tetiklenmez.
 
+> **⚠ Vercel Hobby planı cron işlerini GÜNDE BİRE sınırlıyor.** Daha sık bir
+> ifade yazıldığında dağıtım *başlamadan* hata verir:
+> *"Hobby accounts are limited to daily cron jobs."*
+>
+> Bu yüzden `vercel.json` içindeki üç iş de **günlük** tanımlı. Demo için
+> sorun değil (ödeme kapalı, süpürülecek bir şey yok) ama **gerçek ödeme
+> alınmaya başlandığında yeterli değildir**: ödemesi yarım kalan bir
+> rezervasyon 24 saate kadar slotu kilitli tutabilir.
+>
+> Ödeme canlıya çıkarken **Pro plana geçin** ve `vercel.json` içindeki
+> zamanlamaları şöyle değiştirin:
+>
+> | İş | Hobby (şu an) | Pro (ödeme canlıyken) |
+> | --- | --- | --- |
+> | `odeme-suresi` | `0 3 * * *` | `*/5 * * * *` |
+> | `uyarilar` | `0 4 * * *` | `*/15 * * * *` |
+> | `saklama` | `0 5 1 * *` | `0 5 1 * *` (değişmez) |
+>
+> Plan değişikliğini beklemeden `npm run gorev -- odeme-suresi` komutuyla
+> elle de tetikleyebilirsiniz.
+
 ### On beş dakikada bir: güvenlik uyarıları
 
 `uyarilar` işi tespit kurallarını çalıştırır ve yeni bulguları
