@@ -29,6 +29,11 @@ export type Outcome = 'success' | 'failure' | 'denied';
  * "bir ihlalde tüm onayları bul" sorgusu sessizce eksik sonuç verirdi.
  */
 export const AUDIT_ACTIONS = [
+  // Telefon doğrulama. KODUN KENDİSİ hiçbir zaman yazılmaz.
+  'otp.sent',
+  'otp.verified',
+  'otp.failed',
+
   // Kimlik
   'operator.login',
   'operator.login_failed',
@@ -38,6 +43,7 @@ export const AUDIT_ACTIONS = [
   // Ekip yönetimi
   'operator_user.created',
   'operator_user.password_reset',
+  'operator_user.phone_set',
   'operator_user.suspended',
   'operator_user.reactivated',
 
@@ -47,6 +53,18 @@ export const AUDIT_ACTIONS = [
   'booking.redeem_failed',
   'booking.cancelled',
   'booking.day_cancelled',
+  'booking.expired',
+
+  // Ödeme. KART VERİSİ hiçbir zaman yazılmaz; yalnızca tutar ve sağlayıcı
+  // referansı. `payment.denied` en önemlisi: sağlayıcının söylediği tutar
+  // bizim kaydımızla uyuşmadığında düşer ve bu bir saldırı belirtisidir.
+  'payment.started',
+  'payment.succeeded',
+  'payment.failed',
+  'payment.denied',
+  'payment.refunded',
+  'payment.refund_failed',
+  'operator.submerchant_created',
 
   // Katalog
   'activity.created',
@@ -56,6 +74,8 @@ export const AUDIT_ACTIONS = [
   'schedule.rule_created',
   'schedule.rule_toggled',
   'schedule.slot_toggled',
+  'activity.image_uploaded',
+  'activity.image_deleted',
 
   // Kişisel veri hakları
   'account.exported',
@@ -262,15 +282,8 @@ export function countRecentLoginFailures(operatorId: string, hours = 24): Promis
   return countAudit({ operatorId, action: 'operator.login_failed', since });
 }
 
-/**
- * Saklama süresi dolan kayıtları siler.
- *
- * Günlük tutmak KVKK'da bir yükümlülük (md. 12 güvenlik tedbirleri) ama
- * süresiz tutmak ayrı bir ihlal: IP ve tarayıcı bilgisi kişisel veridir.
- * veri-saklama-imha-politikasi.md ile aynı süre kullanılmalı.
+/*
+ * Saklama süresi dolan kayıtların imhası bilinçli olarak burada değil,
+ * `lib/jobs/index.mjs` içinde: hem zamanlayıcı hem komut satırı aynı kodu
+ * çağırabilsin diye. Süreler legal/veri-saklama-imha-politikasi.md ile aynı.
  */
-export async function purgeAuditOlderThan(days: number): Promise<number> {
-  const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
-  const result = await (await db()).run('DELETE FROM audit_log WHERE at < ?', [cutoff]);
-  return result.changes;
-}

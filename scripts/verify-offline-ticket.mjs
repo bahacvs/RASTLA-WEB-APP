@@ -12,6 +12,7 @@
  * Kullanım: npm start & node scripts/verify-offline-ticket.mjs
  */
 import { chromium } from 'playwright';
+import { book } from './lib/booking.mjs';
 
 const BASE = process.env.BASE_URL ?? 'http://127.0.0.1:3000';
 
@@ -22,29 +23,18 @@ const browser = await chromium.launch({
 const checks = [];
 const check = (name, pass, detail = '') => checks.push({ name, pass, detail });
 
-/** Yeterli yeri olan ilk slotu seçer. Varsayılan seçime güvenmek kırılgandır:
- *  önceki koşumlar o slotu doldurmuş olabilir. */
-async function pickAvailableSlot(page) {
-  const slot = page.locator('button[aria-pressed]:not([disabled])').filter({ hasText: 'yer' }).first();
-  if ((await slot.count()) === 0) return false;
-  await slot.click();
-  return true;
-}
-
-
 const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
 const page = await context.newPage();
 
-// --- Rezervasyon oluştur ---
-await page.goto(`${BASE}/rezervasyon/elektrikli-sup-deneyimi`, { waitUntil: 'networkidle' });
-await page.waitForTimeout(400);
-check('müsait slot bulundu', await pickAvailableSlot(page));
-await page.getByLabel('Ad Soyad').fill('Çevrimdışı Test');
-await page.getByLabel('Telefon').fill('0532 999 88 77');
-await page.getByRole('button', { name: 'Rezervasyonu Tamamla' }).first().click();
-await page.waitForURL(/\/bilet\//, { timeout: 15000 });
-
-const code = decodeURIComponent(new URL(page.url()).pathname.split('/').pop());
+// --- Rezervasyon oluştur (numara doğrulaması dahil) ---
+const created = await book(page, {
+  baseUrl: BASE,
+  slug: 'elektrikli-sup-deneyimi',
+  name: 'Çevrimdışı Test',
+  phone: '0532 999 88 77',
+});
+check('müsait slot bulundu ve rezervasyon yapıldı', Boolean(created.code), created.error);
+const code = created.code;
 check('bilet oluşturuldu', Boolean(code), code);
 
 // --- Service worker kaydoldu mu ---

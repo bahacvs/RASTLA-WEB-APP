@@ -67,6 +67,20 @@ export const LIMITS = {
    * kötüye kullanıma karşı geniş bir emniyet ağıdır; gerçek sınır numarada.
    */
   bookingByIp: { limit: 40, windowSeconds: 60 * 60 },
+
+  /**
+   * Aynı numaraya doğrulama kodu gönderimi: saatte 5.
+   *
+   * İki şeyi birden korur. Birincisi kullanıcının cebi: SMS ücretlidir ve
+   * sınırsız gönderim, numarayı bilen birinin başkasına bedel yükleyip
+   * telefonunu yağdırmasına izin verirdi. İkincisi deneme havuzu: sınır
+   * olmasaydı saldırgan sürekli yeni kod isteyip "kod başına 5 deneme"
+   * sınırını istediği kadar çoğaltabilirdi.
+   */
+  otpByPhone: { limit: 5, windowSeconds: 60 * 60 },
+
+  /** Aynı IP'den kod isteme: saatte 30. CGNAT yüzünden geniş (bkz. yukarısı). */
+  otpByIp: { limit: 30, windowSeconds: 60 * 60 },
 } as const satisfies Record<string, LimitRule>;
 
 export type LimitResult =
@@ -165,18 +179,12 @@ export async function reset(bucket: string): Promise<void> {
   await (await db()).run('DELETE FROM rate_limits WHERE bucket = ?', [bucket]);
 }
 
-/**
- * Penceresi çoktan dolmuş satırları temizler.
- *
+/*
+ * Penceresi dolmuş sayaç satırlarının temizliği `lib/jobs/index.mjs` içinde.
  * Tablo aksi hâlde her IP ve e-posta için sonsuza kadar bir satır tutardı —
  * hem gereksiz büyürdü hem de IP adresi kişisel veri olduğu için saklama
  * politikasına aykırı olurdu.
  */
-export async function purgeExpired(olderThanSeconds = 24 * 60 * 60): Promise<number> {
-  const cutoff = new Date(Date.now() - olderThanSeconds * 1000).toISOString();
-  const result = await (await db()).run('DELETE FROM rate_limits WHERE window_start < ?', [cutoff]);
-  return result.changes;
-}
 
 /** Kova adı. Girdi ayracı içerse bile kovalar karışmasın diye kodlanır. */
 export function bucketKey(kind: string, value: string): string {

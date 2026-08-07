@@ -3,11 +3,22 @@
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { cancelBooking, createBooking, getBookingByCode } from '@/lib/db/bookings';
-import { findOrCreateUser, normalizePhone } from '@/lib/db/users';
+import { findOrCreateUser, getUser, normalizePhone } from '@/lib/db/users';
 import { getSlot, listSlots, releaseCapacity, reserveCapacity, type Slot } from '@/lib/db/slots';
 import { getUserId, setUserSession } from '@/lib/session';
 import { currentUserId } from '@/lib/auth';
+import { sendVerificationCode, verifyCode } from '@/lib/verification';
+import { bookingCodeMessage } from '@/lib/sms/messages';
+import { maskPhone } from '@/lib/sms';
 import { getActivityBySlug } from '@/lib/db/activities';
+import {
+  customerRefundAllowed,
+  FREE_CANCELLATION_HOURS,
+  onlinePaymentFor,
+  refundBooking,
+  startPayment,
+} from '@/lib/payments/flow';
+import { expireBooking } from '@/lib/db/payments';
 import { record } from '@/lib/db/audit';
 import { requestContext } from '@/lib/request-context';
 import {
@@ -18,7 +29,18 @@ import {
   type LimitRule,
 } from '@/lib/db/rate-limit';
 
-export type BookingFormState = { error?: string };
+/**
+ * `step === 'verify'` arayüzün kod ekranına geçmesini söyler.
+ *
+ * Doğrulama rezervasyondan ÖNCE yapılır: kapasite tutulduktan sonra
+ * doğrulama istenseydi, doğrulamayan biri slotları tutup bırakmayarak
+ * işletmenin gününü doldurabilirdi.
+ */
+export type BookingFormState = {
+  error?: string;
+  step?: 'verify';
+  phoneHint?: string;
+};
 
 /** Seçilen aktivitenin kapasite moduna göre slottan kaç birim düşeceğini hesaplar. */
 function unitsFor(capacityMode: 'per_person' | 'per_booking', party: number): number {
@@ -63,6 +85,45 @@ export async function createBookingAction(
   if (!Number.isInteger(adults) || adults < 1) return { error: 'En az bir yetişkin gerekli.' };
   if (!Number.isInteger(children) || children < 0) return { error: 'Çocuk sayısı geçersiz.' };
 
+  const normalizedPhone = normalizePhone(phone);
+
+  // ---- Numara doğrulaması ----
+  //
+  // Doğrulanmış oturumu olan ve AYNI numarayı giren kişiden yeniden kod
+  // istenmez: oturum 90 gün yaşıyor, her rezervasyonda kod istemek geri dönen
+  // müşteriyi cezalandırmak olurdu. Numara değiştiyse yeni numara doğrulanır —
+  // bilet ve iptal bildirimleri oraya gidecek.
+  const sessionUserId = await currentUserId();
+  const sessionUser = sessionUserId ? await getUser(sessionUserId) : null;
+
+  if (!sessionUser || sessionUser.phone !== normalizedPhone) {
+    const code = String(formData.get('code') ?? '').trim();
+
+    // Kod girilmemişse gönder ve kod ekranını iste. Girilmişse doğrula.
+    // İkisi tek eylemde: ayrı bir doğrulama eylemi olsaydı "hangi numara
+    // doğrulandı" kuralı iki yerde yaşar ve biri gevşetilebilirdi.
+    if (!code) {
+      const sent = await sendVerificationCode({
+        phone: normalizedPhone,
+        purpose: 'booking',
+        message: bookingCodeMessage,
+      });
+
+      if (!sent.ok) return { error: sent.error };
+      return { step: 'verify', phoneHint: maskPhone(normalizedPhone) };
+    }
+
+    const verified = await verifyCode({ phone: normalizedPhone, purpose: 'booking', code });
+    if (!verified.ok) {
+      // Yanlış kodda YENİ kod gönderilmez: her denemede yeniden göndermek
+      // hem hız sınırını tüketirdi hem de kullanıcının elindeki kodu
+      // geçersiz kılıp onu sonsuz döngüye sokardı.
+      return { error: verified.error, step: 'verify', phoneHint: maskPhone(normalizedPhone) };
+    }
+
+    // Doğrulandı; oturum aşağıda rezervasyonla birlikte kurulur.
+  }
+
   // Sınır, kapasite düşülmeden önce uygulanır: sonra uygulansaydı reddedilen
   // istek yine bir slotu doldurup geri vermiş olurdu.
   //
@@ -104,6 +165,30 @@ export async function createBookingAction(
     return { error: 'Seçilen saat bulunamadı. Lütfen tekrar seçin.' };
   }
 
+  // Online ödeme yalnızca sağlayıcı yapılandırılmışsa VE işletmenin alt üye
+  // işyeri anahtarı varsa devreye girer. Ücretsiz aktivitede de tahsilat
+  // yapılmaz — sıfır tutarlı bir ödeme oturumu açmanın anlamı yok.
+  const totalTRY = (adults + children) * activity.priceTRY;
+  const online = totalTRY > 0 ? await onlinePaymentFor(activity.operatorId) : null;
+  const payOnline = online?.available === true;
+
+  // Mesafeli satış metinleri onaylanmadan ödeme adımına geçilemez.
+  //
+  // Kontrol SUNUCUDA: formdaki `required` işareti istemcide kaldırılabilir ve
+  // mevzuat bakımından ispatlanması gereken şey kutunun varlığı değil,
+  // onayın alınmış olması. Onay zamanı rezervasyonla birlikte kaydediliyor.
+  let termsAcceptedAt: string | null = null;
+  if (payOnline) {
+    if (formData.get('sozlesme') !== 'onay') {
+      return {
+        error: 'Devam etmek için ön bilgilendirme formunu ve mesafeli satış sözleşmesini onaylayın.',
+        step: 'verify',
+        phoneHint: maskPhone(normalizedPhone),
+      };
+    }
+    termsAcceptedAt = new Date().toISOString();
+  }
+
   try {
     const user = await findOrCreateUser(name, phone);
     if ((await getUserId()) !== user.id) await setUserSession(user.id);
@@ -118,7 +203,12 @@ export async function createBookingAction(
       bookingTime: slot.time,
       adults,
       children,
-      totalTRY: (adults + children) * activity.priceTRY,
+      totalTRY,
+      // Ödeme alınacaksa bilet HENÜZ GEÇERLİ DEĞİL. Kapasite tutuluyor ama
+      // `redeemBooking` yalnızca 'confirmed' kaydı okutur; ödemesi
+      // tamamlanmamış bir QR kapıda çalışmaz.
+      status: payOnline ? 'pending_payment' : 'confirmed',
+      termsAcceptedAt,
     });
 
     // Misafirin adı ve telefonu günlüğe KOPYALANMAZ; kayıt zaten hangi
@@ -131,8 +221,33 @@ export async function createBookingAction(
       targetType: 'booking',
       targetId: booking.id,
       ...context,
-      meta: { slotId: slot.id, units, party: adults + children },
+      meta: { slotId: slot.id, units, party: adults + children, odemeli: payOnline },
     });
+
+    if (payOnline && online?.available) {
+      const started = await startPayment({
+        booking,
+        activityTitle: activity.title,
+        activityCategory: activity.category,
+        submerchantKey: online.submerchantKey,
+        commissionBp: online.commissionBp,
+        buyer: { id: user.id, name: user.name, phone: user.phone },
+        context,
+      });
+
+      if (!started.ok) {
+        // Ödeme oturumu açılamadıysa rezervasyon askıda kalmamalı: kapasite
+        // hemen geri verilir, kullanıcı yeniden deneyebilir. Beklemek de bir
+        // seçenekti (süre aşımı işi zaten toplardı) ama o zaman kullanıcı 20
+        // dakika boyunca kendi tuttuğu yeri yeniden seçemezdi.
+        await expireBooking(booking.id);
+        return { error: started.error };
+      }
+
+      // Sağlayıcının barındırdığı forma gidilir; kart verisi bu sunucuya
+      // hiç değmez.
+      redirect(started.formUrl);
+    }
 
     redirect(`/bilet/${booking.code}`);
   } catch (error) {
@@ -184,6 +299,8 @@ export async function cancelBookingAction(
     return { error: 'Rezervasyon bulunamadı.' };
   }
 
+  const cancelContext = await requestContext();
+
   await record({
     action: 'booking.cancelled',
     actorType: 'customer',
@@ -191,11 +308,28 @@ export async function cancelBookingAction(
     operatorId: booking.operatorId,
     targetType: 'booking',
     targetId: booking.id,
-    ...(await requestContext()),
+    ...cancelContext,
     meta: { reason: 'customer' },
   });
 
+  // İade politikası: aktiviteden FREE_CANCELLATION_HOURS saat öncesine kadar
+  // tam iade, sonrasında iade yok (bkz. lib/payments/flow.ts — Mesafeli
+  // Sözleşmeler Yönetmeliği md. 15 istisnası). Eşikten sonra iptal yine
+  // yapılabilir; işletme yeri başkasına satabilsin diye.
+  let refundNote = '';
+  if (customerRefundAllowed(booking)) {
+    const refund = await refundBooking({
+      bookingId: booking.id,
+      operatorId: booking.operatorId,
+      reason: 'customer',
+      context: cancelContext,
+    });
+    if (refund.ok) refundNote = ' Ödemeniz iade edildi; kartınıza yansıması birkaç gün sürebilir.';
+  } else if (booking.totalTRY > 0) {
+    refundNote = ` Aktiviteye ${FREE_CANCELLATION_HOURS} saatten az kaldığı için ücret iadesi yapılmadı.`;
+  }
+
   revalidatePath('/rezervasyonlarim');
   revalidatePath(`/bilet/${code}`);
-  return { message: 'Rezervasyonunuz iptal edildi.' };
+  return { message: `Rezervasyonunuz iptal edildi.${refundNote}` };
 }

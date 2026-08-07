@@ -11,7 +11,8 @@
     "fetch:images": "node scripts/fetch-images.mjs",
     "seed": "node scripts/seed.mjs",
     "operator:create": "node scripts/operator-account.mjs",
-    "retention": "node scripts/retention.mjs"
+    "retention": "node scripts/gorev.mjs saklama",
+    "gorev": "node scripts/gorev.mjs"
   },
   "dependencies": {
     "@fontsource/inter": "^5.3.0",
@@ -24,7 +25,8 @@
     "pg": "^8.22.0",
     "qrcode": "^1.5.4",
     "react": "^19.2.0",
-    "react-dom": "^19.2.0"
+    "react-dom": "^19.2.0",
+    "sharp": "^0.35.3"
   },
   "devDependencies": {
     "@material-symbols/svg-400": "^0.45.10",

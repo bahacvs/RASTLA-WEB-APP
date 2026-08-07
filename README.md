@@ -2,7 +2,9 @@
 
 RASTLA, Türkiye'deki su sporları ve yerel turistik aktiviteleri tek platformda keşfetme, karşılaştırma ve rezervasyon yapma vizyonuyla geliştirilen bir deneyim pazaryeridir.
 
-> **Yayına almak için:** [KURULUM.md](KURULUM.md) — kod tarafı hazır; o belge yalnızca sizden gelmesi gereken şeyleri (şirket bilgileri, veritabanı, anahtarlar, hukukçu onayı) sırayla listeler.
+Arama ve rezervasyondan SMS doğrulamasına, online ödemeden bilet okutmaya kadar akışın tamamı çalışır durumda.
+
+> **Yayına almak için:** [KURULUM.md](KURULUM.md) — kod tarafında yapılacak bir şey yok; o belge yalnızca sizden gelmesi gereken şeyleri (şirket bilgileri, veritabanı, ödeme ve mesaj anahtarları, ETBİS kaydı, hukukçu onayı) sırayla listeler.
 
 ## Pilot kapsam
 
@@ -27,13 +29,17 @@ RASTLA, Türkiye'deki su sporları ve yerel turistik aktiviteleri tek platformda
 | `/` | Ana sayfa — arama formu, kategoriler, popüler ve bugün müsait deneyimler |
 | `/ara` | Arama — metin ve kategori filtresi, liste/harita geçişi, filtre paneli |
 | `/aktivite/[slug]` | Aktivite detayı — galeri, bilgiler, harita, değerlendirmeler |
-| `/rezervasyon/[slug]` | Rezervasyon — tarih, saat, katılımcı seçimi, iletişim ve tutar hesabı |
+| `/rezervasyon/[slug]` | Rezervasyon — tarih, saat, katılımcı seçimi, numara doğrulama ve tutar hesabı |
+| `/odeme/donus` | Ödeme sağlayıcısının dönüş ucu — sonuç sağlayıcıdan sorulur |
+| `/odeme/sonuc` | Ödeme tamamlanamadığında gelinen sayfa |
 | `/bilet/[code]` | QR kodlu bilet |
+| `/gorsel/[id]` | Yüklenen aktivite görselleri — kendi alan adımızdan sunulur |
 | `/rezervasyonlarim` | Kullanıcının kendi rezervasyonları |
 | `/hesabim` | Verilerini indirme ve hesap silme (KVKK md. 11) |
 | `/isletme` | İşletme girişi |
 | `/isletme/tara` | Bilet okutma ve onaylama |
-| `/isletme/aktiviteler` | Aktivite ekleme, düzenleme, yayına alma |
+| `/isletme/aktiviteler` | Aktivite ekleme, düzenleme, görsel yükleme, yayına alma |
+| `/isletme/odeme-ayarlari` | Alt üye işyeri başvurusu ve komisyon bilgisi (sahip) |
 | `/isletme/aktiviteler/[id]/takvim` | Takvim kuralı ve slot yönetimi |
 | `/isletme/rezervasyonlar` | Güne göre rezervasyonlar ve doluluk |
 | `/isletme/ekip` | Ekip yönetimi — hesap ekleme, parola sıfırlama, askıya alma (sahip) |
@@ -141,6 +147,14 @@ Kural `scripts/verify-redemption.mjs` ile sınanır — 12 ayrı süreç aynı a
 | `NEXT_PUBLIC_SITE_URL` | Sitenin genel adresi. Sitemap, robots, canonical, Open Graph ve bilet QR'ının işaret ettiği adres. |
 | `DATABASE_PATH` | SQLite dosyası (varsayılan `data/rastla.db`). |
 | `NEXT_PUBLIC_MAPTILER_KEY` | Harita karo sağlayıcısı anahtarı. Tanımsızsa harita yerine yapılandırma uyarısı gösterilir. |
+| `IYZICO_API_KEY` / `IYZICO_SECRET_KEY` | Ödeme sağlayıcısı. **İkisi de tanımsızsa online ödeme kapalıdır** ve ücret eskisi gibi deneyim yerinde alınır. |
+| `IYZICO_SANDBOX` | `0` verilirse üretim ucu kullanılır; varsayılan sandbox. |
+| `PAYMENT_PROVIDER` | Yalnızca test için `fake`. **Üretimde asla verilmemeli** — ödeme almadan bilet üretmek demek olurdu. |
+| `PAYMENT_TIMEOUT_MINUTES` | Ödemesi bekleyen rezervasyonun düşürüleceği süre (varsayılan 20). |
+| `FREE_CANCELLATION_HOURS` | Müşteri iptalinde tam iade eşiği (varsayılan 24). Ön bilgilendirme formuyla aynı olmalı. |
+| `CRON_SECRET` | Zamanlanmış iş uçlarını korur. **Tanımsızsa uçlar tamamen kapalıdır.** |
+| `BLOB_READ_WRITE_TOKEN` | Yüklenen görsellerin deposu. Tanımsızsa dosya sistemi kullanılır — sunucusuz ortamda kalıcı değildir. |
+| `STORAGE_PROVIDER` / `UPLOAD_PATH` | Depoyu `local`'a zorlar; yerel kök dizini belirler. |
 
 ### İşlem günlüğü
 
@@ -154,9 +168,30 @@ Bilet onayı, iptal ve fiyat değişikliği geri alınamaz işlemlerdir. `audit_
 IP ve tarayıcı bilgisi kişisel veridir; 12 ay sonunda silinir:
 
 ```bash
-npm run retention              # ne silineceğini gösterir
-npm run retention -- --uygula  # gerçekten siler
+npm run gorev                        # işleri listeler
+npm run gorev -- saklama             # ne silineceğini gösterir, SİLMEZ
+npm run gorev -- saklama --uygula    # gerçekten siler
 ```
+
+Aynı işler `/api/gorevler/<ad>` üzerinden de çalışır (Vercel Cron buraya çağrı
+yapar) ve **tam olarak aynı kodu** çağırır. Uç `CRON_SECRET` ile korunur;
+**sır tanımlı değilse uç tamamen kapalıdır** — yapılandırmayı unutmak sessiz
+bir güvenlik açığına dönüşmesin diye.
+
+### SMS doğrulama
+
+İki yerde:
+
+- **Müşteri** rezervasyondan önce numarasını doğrular. Doğrulama **kapasite tutulmadan önce** yapılır; sonra yapılsaydı doğrulamayan biri slotları tutup bırakmayarak işletmenin gününü doldurabilirdi. Oturum 90 gün yaşadığı için geri dönen müşteriden her rezervasyonda kod istenmez — yalnızca numara değiştiğinde.
+- **İşletme personeli** parolaya ek olarak kod girer. Parola doğru olsa bile oturum açılmaz; yarım kalan giriş ayrı ve 5 dakikalık imzalı bir çerezde taşınır, asıl oturum çerezine yazılsaydı ikinci faktörü geçmemiş biri korunan sayfalara girebilirdi.
+
+Üç karar:
+
+- **Kod düz metin saklanmaz**, tuzlu SHA-256 özeti saklanır. Bir veritabanı sızıntısı yalnızca geçmişi değil, o an bekleyen doğrulamaları da ele verirdi. Parola özetindeki scrypt burada kullanılmadı: kod 6 haneli ve 5 dakika yaşıyor, çevrimdışı kırma penceresi yok; buna karşılık her denemede 100 ms scrypt çalıştırmak ekranı gözle görülür yavaşlatırdı.
+- **Kod hiçbir koşulda tarayıcıya döndürülmez.** "Yalnızca geliştirmede" diye eklenmiş bir yol, yanlış yapılandırılmış bir üretim dağıtımında ikinci faktörü tamamen anlamsız kılardı. Sağlayıcı yokken kod sunucu günlüğüne düşer; doğrulama betikleri oradan okur.
+- **OTP mesajına pazarlama içeriği eklenmez.** Tek cümle kampanya metni, mesajın tamamını 6563 sayılı Kanun anlamında ticari ileti hâline getirir ve İYS onayı gerektirir. Şablonlar `lib/sms/messages.ts` içinde toplandı ve kural orada yazılı.
+
+`verify-otp.mjs` (25 kontrol) kodun veritabanında ve işlem günlüğünde geçmediğini tüm tabloyu tarayarak doğrular, 5 yanlış denemeden sonra kodun yandığını gösterir ve 10 ayrı süreçle aynı kodun yalnızca bir kez tüketilebildiğini kanıtlar.
 
 ### Kişisel veri hakları (KVKK md. 11)
 
@@ -213,16 +248,78 @@ Erişim katmanı (`lib/db/index.mjs`) iki ağız farkını kapatır: yer tutucul
 
 `verify-postgres.mjs`, tek kullanım güvencesini ve kapasite sınırını **gerçek Postgres'te ve ayrı işletim sistemi süreçleriyle** yeniden kanıtlar: 12 süreç aynı bileti onaylamayı dener, tam olarak biri geçer; 5 kişilik slota 20 süreç girer, tam olarak 5'i geçer.
 
-### Bu fazın bilinen sınırları
+### Ödeme
 
-Aşağıdakiler **pilot seviyesindedir** ve üretime çıkmadan önce değişmelidir:
+Pazaryeri modeli: RASTLA tutarın tamamını tahsil eder, komisyonunu keser, kalanı işletmeye aktarır. İşletmenin sağlayıcıda **alt üye işyeri** olarak tanımlı olması gerekir; anahtarı olmayan işletmenin aktivitesi online ödemeye açılmaz — para, aktarılamayacak bir yerde toplanmamalı.
 
-1. **Misafir kimliği doğrulanmıyor.** Kullanıcı adını ve telefonunu beyan eder, doğrulanmaz; oturum imzalı çerezle aynı cihaza bağlıdır. SMS OTP gerekir.
-2. **İşletme girişi tek katmanlı.** Hesaplar kişiye özel (e-posta + parola, scrypt özeti) ama ikinci faktör (SMS/TOTP) yok.
-3. **İhlal uyarısı otomatik değil.** İşlem günlüğü ve hız sınırı var; şüpheli bir örüntüde kimseye bildirim gitmiyor, günlük elle inceleniyor.
-4. **Ödeme yoktur.** Tutar hesaplanır ama tahsil edilmez; ödeme deneyim yerinde alınır.
-5. **Fotoğraf yükleme yoktur.** İşletme metin alanlarını ve takvimi yönetir; görselleri RASTLA ekler.
-6. **Harita karoları dış bağımlılıktır.** Uygulamanın tek dış isteği budur ve kaçışı yoktur. Sağlayıcı kullanıcı IP'lerini görür — KVKK aydınlatma metninde yer almalı.
+**Kart verisi bu sunucuya hiç değmez.** iyzico'nun barındırdığı Checkout Form kullanılıyor; elimize yalnızca bir token ve sağlayıcının döndürdüğü maskeli son dört hane geçiyor.
+
+Akışın dayandığı üç savunma:
+
+1. **Sonuç geri çağrının gövdesinden okunmaz.** Token ile sağlayıcıya sorulur (`resolve`). Gövdeye güvenilseydi adresi bilen biri "ödendi" diyen bir istek yollayıp bedava bilet alabilirdi.
+2. **Tutar, para birimi ve eşleştirme kimliği bizim kaydımızla karşılaştırılır.** Uyuşmazsa ödeme reddedilir ve günlüğe `payment.denied` düşer.
+3. **Onay tek koşullu UPDATE'tir:**
+
+```sql
+UPDATE bookings SET status='confirmed', confirmed_at=?
+ WHERE id=? AND status='pending_payment'
+```
+
+Rezervasyon ödeme boyunca `pending_payment` durumunda bekler ve kapasitesi tutulur. Tek kullanım güvencesi burada bedavaya geliyor: bilet onayı zaten `WHERE code=? AND status='confirmed'` koşuluna dayandığı için **ödemesi tamamlanmamış bir rezervasyon hiçbir ek kod yazılmadan okutulamaz.**
+
+Ödeme süresi dolan kayıtları `odeme-suresi` işi düşürür ve kapasiteyi geri verir. **Bu işin sık çalışması gerekir** (önerilen: beş dakikada bir); `vercel.json` içindeki zamanlama Vercel'in Hobby planı günlükten sık cron'a izin vermediği için günlüğe ayarlı ve ödeme canlıya çıkarken Pro plana geçilip değiştirilmelidir (bkz. KURULUM.md). Kapasite iadesi, durum değişikliği gerçekten olduysa yapıldığı için iki süpürme aynı yeri iki kez serbest bırakamaz.
+
+İptalde iade politikası: **hava ve işletme kaynaklı iptalde koşulsuz tam iade** (müşteri kusurlu değil), müşteri iptalinde aktiviteden `FREE_CANCELLATION_HOURS` saat öncesine kadar tam iade. Belirli tarihte yapılan eğlence ve dinlenme hizmetleri Mesafeli Sözleşmeler Yönetmeliği md. 15 uyarınca cayma hakkı istisnasındadır; bu eşiğin ön bilgilendirme formunda açıkça yazılması gerekir. Aynı ödeme aynı sebeple iki kez iade edilemez — güvence kodda değil, `refunds` tablosundaki `UNIQUE (payment_id, reason)` kısıtındadır.
+
+`verify-payment.mjs` (22 kontrol) bunların hepsini sınar: 12 ayrı süreç aynı geri çağrıyı işlediğinde rezervasyonun tam olarak bir kez onaylandığını, kurcalanmış tutarın reddedilip günlüğe `denied` düştüğünü, süre aşımının kapasiteyi tam olarak bir kez iade ettiğini ve ödemesi bekleyen biletin okutulamadığını gösterir.
+
+### Görsel yükleme
+
+İşletme aktivite başına en fazla 8 görsel yükleyebilir, her biri en fazla 6 MB. Yüklenen dosya **olduğu gibi saklanmaz**; sunucuda yeniden kodlanır. Dört gerçek riskin dördü de burada kapanıyor:
+
+1. **Sahte içerik türü.** Karar, tarayıcının bildirdiği MIME'a ya da uzantıya değil, dosyanın **gerçek sihirli baytlarına** dayanır. `.jpg` uzantılı bir betik reddedilir.
+2. **Sıkıştırma bombası.** Piksel sınırı (40 MP) görüntü belleğe açılmadan uygulanır; birkaç yüz kilobaytlık bir dosyanın yüzlerce megabayt istemesi engellenir.
+3. **EXIF'te konum.** İşletmenin telefonuyla çektiği fotoğraf çekim koordinatını ve çoğu zaman cihaz seri numarasını taşır. Yeniden kodlama bunların **hepsini** düşürür. Bu bir mahremiyet meselesi: işletme fotoğraf koyduğunda kendi adresini yayımlamış olmamalı.
+4. **Boyut ve adet.** Uzun kenar 1600 piksele indirilir, çıktı WebP olur.
+
+**Görseller kendi alan adımızdan sunulur** (`/gorsel/[id]`). Doğrudan blob adresi verilseydi tarayıcı yeni bir dış host'a istek atardı; bu hem `verify-offline.mjs`'in koruduğu "harita dışında dış istek yok" güvencesini bozar hem de üçüncü bir tarafa her ziyaretçinin IP adresini gösterirdi. Bedeli fazladan bant genişliği, karşılığı mevcut mahremiyet iddiasının korunması.
+
+`verify-uploads.mjs` (29 kontrol) bunu iddia etmekle kalmıyor: **GPS ve cihaz bilgisi taşıyan gerçek bir JPEG üretip yüklüyor, sonra sunucudan indirilen baytlarda EXIF'in kalmadığını gösteriyor** — hem sunulan kopyada hem depodaki dosyada. Ayrıca sahte dosyanın, bombanın ve adet sınırının reddedildiğini, sınırın arayüz engelleri DOM üzerinden kaldırıldığında bile **sunucuda** tutulduğunu doğruluyor.
+
+### Otomatik ihlal uyarısı
+
+İşlem günlüğü tutmak tek başına yetmiyordu: kimse bakmazsa bir saldırı orada sessizce durur. `uyarilar` işi on beş dakikada bir tespit kurallarını çalıştırıyor.
+
+**Kurallar kod, veri değil** (`lib/alerts/rules.mjs`). Veritabanında yapılandırılabilir olsalardı kimsenin gözden geçirmediği eşiklere dönüşürlerdi; kodda oldukları için her değişiklik incelemeden geçiyor ve gerekçesi yanında yazıyor.
+
+| Kural | Eşik | Önem |
+| --- | --- | --- |
+| Başarısız giriş yoğunluğu | 1 saatte 20 (işletme başına) | kritik |
+| Reddedilen bilet onayı | 1 saatte 15 (kişi başına) | uyarı |
+| Toplu iptal | 10 dakikada 20 (işletme başına) | kritik |
+| Sık veri dışa aktarma | 24 saatte 6 (kişi başına) | uyarı |
+| Ödeme tutarı uyuşmazlığı | 1 (tek bir tanesi bile) | kritik |
+| Yeni adresten giriş | ilk kez görülen adres | bilgi |
+
+**Uyarı fırtınası olmuyor.** `alerts.dedupe_key` içinde bir **zaman kovası** var (`kural:hedef:saat`) ve ekleme `ON CONFLICT (dedupe_key) DO NOTHING` ile yapılıyor. Bunun iki sonucu var: bekleme süresi bedavaya geliyor (500 başarısız giriş tek uyarı üretir, 500 e-posta değil), ve "önce bak, sonra yaz" yarışı hiç doğmuyor — kontrol veritabanında, kodda değil.
+
+**E-posta gövdesinde kişisel veri yoktur.** Uyarı hangi kuralın kaç kez tetiklendiğini ve nerede bakılacağını söyler; kim, hangi adresten, hangi kayıt — bunların cevabı yalnızca işlem günlüğünde. E-posta üçüncü bir sağlayıcının sunucularından geçip orada saklanıyor; korumaya çalıştığımız veriyi oraya taşımak tuhaf olurdu. Aynı sebeple IP adresi `alerts` tablosuna da yazılmıyor.
+
+`ALERT_EMAIL_TO` tanımsızsa iş **başarısız sayılır** ve zamanlayıcı hata görür. Uyarı üretip kimseye haber vermemek, uyarı sisteminin var olma sebebini ortadan kaldırırdı. Uyarılar yine de kaydedilir, `/isletme/gunluk` üzerinde bayrak olarak görünür ve bir sonraki koşum göndermeyi tekrar dener.
+
+`verify-alerts.mjs` (25 kontrol) eşiğin altının uyarı üretmediğini, aynı olayın 50 kez tekrarında tek uyarı kaldığını, **12 ayrı süreç aynı anda süpürdüğünde yalnızca birinin uyarı oluşturduğunu** ve e-posta gövdesinde IP ile hesap kimliğinin geçmediğini doğrular.
+
+### Bilinen sınırlar
+
+Bunlar eksik iş değil, **bilinçli olarak çizilmiş sınırlar.** Her biri neden öyle olduğuyla birlikte yazılı:
+
+1. **iyzico bağdaştırıcısı gerçek anahtarla sınanmadı.** Ödeme akışının doğruluk iddialarının tamamı (yarış, süre aşımı, kurcalanmış tutar, iade idempotanlığı) aynı sözleşmeyi uygulayan `fake` sağlayıcıyla ve gerçek eşzamanlılıkla kanıtlandı; bu iddiaların hiçbiri sağlayıcıya özgü değil, hepsi bizim kodumuzda. Sağlayıcıya özgü olan **yalnızca imzalama ve alan adlarıdır** ve o kısım ilk sandbox anahtarıyla sınanmalıdır.
+2. **Yedekleme yoktur.** Veritabanı barındırma sağlayıcısının kendi düzenine bırakılmış; geri yükleme hiç denenmedi. İhlal müdahale planındaki kalan tek yapısal eksik budur ve bir sonraki önceliktir.
+3. **Tespit kuralları sabit eşiklidir.** Kurallar her işletme için aynı sayıyı kullanır; günde 400 rezervasyon alan bir işletmeyle 20 alan aynı eşiğe tabidir. Davranışa göre uyarlanan eşikler daha isabetli olurdu ama ölçülecek geçmiş veri henüz yok.
+4. **Görsel moderasyonu yoktur.** Yüklenen fotoğraf teknik olarak doğrulanır (tür, boyut, üstveri) ama içeriğine bakılmaz; uygunsuz görsel bildirim üzerine kaldırılır. İşletme veri sözleşmesi sorumluluğu işletmeye verir.
+5. **Fatura/e-arşiv entegrasyonu yoktur.** Komisyon faturası elle kesilir.
+6. **İkinci faktörü olmayan eski hesaplar.** Bu özellikten önce açılmış işletme hesaplarında numara yok; parolayla girmeye devam eder ve ekip ekranında uyarı görürler. Numara eklenene kadar tek katmanlıdırlar.
+7. **Harita karoları dış bağımlılıktır.** Uygulamanın tek dış isteği budur ve kaçışı yoktur. Sağlayıcı kullanıcı IP'lerini görür — KVKK aydınlatma metninde yer alır.
 
 ## Doğrulama betikleri
 
@@ -238,7 +335,18 @@ node scripts/verify-offline-ticket.mjs # bağlantı kesikken bilet ve QR açıl�
 node scripts/verify-offline.mjs       # harita karoları dışında dış istek var mı
 node scripts/verify-audit.mjs         # işlem günlüğü: ne kaydediliyor, ne KAYDEDİLMİYOR
 node scripts/verify-rate-limit.mjs    # hız sınırı ve 30 süreçli eşzamanlılık
+node scripts/verify-jobs.mjs          # zamanlayıcı ucunun yetkilendirmesi
+SERVER_LOG=… node scripts/verify-otp.mjs  # SMS doğrulama ve işletme 2FA
 node scripts/verify-account-rights.mjs # veri indirme ve hesap silme (KVKK md. 11)
+
+# Ödeme (sunucu PAYMENT_PROVIDER=fake ile başlatılmış olmalı):
+PAYMENT_PROVIDER=fake npm start > server.log &
+SERVER_LOG=server.log node scripts/verify-payment.mjs  # yarış, süre aşımı, kurcalama, iade
+
+node scripts/verify-uploads.mjs       # sahte dosya, bomba, EXIF/GPS temizliği, adet sınırı
+
+# Otomatik uyarılar (sunucu CRON_SECRET ve ALERT_EMAIL_TO ile başlatılmış olmalı):
+SERVER_LOG=server.log node scripts/verify-alerts.mjs  # eşik, tekilleştirme, yarış, e-posta içeriği
 
 # Postgres'e karşı (DATABASE_URL tanımlıyken):
 DATABASE_URL=… node scripts/verify-postgres.mjs   # eşzamanlılık ve ağız farkları
@@ -260,17 +368,13 @@ Sayfalarda "önce ağ, olmazsa önbellek" yaklaşımı kullanılır — doluluk 
 
 Bilinen bir tuzak: `--spacing-md` gibi adlandırılmış boşluk tokenları Tailwind'in `--container-*` ölçeğini gölgeler, bu yüzden `max-w-md` 28rem yerine 16px'e çözülür. Sabit genişlik gerektiğinde `max-w-[28rem]` gibi açık değer kullanın.
 
-## Gerçekçi teknik durum
+## Durum
 
-Bu çalışma tam bir üretim uygulaması değildir; veri katmanı henüz sahtedir.
+Ürün akışı uçtan uca tamam. Misafir aktiviteyi buluyor, saatini seçiyor, numarasını SMS ile doğruluyor, kartıyla ödüyor ve QR kodlu biletini alıyor. İşletme kendi aktivitelerini ekliyor, takvimini kuruyor, fotoğraflarını yüklüyor, bileti okutuyor ve gününü yönetiyor. Ödeme alınıyor, komisyon kesiliyor, iade gerektiğinde otomatik yapılıyor.
 
-1. ~~Tasarım React/Next.js bileşenlerine ayrılmalı.~~ **Tamamlandı.**
-2. ~~Görseller kalıcı dosyalarla değiştirilmeli.~~ **Kısmen tamamlandı** — görseller repoya alındı, ancak lisans durumu hâlâ açık (aşağıya bakın).
-3. Rezervasyon kaydı ve işletme onay akışı **çalışıyor**; kimlik doğrulama (SMS OTP), ödeme ve müsaitlik yönetimi eksik.
-4. ~~Harita sağlayıcısı seçilmeli.~~ **Tamamlandı** — MapLibre + karo sağlayıcısı; işletme konumu koordinat olarak girer.
-5. KVKK metinleri **taslak olarak hazırlandı** (`legal/`), hukukçu onayı bekliyor. Mesafeli satış sözleşmesi, ön bilgilendirme formu ve işletme sözleşmeleri henüz yok.
+Bunların hepsi **gerçek bir veritabanına** yazıyor (SQLite ya da Postgres, tek bir bağlantı dizesiyle seçilir) ve doğruluk iddiaları 16 süitle, ayrı işletim sistemi süreçleriyle, iki motorda birden sınanıyor.
 
-İşletme kendi aktivitelerini ekleyip takvimini tanımlayabilir; rezervasyon slot kapasitesinden düşer ve QR kodlu bilet üretir. Ödeme hâlâ yoktur.
+**Canlıya çıkmak için kod tarafında yapılacak bir şey yok.** Kalanlar sizden gelmesi gerekenler — iyzico üye işyeri anahtarları, ETBİS kaydı, hukukçu onayı, SMS/e-posta/depolama anahtarları ve işletmelerin ticari bilgileri. Hepsi sırayla [KURULUM.md](KURULUM.md) içinde; o belge tamamlanmadan gerçek para tahsil edilmemelidir.
 
 ### Görsel lisansı — açık madde
 
@@ -294,14 +398,25 @@ Marka varlıkları (`public/brand/`) ve ikonlar bu kapsamda değildir — ikonla
 app/                  rotalar ve global stiller
 components/           paylaşılan bileşenler (Icon, kartlar, navigasyon)
 components/icons/     üretilmiş SVG ikon verisi — elle düzenlenmez
-lib/                  veri modeli, oturum ve biçimlendirme yardımcıları
-lib/db/               şema; aktivite, slot, rezervasyon ve kullanıcı depoları
+lib/                  veri modeli, oturum, görsel işleme ve biçimlendirme
+lib/db/               şema; aktivite, slot, rezervasyon, ödeme ve kullanıcı depoları
+lib/payments/         sağlayıcı soyutlaması (iyzico | fake) ve ödeme akışı
+lib/storage/          dosya deposu (local | vercel-blob)
+lib/alerts/           tespit kuralları ve uyarı üretimi
+lib/jobs/             zamanlanmış işler — HTTP ucu ve komut satırı aynı kodu çağırır
+lib/sms/, lib/mail/   giden mesaj sağlayıcıları (console varsayılan)
 public/               görseller ve marka varlıkları
-scripts/              varlık üretimi ve doğrulama betikleri
+scripts/              varlık üretimi ve 16 doğrulama süiti
 reference/prototypes/ özgün statik Stitch ekranları (build'e dahil değil)
-legal/                KVKK metinleri — TASLAK, hukukçu onayı bekliyor
+legal/                KVKK ve mesafeli satış metinleri — TASLAK, hukukçu onayı bekliyor
 ```
 
 ## Sonraki geliştirme hedefi
 
-`lib/data.ts` içindeki sahte veriyi gerçek bir kaynağa (API/veritabanı) bağlamak, ardından işletme tarafında müsaitlik yönetimini eklemek. Online ödeme kontrollü bir sonraki fazda devreye alınmalıdır.
+Öncelik sırasıyla:
+
+1. **Otomatik yedekleme ve geri yükleme tatbikatı.** İhlal müdahale planındaki kalan tek yapısal eksik; fidye yazılımı ya da hatalı toplu silme senaryosunda bedeli en ağır olan şey.
+2. **iyzico sandbox anahtarıyla uçtan uca koşum** — bağdaştırıcının imzalama ve alan adlarını gerçek sağlayıcıya karşı doğrulamak.
+3. **Fatura/e-arşiv entegrasyonu** ve işletmeye hakediş raporu ekranı.
+
+Kapsam dışı bırakılanlar: çoklu para birimi, taksit seçenekleri, görsel moderasyon kuyruğu ve uygulama içi bildirim. Bunların hiçbiri pilotu engellemiyor.

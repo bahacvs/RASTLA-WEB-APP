@@ -12,10 +12,39 @@ export const revalidate = 60;
 
 export default async function HomePage() {
   const activities = await listPublishedActivities();
-  const bySlug = (slug: string) => activities.find((a) => a.slug === slug);
 
-  const popular = POPULAR_SLUGS.map(bySlug).filter((a) => a !== undefined);
-  const availableToday = AVAILABLE_TODAY_SLUGS.map(bySlug).filter((a) => a !== undefined);
+  /**
+   * Öne çıkan şeritleri doldurur.
+   *
+   * `POPULAR_SLUGS` ve `AVAILABLE_TODAY_SLUGS` elle seçilmiş içerik ayarıdır ve
+   * veritabanındaki slug'lara bağlıdır. İşletme ilanı yayından kaldırdığında,
+   * slug değiştiğinde ya da veri kümesi tamamen başkalaştığında hiçbiri
+   * eşleşmiyor ve şerit **sessizce** boşalıyordu: yayında altı ilan varken ana
+   * sayfa bomboş görünüyordu. Seçim, içeriğin var olduğunun garantisi değil.
+   *
+   * Seçilmiş sıra korunur; eksik kalan yer yayındaki diğer ilanlarla
+   * tamamlanır. Alınanlar işaretlendiği için iki şerit aynı ilanı göstermez.
+   */
+  const taken = new Set<string>();
+  const fill = (slugs: string[]) => {
+    const chosen = slugs
+      .map((slug) => activities.find((a) => a.slug === slug))
+      .filter((a) => a !== undefined);
+
+    for (const activity of chosen) taken.add(activity.slug);
+
+    for (const activity of activities) {
+      if (chosen.length >= slugs.length) break;
+      if (taken.has(activity.slug)) continue;
+      taken.add(activity.slug);
+      chosen.push(activity);
+    }
+
+    return chosen;
+  };
+
+  const popular = fill(POPULAR_SLUGS);
+  const availableToday = fill(AVAILABLE_TODAY_SLUGS);
 
   return (
     <div className="pb-24">

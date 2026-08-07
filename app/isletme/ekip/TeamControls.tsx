@@ -5,6 +5,7 @@ import {
   changeOwnPasswordAction,
   createTeamMemberAction,
   resetTeamPasswordAction,
+  setTeamPhoneAction,
   setTeamStatusAction,
   type TeamState,
 } from '@/app/actions/team';
@@ -89,6 +90,25 @@ export function AddMemberForm() {
       </div>
 
       <div>
+        <label htmlFor="phone" className="mb-1 block text-label-bold text-on-surface-variant">
+          Cep telefonu
+        </label>
+        <input
+          id="phone"
+          name="phone"
+          type="tel"
+          required
+          inputMode="tel"
+          autoComplete="tel"
+          placeholder="0532 000 00 00"
+          className={FIELD}
+        />
+        <p className="mt-1 text-label-sm text-on-surface-variant">
+          Girişte istenecek doğrulama kodu bu numaraya gider.
+        </p>
+      </div>
+
+      <div>
         <label htmlFor="role" className="mb-1 block text-label-bold text-on-surface-variant">
           Yetki
         </label>
@@ -116,11 +136,13 @@ export function MemberControls({
   name,
   status,
   isSelf,
+  hasPhone,
 }: {
   userId: string;
   name: string;
   status: 'active' | 'suspended';
   isSelf: boolean;
+  hasPhone: boolean;
 }) {
   const [resetState, resetAction, resetting] = useActionState<TeamState, FormData>(
     resetTeamPasswordAction,
@@ -133,6 +155,8 @@ export function MemberControls({
 
   return (
     <div className="flex flex-col gap-sm border-t border-surface-variant pt-sm">
+      {!hasPhone && <MissingPhoneNotice userId={userId} name={name} />}
+
       <div className="flex flex-wrap gap-sm">
         <form action={resetAction}>
           <input type="hidden" name="userId" value={userId} />
@@ -171,6 +195,63 @@ export function MemberControls({
       <Feedback state={resetState} />
       <Feedback state={statusState} />
     </div>
+  );
+}
+
+/**
+ * İkinci faktör numarası olmayan hesap için uyarı ve tamamlama formu.
+ *
+ * Bu özellikten önce açılmış hesaplar numarasız kaldı. Onları girişte
+ * kilitlemek çalışan bir işletmeyi sahada dışarıda bırakırdı; bunun yerine
+ * durum burada yüksek sesle söyleniyor ve tek adımda düzeltiliyor.
+ */
+function MissingPhoneNotice({ userId, name }: { userId: string; name: string }) {
+  const [state, action, pending] = useActionState<TeamState, FormData>(setTeamPhoneAction, {});
+
+  if (state.message) {
+    return (
+      <p
+        role="status"
+        className="rounded-lg bg-secondary-container px-3 py-2 text-body-md text-on-secondary-container"
+      >
+        {state.message}
+      </p>
+    );
+  }
+
+  return (
+    <form action={action} className="rounded-lg border border-tertiary bg-surface-container p-3">
+      <p className="mb-2 text-body-md text-on-surface">
+        <strong className="text-tertiary">İkinci faktör yok.</strong> {name} yalnızca parolayla
+        giriyor. Bilet onayı geri alınamaz bir işlem; bir numara ekleyin.
+      </p>
+
+      <input type="hidden" name="userId" value={userId} />
+      <div className="flex flex-wrap gap-2">
+        <input
+          name="phone"
+          type="tel"
+          required
+          inputMode="tel"
+          placeholder="0532 000 00 00"
+          aria-label={`${name} için cep telefonu`}
+          className="h-11 min-w-[12rem] flex-1 rounded-lg border border-outline-variant bg-surface px-3 text-body-md text-on-surface focus:ring-2 focus:ring-primary focus:outline-none"
+        />
+        <button
+          type="submit"
+          disabled={pending}
+          className="rounded-lg bg-primary px-4 py-2 text-label-bold text-on-primary disabled:opacity-50"
+        >
+          {pending ? 'Kaydediliyor…' : 'Numarayı Kaydet'}
+        </button>
+      </div>
+
+      {state.error && (
+        <p role="alert" className="mt-2 text-body-md text-error">
+          {state.error}
+        </p>
+      )}
+    </form>
   );
 }
 

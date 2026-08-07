@@ -15,6 +15,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { chromium } from 'playwright';
 import { ensureTestAccounts, loginAs } from './lib/test-accounts.mjs';
+import { book } from './lib/booking.mjs';
 
 const BASE = process.env.BASE_URL ?? 'http://127.0.0.1:3000';
 
@@ -28,31 +29,19 @@ const browser = await chromium.launch({
 const checks = [];
 const check = (name, pass, detail = '') => checks.push({ name, pass, detail });
 
-/** Yeterli yeri olan ilk slotu seçer. Varsayılan seçime güvenmek kırılgandır:
- *  önceki koşumlar o slotu doldurmuş olabilir. */
-async function pickAvailableSlot(page) {
-  const slot = page.locator('button[aria-pressed]:not([disabled])').filter({ hasText: 'yer' }).first();
-  if ((await slot.count()) === 0) return false;
-  await slot.click();
-  return true;
-}
-
-
 // ---------- Müşteri: rezervasyon oluştur ----------
 // elektrikli-sup-deneyimi -> buyukcekmece-wsc işletmesine ait
 const customer = await browser.newContext({ viewport: { width: 390, height: 844 } });
 const cp = await customer.newPage();
 
-await cp.goto(`${BASE}/rezervasyon/elektrikli-sup-deneyimi`, { waitUntil: 'networkidle' });
-await cp.waitForTimeout(400);
-check('müsait slot bulundu', await pickAvailableSlot(cp));
-await cp.getByLabel('Ad Soyad').fill('Deniz Yılmaz');
-await cp.getByLabel('Telefon').fill('0532 111 22 33');
-await cp.getByRole('button', { name: 'Rezervasyonu Tamamla' }).first().click();
-
-await cp.waitForURL(/\/bilet\//, { timeout: 15000 });
-const code = decodeURIComponent(new URL(cp.url()).pathname.split('/').pop());
-check('rezervasyon oluşturuldu ve bilete yönlendirildi', /^[0-9A-Z-]{20,}$/.test(code), code);
+const first = await book(cp, {
+  baseUrl: BASE,
+  slug: 'elektrikli-sup-deneyimi',
+  name: 'Deniz Yılmaz',
+  phone: '0532 111 22 33',
+});
+const code = first.code;
+check('rezervasyon oluşturuldu ve bilete yönlendirildi', /^[0-9A-Z-]{20,}$/.test(code ?? ''), code ?? first.error);
 
 check('bilet geçerli görünüyor', await cp.getByText('Geçerli bilet').isVisible());
 check('QR kodu çiziliyor', (await cp.locator('[aria-label="Bilet QR kodu"] svg').count()) === 1);
@@ -151,14 +140,15 @@ check('misafir adı gösteriliyor', await op.getByText('Deniz Yılmaz').isVisibl
 // karşılamak olurdu.
 const renameCtx = await browser.newContext({ viewport: { width: 390, height: 844 } });
 const rp = await renameCtx.newPage();
-await rp.goto(`${BASE}/rezervasyon/elektrikli-sup-deneyimi`, { waitUntil: 'networkidle' });
-await rp.waitForTimeout(400);
-if (await pickAvailableSlot(rp)) {
-  await rp.getByLabel('Ad Soyad').fill('Deniz Yılmaz Kaya');
-  await rp.getByLabel('Telefon').fill('0532 111 22 33');
-  await rp.getByRole('button', { name: 'Rezervasyonu Tamamla' }).first().click();
-  await rp.waitForURL(/\/bilet\//, { timeout: 15000 });
-  const renamedCode = decodeURIComponent(new URL(rp.url()).pathname.split('/').pop());
+const renamed = await book(rp, {
+  baseUrl: BASE,
+  slug: 'elektrikli-sup-deneyimi',
+  name: 'Deniz Yılmaz Kaya',
+  phone: '0532 111 22 33',
+});
+
+if (renamed.code) {
+  const renamedCode = renamed.code;
 
   await op.fill('#code', renamedCode);
   await op.getByRole('button', { name: 'Onayla' }).click();
@@ -168,7 +158,7 @@ if (await pickAvailableSlot(rp)) {
     await op.getByText('Deniz Yılmaz Kaya').isVisible()
   );
 } else {
-  check('aynı numaradan gelen güncel ad gösteriliyor', false, 'boş slot bulunamadı');
+  check('aynı numaradan gelen güncel ad gösteriliyor', false, renamed.error);
 }
 await renameCtx.close();
 

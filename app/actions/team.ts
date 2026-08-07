@@ -6,10 +6,13 @@ import {
   checkPassword,
   createOperatorUser,
   getOperatorUser,
+  setOperatorUserPhone,
   setOperatorUserStatus,
   setPassword,
   type OperatorRole,
 } from '@/lib/db/operators';
+import { normalizePhone } from '@/lib/db/users';
+import { maskPhone } from '@/lib/sms';
 import { generatePassword, passwordProblem } from '@/lib/password.mjs';
 import { record, type AuditAction } from '@/lib/db/audit';
 import { requestContext } from '@/lib/request-context';
@@ -78,10 +81,14 @@ export async function createTeamMemberAction(
 
   const email = String(formData.get('email') ?? '').trim();
   const name = String(formData.get('name') ?? '').trim();
+  const phone = normalizePhone(String(formData.get('phone') ?? ''));
   const role: OperatorRole = formData.get('role') === 'owner' ? 'owner' : 'staff';
 
   if (name.length < 2) return { error: 'Ad soyad girin.' };
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { error: 'Geçerli bir e-posta girin.' };
+  // Telefon zorunlu: ikinci faktör oraya gidiyor. Numarasız bir hesap açmak,
+  // hesabı tek katmanlı bırakmak demek olurdu.
+  if (phone.length < 12) return { error: 'Geçerli bir cep telefonu girin (ikinci faktör buraya gider).' };
 
   // Parolayı sahip belirlemez, sistem üretir. Sahibin seçeceği parola hem zayıf
   // olur hem de sahip tarafından bilinmeye devam ederdi; hesabın kişiye ait
@@ -91,6 +98,7 @@ export async function createTeamMemberAction(
     operatorId: session.operator.id,
     email,
     name,
+    phone,
     password,
     role,
   });
@@ -102,9 +110,12 @@ export async function createTeamMemberAction(
   }
 
   // Üretilen parola günlüğe YAZILMAZ; yalnızca hesabın açıldığı kaydedilir.
+  // Telefon numarası günlüğe maskelenerek yazılır; kaydın kimi işaret ettiği
+  // zaten belli, tam numarayı ikinci bir yerde çoğaltmanın anlamı yok.
   await log(session, 'operator_user.created', result.user.id, {
     email: result.user.email,
     role: result.user.role,
+    phone: maskPhone(phone),
   });
 
   revalidatePath('/isletme/ekip');
@@ -169,6 +180,33 @@ export async function setTeamStatusAction(
         ? `${owned.target.name} askıya alındı; oturumu anında geçersiz oldu.`
         : `${owned.target.name} yeniden etkinleştirildi.`,
   };
+}
+
+/**
+ * Numarası olmayan bir hesaba ikinci faktör numarası ekler.
+ *
+ * Bu özellikten önce açılmış hesaplar numarasız; onları girişte kilitlemek
+ * çalışan bir işletmeyi sahada dışarıda bırakmak olurdu. Bunun yerine ekip
+ * ekranı yüksek sesle uyarıyor ve numara buradan tamamlanıyor.
+ */
+export async function setTeamPhoneAction(
+  _prev: TeamState,
+  formData: FormData
+): Promise<TeamState> {
+  const owned = await requireSameOperator(String(formData.get('userId') ?? ''));
+  if (!owned) return { error: 'Bu hesaba erişim yetkiniz yok.' };
+
+  const phone = normalizePhone(String(formData.get('phone') ?? ''));
+  if (phone.length < 12) return { error: 'Geçerli bir cep telefonu girin.' };
+
+  await setOperatorUserPhone(owned.target.id, phone);
+  await log(owned.session, 'operator_user.phone_set', owned.target.id, {
+    email: owned.target.email,
+    phone: maskPhone(phone),
+  });
+
+  revalidatePath('/isletme/ekip');
+  return { message: `${owned.target.name} için ikinci faktör numarası kaydedildi.` };
 }
 
 /**

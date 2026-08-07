@@ -1,8 +1,13 @@
 import type { MetadataRoute } from 'next';
 import { listPublishedActivities } from '@/lib/db/activities';
 import { SITE_URL } from '@/lib/site';
+import { IS_DEMO } from '@/lib/demo';
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
+  // Demo kipinde site haritası BOŞ döner: uydurma ilanların adreslerini arama
+  // motorlarına elimizle vermenin anlamı yok.
+  if (IS_DEMO) return [];
+
   const now = new Date();
   const activities = await listPublishedActivities();
 

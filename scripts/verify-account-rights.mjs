@@ -22,6 +22,7 @@
  */
 import { chromium } from 'playwright';
 import { db as connect, usingPostgres } from '../lib/db/index.mjs';
+import { book as bookWithVerification } from './lib/booking.mjs';
 
 const BASE = process.env.BASE_URL ?? 'http://127.0.0.1:3000';
 
@@ -71,18 +72,13 @@ const page = await ctx.newPage();
 
 /** Verilen sayfayla bir rezervasyon oluşturur, bilet kodunu döner. */
 async function book(target) {
-  await target.goto(`${BASE}/rezervasyon/elektrikli-sup-deneyimi`, { waitUntil: 'networkidle' });
-  await target.waitForTimeout(400);
-
-  const slot = target.locator('button[aria-pressed]:not([disabled])').filter({ hasText: 'yer' }).first();
-  if ((await slot.count()) === 0) return null;
-
-  await slot.click();
-  await target.getByLabel('Ad Soyad').fill(NAME);
-  await target.getByLabel('Telefon').fill(PHONE);
-  await target.getByRole('button', { name: 'Rezervasyonu Tamamla' }).first().click();
-  await target.waitForURL(/\/bilet\//, { timeout: 15000 });
-  return decodeURIComponent(new URL(target.url()).pathname.split('/').pop());
+  const result = await bookWithVerification(target, {
+    baseUrl: BASE,
+    slug: 'elektrikli-sup-deneyimi',
+    name: NAME,
+    phone: PHONE,
+  });
+  return result.code ?? null;
 }
 
 const code = await book(page);

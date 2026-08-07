@@ -17,6 +17,12 @@ Yazılım tarafında yapılacak bir iş kalmadıysa, sıra bu listede.
 | 4 | `SESSION_SECRET` | Kendiniz üretirsiniz | Oturum çerezleri taklit edilebilir |
 | 5 | MapTiler anahtarı | Ücretsiz hesap | Harita yerine yapılandırma uyarısı görünür |
 | 6 | Alan adı | Sizden | Bilet QR'ları ve paylaşım bağlantıları yanlış adresi gösterir |
+| 6b | iyzico üye işyeri + ETBİS kaydı + mesafeli satış metinleri | Sizden, Bakanlıktan, avukatınızdan | Online ödeme kapalı kalır; ücret deneyim yerinde alınır |
+| 6c | İşletmelerin vergi no, IBAN ve yetkili bilgisi | İşletmelerden | O işletmenin aktiviteleri online ödemeye açılamaz |
+| 6d | `CRON_SECRET` | Kendiniz üretirsiniz | Zamanlanmış işler kapalı kalır; ödemesi yarım kalan rezervasyonlar slotları kilitler |
+| 6e | SMS sağlayıcı anahtarı (Netgsm) | Sağlayıcıdan | Doğrulama kodları kimseye ulaşmaz, yalnızca sunucu günlüğüne yazılır |
+| 6f | Vercel Blob anahtarı | Vercel panelinden | Yüklenen görseller her dağıtımda kaybolur, sayfada kırık kutular kalır |
+| 6g | E-posta sağlayıcısı + `ALERT_EMAIL_TO` | Resend + ihlal planındaki sorumlular | Güvenlik uyarıları üretilir ama kimseye gitmez; `uyarilar` işi hata verir |
 | 7 | İlk işletme hesapları | Sizden | İşletmeler giriş yapamaz |
 | 8 | Yurt dışına aktarım sözleşmesi | Avukatınızdan | KVKK md. 9 ihlali |
 
@@ -122,6 +128,145 @@ NEXT_PUBLIC_SITE_URL=https://rastla.com
 Bilet QR kodları bu adresi taşır, sitemap ve paylaşım bağlantıları buradan
 üretilir. Yanlış olursa basılı/ekranda gösterilen QR kodlar çalışmaz.
 
+**Ödeme açıldığında bu adres ayrıca kritiktir:** ödeme sağlayıcısının
+kullanıcıyı geri göndereceği adres buradan türetilir. Yanlış ya da erişilemez
+bir adres, ödemesi alınmış ama onaylanamamış rezervasyonlar demektir.
+
+## 6b. Ödeme (isteğe bağlı ama para almak için zorunlu)
+
+Online ödeme **iki koşul birden** sağlanınca açılır:
+
+1. `IYZICO_API_KEY` ve `IYZICO_SECRET_KEY` tanımlı.
+2. İşletmenin **alt üye işyeri anahtarı** var (aşağıya bakın).
+
+İkisinden biri eksikse sistem çalışmaya devam eder; rezervasyon doğrudan
+onaylanır ve ücret deneyim yerinde alınır. Bu, yarım bir kurulum değil,
+bilinçli bir çalışma biçimidir.
+
+### Sıra
+
+1. **Şirket kurulu olmalı.** iyzico üye işyeri başvurusu şahıs ya da sermaye
+   şirketi ister; şahsi hesapla pazaryeri modeli açılmaz.
+2. **ETBİS kaydı.** Para akışına girdiğiniz an *elektronik ticaret aracı
+   hizmet sağlayıcı* olursunuz (6563 sayılı Kanun). Kayıt Ticaret
+   Bakanlığı üzerinden yapılır.
+3. **Mesafeli satış sözleşmesi ve ön bilgilendirme formu.** Bunlar olmadan
+   yasal olarak tahsilat yapılamaz. Metinlerin hukukçu onayı gerekir.
+4. **iyzico anahtarlarını girin**, önce sandbox ile deneyin
+   (`IYZICO_SANDBOX` boş bırakılırsa sandbox kullanılır).
+5. **Her işletme kendi ticari bilgilerini girer:** `/isletme/odeme-ayarlari`
+   ekranından vergi/kimlik numarası, IBAN ve adres kaydedilir, ardından
+   "ödeme sağlayıcısına gönder" ile alt üye işyeri açılır.
+
+### Zamanlanmış iş
+
+`CRON_SECRET` tanımlı olmalı ve `vercel.json` içindeki `odeme-suresi` işi
+çalışıyor olmalı. Çalışmazsa ödemesi yarım kalan rezervasyonlar slotları
+süresiz kilitli tutar. Elle kontrol:
+
+```bash
+npm run gorev -- odeme-suresi
+```
+
+### İptal politikası
+
+`FREE_CANCELLATION_HOURS` (varsayılan 24) müşteri iptalinde tam iade
+eşiğidir. **Bu değer ön bilgilendirme formunda yazan süreyle aynı olmalı** —
+farklı olursa formdaki taahhüt bağlayıcıdır. Hava ve işletme kaynaklı
+iptalde iade koşulsuz ve tamdır; müşteri kusurlu değildir.
+
+## 6c. Görsel deposu
+
+İşletmeler kendi aktivite fotoğraflarını yükleyebiliyor. Dosyalar bir depoda,
+kayıtları veritabanında tutulur.
+
+```
+BLOB_READ_WRITE_TOKEN=vercel_blob_rw_...
+```
+
+Vercel panelinden **Storage → Blob** ile oluşturulur ve anahtar projeye
+otomatik eklenir.
+
+**Anahtar tanımsızsa dosya sistemi kullanılır ve bu üretimde yeterli
+DEĞİLDİR:** Vercel'in sunucusuz ortamında yazılan dosya bir sonraki dağıtımda
+kaybolur. Kayıt veritabanında durduğu için sayfada kırık görsel kutuları
+görünür. `DATABASE_URL` için geçerli uyarının aynısı.
+
+**KVKK notu:** Görseller **bizim alan adımızdan** sunulur (`/gorsel/[id]`),
+doğrudan blob adresinden değil. Böylece ziyaretçinin tarayıcısı yeni bir dış
+host'a istek atmaz ve depo sağlayıcısı kullanıcı IP'lerini görmez. Aydınlatma
+metninde ek bir alıcı saymanız gerekmiyor.
+
+Yüklenen her fotoğraf sunucuda yeniden kodlanır ve **konum dahil tüm EXIF
+verisi silinir.** İşletmenin telefonuyla çektiği fotoğraf çekim koordinatını
+taşır; bu bilgi işletme adına yayımlanmamalı. `verify-uploads.mjs` bunu her
+koşumda GPS taşıyan gerçek bir dosyayla doğrular.
+
+## 6d. Tanıtım (demo) sürümü
+
+Siteyi gerçek veriyle açmadan önce gezip incelemek için ayrı bir kip var.
+
+```bash
+DEMO_MODE=1 node scripts/demo-seed.mjs
+```
+
+Betik **uydurma** üç işletme, altı ilan, 60 günlük takvim ve her işletme için
+**sahip + personel** hesabı üretir; parolayı çalıştırma sonunda bir kez yazar
+(`--parola "..."` ile kendiniz de belirleyebilirsiniz).
+
+`DEMO_MODE=1` tanımlıyken:
+
+- robots.txt her şeyi kapatır, sitemap boşalır, sayfalar `noindex` olur
+- her sayfanın üstünde "TANITIM SÜRÜMÜ" şeridi görünür
+
+**Bu ikisi isteğe bağlı değil.** Uydurma işletme adları arama motorlarına açık
+kalsaydı, var olmayan işletmeler Büyükçekmece'de gerçekten hizmet veriyormuş
+gibi indekslenir; biri rezervasyon yapmaya çalışır, kimse karşılamaz.
+
+> **Derleme anı uyarısı:** `robots.txt`, `sitemap.xml`, ana sayfa ve aktivite
+> sayfaları **derleme sırasında** üretilir. Yani `DEMO_MODE` derleme sırasında
+> da tanımlı olmalı ve **veritabanı derlemeden önce doldurulmuş olmalıdır.**
+> Vercel'de sıra şu: önce veritabanını oluştur → `demo-seed` ile doldur →
+> ortam değişkenlerini gir → yeniden dağıt.
+
+> **Ortam değişkenleri geriye dönük uygulanmaz.** Vercel her dağıtıma o anki
+> değişkenlerin bir anlık görüntüsünü bağlar. Panelden `DATABASE_URL` eklemek
+> **zaten yayında olan** dağıtımı düzeltmez; yeni bir dağıtım gerekir
+> (Deployments → ⋯ → Redeploy, ya da yeni bir commit).
+>
+> Bu, tanınması zor bir arıza üretir: ana sayfa ve aktivite sayfaları
+> derlemede üretildiği için **açılmaya devam eder**, ama `/ara`, `/isletme`
+> gibi veritabanına dokunan her sayfa 500 verir. "Site açıldı ama çalışmıyor"
+> tablosu genellikle budur.
+
+### Bir dağıtım çalışmıyorsa: `/api/saglik`
+
+Tek istekle hangi katmanın bozuk olduğunu söyler:
+
+```bash
+curl https://<alan-adiniz>/api/saglik
+```
+
+```json
+{ "ok": true, "motor": "postgres", "demo": true,
+  "veritabani": { "erisilebilir": true, "aktivite": 6 } }
+```
+
+| Dönen | Anlamı |
+| --- | --- |
+| `"motor": "sqlite"` | `DATABASE_URL` bu dağıtımda yok — yukarıdaki anlık görüntü tuzağı |
+| `"demo": false` (demo beklerken) | `DEMO_MODE` derleme anında yoktu |
+| `erisilebilir: false`, `ENOTFOUND` / `ETIMEDOUT` | Bağlantı dizesindeki sunucuya ulaşılamıyor |
+| `erisilebilir: false`, `28P01` | Kullanıcı adı veya parola yanlış |
+
+Uç **hiçbir sır döndürmez**: bağlantı dizesi, sunucu adı ve hata metni dışarı
+verilmez, hata yalnızca sınıf adı ve sürücü koduna indirgenir. Tam hata
+Vercel'in Runtime Logs bölümünde durur.
+
+Gerçek kullanıma geçerken `DEMO_MODE` değişkenini **silin**, demo işletmelerin
+hesaplarını `/isletme/ekip` üzerinden askıya alın ve demo ilanlarını yayından
+kaldırın.
+
 ## 7. İlk işletme hesapları
 
 Sunucuda bir kez:
@@ -181,6 +326,15 @@ proje ayarlarından girilir.
 | `DATABASE_SSL` | Hayır | `strict` / `off`. Varsayılan: TLS açık, zincir doğrulanmaz. |
 | `DATABASE_POOL_MAX` | Hayır | Postgres bağlantı havuzu üst sınırı (varsayılan 10). |
 | `DATABASE_PATH` | Hayır | SQLite dosya yolu. Yalnızca `DATABASE_URL` yokken. |
+| `CRON_SECRET` | **Evet** | Zamanlanmış iş uçlarını korur. **Tanımsızsa uçlar kapalıdır** ve ödeme süresi aşımı süpürülmez. |
+| `IYZICO_API_KEY` / `IYZICO_SECRET_KEY` | Ödeme alınacaksa | Üye işyeri anahtarları. İkisi de yoksa online ödeme kapalı kalır. |
+| `IYZICO_SANDBOX` | Hayır | `0` verilirse üretim ucu. Varsayılan sandbox. |
+| `PAYMENT_TIMEOUT_MINUTES` | Hayır | Ödemesi bekleyen rezervasyonun düşürülme süresi (varsayılan 20). |
+| `FREE_CANCELLATION_HOURS` | Hayır | Müşteri iptalinde tam iade eşiği (varsayılan 24). Ön bilgilendirme formuyla aynı olmalı. |
+| `PAYMENT_PROVIDER` | **Hayır — üretimde asla** | Yalnızca test. `fake` verilirse ödeme alınmadan bilet üretilir. |
+| `BLOB_READ_WRITE_TOKEN` | **Evet** (görsel yüklenecekse) | Yüklenen görsellerin deposu. Yoksa dosya sistemi kullanılır ve **sunucusuz ortamda dosyalar kaybolur.** |
+| `STORAGE_PROVIDER` / `UPLOAD_PATH` | Hayır | Depoyu `local`'a zorlar; yerel kök dizini belirler. |
+| `DEMO_MODE` | Hayır | `1` verilirse tanıtım kipi: site tamamen `noindex`, her sayfada uyarı şeridi. Gerçek kullanımda **tanımlanmamalı**. |
 
 ---
 
@@ -192,6 +346,60 @@ proje ayarlarından girilir.
 npm run retention              # ne silineceğini gösterir, silmez
 npm run retention -- --uygula  # gerçekten siler
 ```
+
+### Beş dakikada bir: ödeme süresi
+
+`vercel.json` içindeki `odeme-suresi` işi ödemesi yarım kalan rezervasyonları
+düşürür ve slot kapasitesini geri verir. Vercel Cron bunu kendiliğinden
+çağırır; elle çalıştırmak için:
+
+```bash
+npm run gorev -- odeme-suresi
+```
+
+Bu iş çalışmıyorsa yerler boşuna kilitli kalır — doğrudan kaybedilen satış
+demektir. `CRON_SECRET` tanımlı değilse uç kapalıdır ve iş hiç tetiklenmez.
+
+> **⚠ Vercel Hobby planı cron işlerini GÜNDE BİRE sınırlıyor.** Daha sık bir
+> ifade yazıldığında dağıtım *başlamadan* hata verir:
+> *"Hobby accounts are limited to daily cron jobs."*
+>
+> Bu yüzden `vercel.json` içindeki üç iş de **günlük** tanımlı. Demo için
+> sorun değil (ödeme kapalı, süpürülecek bir şey yok) ama **gerçek ödeme
+> alınmaya başlandığında yeterli değildir**: ödemesi yarım kalan bir
+> rezervasyon 24 saate kadar slotu kilitli tutabilir.
+>
+> Ödeme canlıya çıkarken **Pro plana geçin** ve `vercel.json` içindeki
+> zamanlamaları şöyle değiştirin:
+>
+> | İş | Hobby (şu an) | Pro (ödeme canlıyken) |
+> | --- | --- | --- |
+> | `odeme-suresi` | `0 3 * * *` | `*/5 * * * *` |
+> | `uyarilar` | `0 4 * * *` | `*/15 * * * *` |
+> | `saklama` | `0 5 1 * *` | `0 5 1 * *` (değişmez) |
+>
+> Plan değişikliğini beklemeden `npm run gorev -- odeme-suresi` komutuyla
+> elle de tetikleyebilirsiniz.
+
+### On beş dakikada bir: güvenlik uyarıları
+
+`uyarilar` işi tespit kurallarını çalıştırır ve yeni bulguları
+`ALERT_EMAIL_TO` adreslerine bildirir. Bu adresler **ihlal müdahale planındaki
+sorumlular** olmalı (bkz. `legal/veri-ihlali-mudahale-plani.md`, Bölüm 3).
+
+```bash
+npm run gorev -- uyarilar
+```
+
+`ALERT_EMAIL_TO` tanımsızsa iş **hata verir** ve zamanlayıcı bunu görür.
+Bilinçli: uyarı üretip kimseye haber vermemek, uyarı sisteminin var olma
+sebebini ortadan kaldırırdı. Uyarılar yine de kaydedilir ve işletme
+`/isletme/gunluk` ekranında bayrak olarak görür.
+
+**Uyarı e-postaları kişisel veri içermez** — kim, hangi adresten ve hangi
+kayıt sorularının cevabı yalnızca işlem günlüğündedir. Bu yüzden bir uyarı
+geldiğinde günlüğe bakılması gerekir; e-posta tek başına yeterli bilgi
+vermez ve vermemelidir.
 
 İşlem günlüğündeki IP ve tarayıcı bilgisi kişisel veridir; 12 ay sonunda
 silinir. Hız sınırı sayaçları 24 saat sonra temizlenir. **Veri tutmak kadar
@@ -239,6 +447,21 @@ node scripts/verify-account-rights.mjs
 node scripts/verify-interactions.mjs
 node scripts/verify-offline-ticket.mjs
 node scripts/verify-offline.mjs
+
+# Sunucu CRON_SECRET=gizli-cron-anahtari ile başlatılmışken
+node scripts/verify-jobs.mjs
+
+# Sunucu SERVER_LOG'a yazarken (SMS sağlayıcısı yokken kodlar oraya düşer)
+SERVER_LOG=server.log node scripts/verify-otp.mjs
+
+# Sunucu PAYMENT_PROVIDER=fake ile başlatılmışken
+SERVER_LOG=server.log node scripts/verify-payment.mjs
+
+# Görsel yükleme: sahte dosya, sıkıştırma bombası, EXIF/GPS temizliği
+node scripts/verify-uploads.mjs
+
+# Otomatik uyarılar (sunucu ALERT_EMAIL_TO ile de başlatılmış olmalı)
+SERVER_LOG=server.log node scripts/verify-alerts.mjs
 
 # Postgres'e karşı
 DATABASE_URL=… node scripts/verify-postgres.mjs

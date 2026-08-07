@@ -9,6 +9,9 @@ Değerleri şurada: hazır şablon değiller. Her biri uygulamanın gerçekte ne
 | Dosya | Ne işe yarar | Nerede yayımlanır |
 | --- | --- | --- |
 | `aydinlatma-metni.md` | KVKK md. 10 aydınlatma yükümlülüğü — asıl metin | Rezervasyon formunda bağlantı + `/aydinlatma` |
+| `on-bilgilendirme-formu.md` | Mesafeli Sözleşmeler Yönetmeliği ön bilgilendirme | `/on-bilgilendirme` — **ödeme adımında onaylatılır** |
+| `mesafeli-satis-sozlesmesi.md` | Satışın koşulları, tarafların yükümlülükleri | `/mesafeli-satis` — **ödeme adımında onaylatılır** |
+| `iptal-iade-politikasi.md` | İptal ve iade koşulları, cayma hakkı istisnasının gerekçesi | `/iptal-iade` |
 | `gizlilik-politikasi.md` | Genel gizlilik politikası | `/gizlilik`, mağaza başvuruları |
 | `cerez-politikasi.md` | Çerez kullanımı | `/cerez-politikasi` |
 | `acik-riza-metni.md` | Yalnızca açık rıza gereken dar kapsam | Pazarlama izni kutucuğu |
@@ -32,9 +35,19 @@ Bunlar benim karar veremeyeceğim, hukukçu görüşü gereken noktalar:
 5. **Çocuk verisi.** Rezervasyonda "çocuk sayısı" tutuluyor ama çocuğun kimlik bilgisi tutulmuyor. Bu hâliyle çocuğa ait kişisel veri işlenmediği kanaatindeyim; teyit gerekli.
 6. **VERBİS.** Mevcut ölçekte muafiyet kapsamındasınız (50'den az çalışan, 100 milyon TL altı bilanço). Büyüme hâlinde yeniden değerlendirilmeli.
 
+### Ödeme devreye girdiği için eklenen sorular
+
+7. **Taraf sıfatı — en kritik soru.** RASTLA tutarın tamamını tahsil edip komisyonunu keserek kalanı işletmeye aktarıyor. Bu hâliyle 6563 sayılı Kanun anlamında **aracı hizmet sağlayıcı** mı, yoksa tüketici mevzuatı bakımından **satıcı** mı sayılır? Metinleri aracı hizmet sağlayıcı varsayarak yazdım ama **tahsilatı yapan taraf olmak bu ayrımı zayıflatabilir** ve ayıplı hizmet sorumluluğunu doğrudan RASTLA'ya yükleyebilir. Bu sorunun cevabı mesafeli satış sözleşmesinin Madde 1 ve 8'ini değiştirir.
+8. **ETBİS kaydı.** Aracı hizmet sağlayıcı olarak Ticaret Bakanlığı ETBİS sistemine kayıt zorunlu. Kaydın ne zaman (ilk tahsilattan önce mi?) ve hangi sıfatla yapılacağı netleşmeli.
+9. **Cayma hakkı istisnası.** Mesafeli Sözleşmeler Yönetmeliği md. 15/1-(g) istisnasına dayandım: belirli tarihte yapılan eğlence ve dinlenme hizmeti. Bu hizmet türünün istisna kapsamında olduğu ve **[24] saatlik iade eşiğinin** haksız şart sayılmayacağı teyit edilmeli.
+10. **Komisyonun faturalandırılması.** RASTLA'nın kestiği komisyon için işletmeye fatura kesilmesi gerekiyor. Faturanın kim tarafından, hangi zamanda ve hangi KDV oranıyla düzenleneceği; ayrıca **e-arşiv/e-fatura yükümlülüğü** değerlendirilmeli. (Fatura entegrasyonu yazılımda **yok**.)
+11. **Ödeme kuruluşuyla ilişki.** Alt üye işyeri modelinde işletmelerin vergi no, TCKN ve IBAN bilgileri ödeme kuruluşuna aktarılıyor. Bu aktarımın hukuki sebebi ve ödeme kuruluşunun **veri işleyen mi yoksa ayrı veri sorumlusu mu** olduğu netleşmeli. Metinlerde ayrı veri sorumlusu varsaydım (kart verisi bakımından açıkça öyle).
+12. **Görsel içerik sorumluluğu.** İşletmeler kendi fotoğraflarını yüklüyor ve RASTLA **içerik denetimi yapmıyor**. 6563 md. 9 kapsamındaki "izleme yükümlülüğü bulunmaması" ilkesine dayandım; bildirim üzerine kaldırma yükümlülüğünün nasıl işletileceği ve fotoğrafta tanınabilir kişi bulunması hâlindeki sorumluluk paylaşımı değerlendirilmeli.
+13. **Ödeme kayıtlarının saklama süresi.** VUK (5 yıl) ile TTK (10 yıl) kesişiyor; uzun olanı aldım. Kartın son dört hanesinin bu süre boyunca tutulmasının **veri minimizasyonu** ilkesiyle bağdaşıp bağdaşmadığı ayrıca değerlendirilmeli.
+
 ## Metinler sitede nasıl yayımlanıyor
 
-`aydinlatma`, `gizlilik`, `cerez-politikasi` ve `kvkk-basvuru` dosyaları uygulamada gerçek sayfa olarak sunulur (`/aydinlatma` vb.). Kaynak tek: sitedeki metin doğrudan bu markdown dosyalarından okunur, ikinci bir kopya tutulmaz.
+`aydinlatma`, `on-bilgilendirme`, `mesafeli-satis`, `iptal-iade`, `gizlilik`, `cerez-politikasi` ve `kvkk-basvuru` dosyaları uygulamada gerçek sayfa olarak sunulur (`/aydinlatma` vb.). Kaynak tek: sitedeki metin doğrudan bu markdown dosyalarından okunur, ikinci bir kopya tutulmaz.
 
 Dosyanın başındaki **TASLAK** uyarısı durduğu sürece sayfa:
 
@@ -43,8 +56,17 @@ Dosyanın başındaki **TASLAK** uyarısı durduğu sürece sayfa:
 
 Hukukçu onayı geldiğinde markdown'ın başındaki uyarı bloğunu silmeniz yeterli — sayfa kendiliğinden yayın hâline geçer, kod değişikliği gerekmez.
 
+## Metinlerin onaylatılması
+
+`on-bilgilendirme-formu.md` ve `mesafeli-satis-sozlesmesi.md` **ödeme adımında zorunlu bir onay kutusuyla** onaylatılıyor ve **onay zamanı rezervasyon kaydına yazılıyor** (`bookings.terms_accepted_at`).
+
+Bu, mevzuatın istediği ispatı sağlıyor: "onay kutusu vardı" demek yeterli değil, tüketicinin metinleri sipariş öncesinde onayladığının kaydı gerekiyor. Kontrol istemcide değil sunucuda; formdaki `required` işareti kaldırılsa da rezervasyon oluşmuyor.
+
 ## Şu an KVKK açısından yapılmayanlar
 
 Metin yazmak uyum sağlamıyor; şunlar hâlâ eksik:
 
-- **Otomatik uyarı yok.** İşlem günlüğü var (`/isletme/gunluk`) ve kapsam tespiti artık mümkün, ama ihlali kendiliğinden fark edip haber veren bir mekanizma yok; günlük elle incelenir.
+- **Yedekleme ve geri yükleme testi yok.** Veritabanı barındırma sağlayıcısının kendi düzenine bırakılmış; geri yükleme hiç denenmedi. İhlal planındaki kalan tek yapısal eksik budur.
+- **Fatura/e-arşiv entegrasyonu yok.** Komisyon faturası elle kesilecek.
+- **Görsel içerik moderasyonu yok.** Yüklenen fotoğraf teknik olarak doğrulanıyor ama içeriğine bakılmıyor; uygunsuz görsel ancak bildirim üzerine kaldırılıyor.
+- **ETBİS kaydı yapılmadı.** Kod hazır, kayıt sizden.

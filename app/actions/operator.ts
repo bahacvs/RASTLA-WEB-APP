@@ -10,10 +10,25 @@ import {
   type Booking,
 } from '@/lib/db/bookings';
 import { displayContact, getUser } from '@/lib/db/users';
-import { authenticateOperatorUser, normalizeEmail, recordLogin } from '@/lib/db/operators';
+import {
+  authenticateOperatorUser,
+  getOperatorUser,
+  normalizeEmail,
+  recordLogin,
+} from '@/lib/db/operators';
+import { sendVerificationCode, verifyCode } from '@/lib/verification';
+import { operatorCodeMessage } from '@/lib/sms/messages';
+import { maskPhone } from '@/lib/sms';
 import { currentOperator } from '@/lib/auth';
-import { clearOperatorSession, setOperatorSession } from '@/lib/session';
+import {
+  clearOperatorSession,
+  clearPendingOperator,
+  getPendingOperator,
+  setOperatorSession,
+  setPendingOperator,
+} from '@/lib/session';
 import { getActivityBySlug } from '@/lib/db/activities';
+import { refundBooking } from '@/lib/payments/flow';
 import { record } from '@/lib/db/audit';
 import { requestContext } from '@/lib/request-context';
 import {
@@ -26,7 +41,12 @@ import {
   type LimitRule,
 } from '@/lib/db/rate-limit';
 
-export type LoginState = { error?: string };
+/**
+ * `step` alanı arayüzün hangi ekranı göstereceğini belirler:
+ *   undefined -> e-posta + parola
+ *   'code'    -> ikinci faktör kodu
+ */
+export type LoginState = { error?: string; step?: 'code'; phoneHint?: string };
 
 export async function operatorLoginAction(
   _prev: LoginState,
@@ -98,6 +118,34 @@ export async function operatorLoginAction(
   // yapılan denemeler, buradan başarılı bir girişle silinmemeli.
   await reset(emailBucket);
 
+  // ---- İkinci faktör ----
+  //
+  // Parola doğru olsa bile oturum HENÜZ AÇILMAZ. Bilet onayı geri alınamaz bir
+  // işlem; parolası ele geçmiş bir hesabın tek başına girebilmesi, bu projedeki
+  // en pahalı hatanın kapısı olurdu.
+  //
+  // Numarası olmayan hesaplar (bu özellikten önce açılmış olanlar) parolayla
+  // girmeye devam eder ve ekip ekranında yüksek sesle uyarılır. Onları burada
+  // kilitlemek, çalışan bir işletmeyi sahada dışarıda bırakmak olurdu.
+  if (result.user.phone) {
+    const sent = await sendVerificationCode({
+      phone: result.user.phone,
+      purpose: 'operator_login',
+      operatorUserId: result.user.id,
+      message: operatorCodeMessage,
+      context,
+    });
+
+    if (!sent.ok) return { error: sent.error };
+
+    // Yarım kalmış giriş ayrı ve kısa ömürlü bir çerezde taşınır; asıl oturum
+    // çerezine yazılsaydı ikinci faktörü geçmemiş biri korunan sayfalara
+    // girebilirdi.
+    await setPendingOperator(result.user.id);
+
+    return { step: 'code', phoneHint: maskPhone(result.user.phone) };
+  }
+
   await recordLogin(result.user.id);
   await record({
     action: 'operator.login',
@@ -105,10 +153,87 @@ export async function operatorLoginAction(
     actorId: result.user.id,
     operatorId: result.operator.id,
     ...context,
+    meta: { secondFactor: false },
   });
 
   await setOperatorSession(result.user.id);
   redirect('/isletme/tara');
+}
+
+/**
+ * İkinci faktör kodunu doğrular ve oturumu asıl o zaman açar.
+ *
+ * Bekleyen giriş kimliği FORMDAN DEĞİL, imzalı çerezden okunur: form alanına
+ * güvenilseydi kod bilen biri istediği hesabın oturumunu açabilirdi.
+ */
+export async function operatorVerifyAction(
+  _prev: LoginState,
+  formData: FormData
+): Promise<LoginState> {
+  const context = await requestContext();
+
+  const pendingId = await getPendingOperator();
+  if (!pendingId) {
+    return { error: 'Giriş oturumu zaman aşımına uğradı. Baştan deneyin.' };
+  }
+
+  const user = await getOperatorUser(pendingId);
+  if (!user || user.status !== 'active' || !user.phone) {
+    await clearPendingOperator();
+    return { error: 'Hesaba erişilemedi. Baştan deneyin.' };
+  }
+
+  const result = await verifyCode({
+    phone: user.phone,
+    purpose: 'operator_login',
+    code: String(formData.get('code') ?? ''),
+    context,
+  });
+
+  if (!result.ok) {
+    await record({
+      action: 'operator.login_failed',
+      actorType: 'anonymous',
+      operatorId: user.operatorId,
+      outcome: 'failure',
+      ...context,
+      meta: { email: user.email, reason: 'second_factor' },
+    });
+    return { error: result.error, step: 'code', phoneHint: maskPhone(user.phone) };
+  }
+
+  // Kod, girişi başlatan hesap için üretilmiş olmalı. Aynı numarayı paylaşan
+  // iki hesap varsa birinin kodu diğerinin girişini açmamalı.
+  if (result.operatorUserId && result.operatorUserId !== user.id) {
+    await clearPendingOperator();
+    return { error: 'Kod bu hesap için geçerli değil.' };
+  }
+
+  await clearPendingOperator();
+  await recordLogin(user.id);
+  await record({
+    action: 'operator.login',
+    actorType: 'operator',
+    actorId: user.id,
+    operatorId: user.operatorId,
+    ...context,
+    meta: { secondFactor: true },
+  });
+
+  await setOperatorSession(user.id);
+  redirect('/isletme/tara');
+}
+
+/**
+ * Yarım kalmış girişi iptal eder.
+ *
+ * Yalnızca ekranı değiştirmek yetmez: bekleyen giriş çerezi sunucuda da
+ * geçersiz kılınmalı, aksi hâlde 5 dakika boyunca ortada kod bekleyen bir
+ * hesap kalırdı.
+ */
+export async function operatorCancelLoginAction() {
+  await clearPendingOperator();
+  redirect('/isletme');
 }
 
 export async function operatorLogoutAction() {
@@ -270,6 +395,16 @@ export async function redeemAction(_prev: ScanState, formData: FormData): Promis
     };
   }
 
+  // Ödemesi tamamlanmamış bilet, personele açıkça söylenmeli: "geçersiz"
+  // demek, misafirin ekranındaki QR'ı gören personeli tartışmanın içinde
+  // bırakırdı. Sebep belliyse çözüm de belli — ödeme tamamlanmamış.
+  if (result.reason === 'unpaid') {
+    return { status: 'error', message: 'Bu rezervasyonun ödemesi tamamlanmamış.' };
+  }
+  if (result.reason === 'expired') {
+    return { status: 'error', message: 'Ödeme süresi dolduğu için rezervasyon düşmüş.' };
+  }
+
   return { status: 'error', message: 'Bilet geçersiz ya da iptal edilmiş.' };
 }
 
@@ -300,6 +435,8 @@ export async function operatorCancelAction(
     return { error: 'Rezervasyon zaten iptal edilmiş.' };
   }
 
+  const context = await requestContext();
+
   await record({
     action: 'booking.cancelled',
     actorType: 'operator',
@@ -307,12 +444,26 @@ export async function operatorCancelAction(
     operatorId,
     targetType: 'booking',
     targetId: booking.id,
-    ...(await requestContext()),
+    ...context,
     meta: { reason },
   });
 
+  // İşletme ya da hava kaynaklı iptalde iade KOŞULSUZ ve otomatik: müşteri
+  // kusurlu değil, hizmet verilmedi. İade kararını insana bırakmak, en sık
+  // yaşanan iptal türünde en sık şikâyet edilen sonucu üretirdi.
+  const refund = await refundBooking({
+    bookingId: booking.id,
+    operatorId,
+    reason,
+    context,
+  });
+
   revalidatePath('/isletme/rezervasyonlar');
-  return { message: 'Rezervasyon iptal edildi ve slot kapasitesi geri verildi.' };
+  return {
+    message: `Rezervasyon iptal edildi ve slot kapasitesi geri verildi.${
+      refund.ok ? ' Müşteriye tam iade başlatıldı.' : ''
+    }`,
+  };
 }
 
 /**
@@ -333,6 +484,7 @@ export async function cancelDayAction(
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return { error: 'Gün geçersiz.' };
 
   const { cancelled, skipped } = await cancelDay(operatorId, date, 'weather');
+  const context = await requestContext();
 
   // Toplu iptal tek satırda kaydedilir: kaç rezervasyonun etkilendiği
   // meta'da durur, tek tek kayıt açmak günlüğü okunmaz hâle getirirdi.
@@ -341,15 +493,32 @@ export async function cancelDayAction(
     actorType: 'operator',
     actorId: session.user.id,
     operatorId,
-    ...(await requestContext()),
-    meta: { date, cancelled, skipped, reason: 'weather' },
+    ...context,
+    meta: { date, cancelled: cancelled.length, skipped, reason: 'weather' },
   });
+
+  // Hava iptalinde iade otomatik ve tam. İadeler tek tek yapılıyor çünkü her
+  // biri sağlayıcıda ayrı bir işlem; biri başarısız olursa diğerleri devam
+  // etmeli. `refundBooking` idempotent, bu yüzden iş yarıda kalıp tekrar
+  // çalıştırılsa da kimseye iki kez para gitmez.
+  let refunded = 0;
+  for (const booking of cancelled) {
+    const refund = await refundBooking({
+      bookingId: booking.id,
+      operatorId,
+      reason: 'weather',
+      context,
+    });
+    if (refund.ok) refunded++;
+  }
 
   revalidatePath('/isletme/rezervasyonlar');
   return {
     message:
-      cancelled === 0
+      cancelled.length === 0
         ? 'İptal edilecek aktif rezervasyon yoktu.'
-        : `${cancelled} rezervasyon iptal edildi${skipped > 0 ? `, ${skipped} tanesi atlandı` : ''}. Misafirleri bilgilendirmeyi unutmayın.`,
+        : `${cancelled.length} rezervasyon iptal edildi${
+            skipped > 0 ? `, ${skipped} tanesi atlandı` : ''
+          }${refunded > 0 ? `, ${refunded} ödeme iade edildi` : ''}. Misafirleri bilgilendirmeyi unutmayın.`,
   };
 }

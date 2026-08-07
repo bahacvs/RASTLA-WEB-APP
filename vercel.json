@@ -1,0 +1,17 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "crons": [
+    {
+      "path": "/api/gorevler/odeme-suresi",
+      "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/gorevler/uyarilar",
+      "schedule": "0 4 * * *"
+    },
+    {
+      "path": "/api/gorevler/saklama",
+      "schedule": "0 5 1 * *"
+    }
+  ]
+}

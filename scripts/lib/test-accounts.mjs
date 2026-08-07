@@ -13,14 +13,44 @@ import { db as connect } from '../../lib/db/index.mjs';
 
 export const TEST_PASSWORD = 'test-parolasi-2026';
 
+/**
+ * Telefonlu ve telefonsuz hesaplar bilinçli olarak karışık.
+ *
+ * Telefonu olanlar ikinci faktörden geçer; olmayanlar (bu özellikten önce
+ * açılmış hesapları temsil eder) parolayla girer. İkisi de sınanmalı: yalnızca
+ * biri test edilseydi diğer yol sessizce bozulabilirdi.
+ */
 export const TEST_ACCOUNTS = [
-  { operatorId: 'buyukcekmece-wsc', email: 'test-sahip@buyukcekmece.local', role: 'owner' },
-  { operatorId: 'mimarsinan-marina', email: 'test-sahip@mimarsinan.local', role: 'owner' },
-  { operatorId: 'buyukcekmece-wsc', email: 'test-personel@buyukcekmece.local', role: 'staff' },
+  {
+    operatorId: 'buyukcekmece-wsc',
+    email: 'test-sahip@buyukcekmece.local',
+    role: 'owner',
+    phone: null,
+  },
+  { operatorId: 'mimarsinan-marina', email: 'test-sahip@mimarsinan.local', role: 'owner', phone: null },
+  {
+    operatorId: 'buyukcekmece-wsc',
+    email: 'test-personel@buyukcekmece.local',
+    role: 'staff',
+    phone: null,
+  },
+  // İkinci faktörü olan hesap.
+  {
+    operatorId: 'buyukcekmece-wsc',
+    email: 'test-2fa@buyukcekmece.local',
+    role: 'owner',
+    phone: '905339990001',
+  },
 ];
 
+export function phoneFor(email) {
+  return TEST_ACCOUNTS.find((a) => a.email === email)?.phone ?? null;
+}
+
 export function emailFor(operatorId, role = 'owner') {
-  const found = TEST_ACCOUNTS.find((a) => a.operatorId === operatorId && a.role === role);
+  const found = TEST_ACCOUNTS.find(
+    (a) => a.operatorId === operatorId && a.role === role && !a.phone
+  );
   if (!found) throw new Error(`test hesabı tanımlı değil: ${operatorId}/${role}`);
   return found.email;
 }
@@ -38,12 +68,13 @@ export async function ensureTestAccounts() {
   for (const account of TEST_ACCOUNTS) {
     await db.run(
       `INSERT INTO operator_users
-         (id, operator_id, email, name, password_hash, role, status, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, 'active', ?)
+         (id, operator_id, email, name, password_hash, role, status, created_at, phone)
+       VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?)
        ON CONFLICT (email) DO UPDATE SET
          password_hash = excluded.password_hash,
          status = 'active',
-         role = excluded.role`,
+         role = excluded.role,
+         phone = excluded.phone`,
       [
         randomUUID(),
         account.operatorId,
@@ -52,6 +83,7 @@ export async function ensureTestAccounts() {
         hashPassword(TEST_PASSWORD),
         account.role,
         now,
+        account.phone,
       ]
     );
   }

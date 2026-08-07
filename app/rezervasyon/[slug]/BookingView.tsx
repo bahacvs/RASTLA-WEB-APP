@@ -1,6 +1,6 @@
 'use client';
 
-import { useActionState, useMemo, useState, useTransition } from 'react';
+import { useActionState, useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Icon } from '@/components/Icon';
@@ -39,12 +39,15 @@ export function BookingView({
   availableDates,
   initialDate,
   initialSlots,
+  payOnline,
 }: {
   activity: Activity;
   /** Boş yeri olan günler; takvimde yalnızca bunlar seçilebilir. */
   availableDates: string[];
   initialDate: string | null;
   initialSlots: Slot[];
+  /** Bu rezervasyon ödeme adımına gidecek mi. Sunucuda belirlenir. */
+  payOnline: boolean;
 }) {
   const router = useRouter();
   const available = useMemo(() => new Set(availableDates), [availableDates]);
@@ -60,6 +63,28 @@ export function BookingView({
 
   const [adults, setAdults] = useState(2);
   const [children, setChildren] = useState(0);
+
+  // Ad ve telefon KONTROLLÜ alanlar.
+  //
+  // React, form eylemi tamamlandığında formu sıfırlar. Kontrolsüz bıraksaydık
+  // doğrulama kodu ekranı geldiği anda müşterinin yazdığı ad ve telefon
+  // silinir, kişi ikisini de baştan yazmak zorunda kalırdı.
+  const [name, setName] = useState('');
+  const [phone, setPhone] = useState('');
+  // Sözleşme onayı da korunmalı, aynı sebeple: kod ekranı geldiğinde React
+  // formu sıfırlıyor ve kutu sessizce boşalıyordu. Kullanıcı onayladığını
+  // sanarken "sözleşmeyi onaylayın" hatası alırdı.
+  //
+  // Metin alanlarından farklı olarak kutuyu `checked` ile kontrol etmek
+  // YETMİYOR: `form.reset()` DOM'u boşaltıyor ama React durum değişmediği için
+  // yeniden yazmıyor ve iki taraf ayrışıyor. Bu yüzden her render'dan sonra
+  // DOM'daki değer elle durumla eşitleniyor.
+  const [terms, setTerms] = useState(false);
+  const termsRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (termsRef.current) termsRef.current.checked = terms;
+  });
 
   const cells = useMemo(() => buildMonthGrid(year, month), [year, month]);
 
@@ -314,6 +339,8 @@ export function BookingView({
                   required
                   minLength={2}
                   autoComplete="name"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
                   className="h-12 w-full rounded-lg border border-outline-variant bg-surface px-3 text-body-md text-on-surface focus:ring-2 focus:ring-primary focus:outline-none"
                 />
               </div>
@@ -329,6 +356,8 @@ export function BookingView({
                   required
                   autoComplete="tel"
                   placeholder="05XX XXX XX XX"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
                   className="h-12 w-full rounded-lg border border-outline-variant bg-surface px-3 text-body-md text-on-surface focus:ring-2 focus:ring-primary focus:outline-none"
                 />
               </div>
@@ -354,6 +383,80 @@ export function BookingView({
               .
             </p>
 
+            {/*
+              Mesafeli satış onayı — yalnızca ödeme alınacaksa.
+              Ödeme yoksa mesafeli satış da yoktur ve onaylatılacak bir
+              sözleşme olmadan kutu göstermek, anlamı olmayan bir onay
+              toplamak olurdu.
+
+              Yukarıdaki KVKK bilgilendirmesinden farkı: bu GERÇEK bir onay
+              kutusu ve zorunlu. Sözleşmenin kurulması için tüketicinin
+              metinleri sipariş öncesinde onaylaması gerekiyor; onay zamanı
+              rezervasyonla birlikte kaydediliyor.
+            */}
+            {payOnline && (
+              <label className="mt-md flex items-start gap-2 text-body-md text-on-surface-variant">
+                <input
+                  ref={termsRef}
+                  type="checkbox"
+                  name="sozlesme"
+                  value="onay"
+                  required
+                  defaultChecked={terms}
+                  onChange={(e) => setTerms(e.target.checked)}
+                  className="mt-1 size-4 shrink-0 accent-primary"
+                />
+                <span>
+                  <Link href="/on-bilgilendirme" className="text-primary underline">
+                    Ön Bilgilendirme Formu
+                  </Link>
+                  {'’nu ve '}
+                  <Link href="/mesafeli-satis" className="text-primary underline">
+                    Mesafeli Satış Sözleşmesi
+                  </Link>
+                  {'’ni okudum, onaylıyorum. Bu hizmet belirli bir tarihte verildiği için '}
+                  <strong className="text-on-surface">14 günlük cayma hakkı kapsamı dışındadır</strong>
+                  {'; iade koşulları '}
+                  <Link href="/iptal-iade" className="text-primary underline">
+                    İptal ve İade Politikası
+                  </Link>
+                  {'’nda yazılıdır.'}
+                </span>
+              </label>
+            )}
+
+            {/*
+              Numara doğrulama aynı formun içinde. Ayrı bir form olsaydı
+              doğrulama sonrası rezervasyonun yeniden gönderilmesi gerekir ve
+              seçilen tarih/saat kaybolabilirdi; burada tek gönderimde bitiyor.
+            */}
+            {state.step === 'verify' && (
+              <div className="mt-md rounded-lg border border-primary bg-surface-container p-3">
+                <label
+                  htmlFor="code"
+                  className="mb-1 block text-label-bold text-on-surface-variant"
+                >
+                  Doğrulama kodu
+                </label>
+                <p className="mb-2 text-body-md text-on-surface-variant">
+                  {state.phoneHint ?? 'Telefonunuza'} numarasına 6 haneli bir kod gönderdik.
+                  Rezervasyonu tamamlamak için kodu girin — numaranızın doğru olduğundan emin
+                  olmamız gerekiyor, biletiniz ve olası iptal bildirimi oraya gidecek.
+                </p>
+                <input
+                  id="code"
+                  name="code"
+                  required
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  maxLength={6}
+                  pattern="[0-9]{6}"
+                  autoFocus
+                  className="h-12 w-full rounded-lg border border-outline-variant bg-surface px-3 text-center font-mono text-headline-md tracking-[0.4em] text-on-surface focus:ring-2 focus:ring-primary focus:outline-none"
+                />
+              </div>
+            )}
+
             {state.error && (
               <p
                 role="alert"
@@ -365,13 +468,20 @@ export function BookingView({
 
             {/* Masaüstünde yapışkan çubuk gizli olduğu için aksiyon burada durur. */}
             <div className="mt-md hidden md:block">
-              <BookingAction ready={ready} pending={pending} className="w-full" />
+              <BookingAction
+                ready={ready}
+                pending={pending}
+                verifying={state.step === 'verify'}
+                payOnline={payOnline}
+                className="w-full"
+              />
             </div>
           </section>
 
           <p className="pb-4 text-label-sm text-on-surface-variant">
-            Rezervasyonunuz oluşturulduğunda QR kodlu biletiniz hazırlanır. Ödeme deneyim yerinde
-            alınır; online ödeme henüz devrede değildir.
+            {payOnline
+              ? 'Ödemeyi tamamladığınızda QR kodlu biletiniz hazırlanır. Kart bilgileriniz ödeme kuruluşunun kendi sayfasında alınır, RASTLA sunucularına hiçbir zaman ulaşmaz. Aktiviteye 24 saatten fazla varken iptal ederseniz ücret iade edilir.'
+              : 'Rezervasyonunuz oluşturulduğunda QR kodlu biletiniz hazırlanır. Ödeme deneyim yerinde alınır.'}
           </p>
         </main>
 
@@ -381,7 +491,12 @@ export function BookingView({
             <span className="block text-label-sm text-on-surface-variant">Toplam Tutar</span>
             <span className="text-title-price text-on-surface">{formatPrice(total)}</span>
           </div>
-          <BookingAction ready={ready} pending={pending} />
+          <BookingAction
+            ready={ready}
+            pending={pending}
+            verifying={state.step === 'verify'}
+            payOnline={payOnline}
+          />
         </div>
       </form>
     </div>
@@ -397,10 +512,16 @@ export function BookingView({
 function BookingAction({
   ready,
   pending,
+  verifying = false,
+  payOnline = false,
   className = '',
 }: {
   ready: boolean;
   pending: boolean;
+  /** Kod ekranı açıkken buton metni değişir; iş aynı gönderimle sürüyor. */
+  verifying?: boolean;
+  /** Ödeme adımına gidilecekse buton bunu söylemeli; sürpriz yönlendirme olmasın. */
+  payOnline?: boolean;
   className?: string;
 }) {
   const disabled = !ready || pending;
@@ -412,7 +533,15 @@ function BookingAction({
       title={ready ? undefined : 'Önce müsait bir tarih ve saat seçin'}
       className={`inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-6 py-3 text-center text-headline-sm text-on-primary shadow-sm transition-all hover:bg-primary-container active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 ${className}`}
     >
-      {pending ? 'Oluşturuluyor…' : 'Rezervasyonu Tamamla'}
+      {pending
+        ? 'Oluşturuluyor…'
+        : verifying
+          ? payOnline
+            ? 'Kodu Doğrula ve Ödemeye Geç'
+            : 'Kodu Doğrula ve Tamamla'
+          : payOnline
+            ? 'Ödemeye Geç'
+            : 'Rezervasyonu Tamamla'}
     </button>
   );
 }

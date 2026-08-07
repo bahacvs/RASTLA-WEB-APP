@@ -11,6 +11,8 @@ import {
   listAudit,
   type AuditRecord,
 } from '@/lib/db/audit';
+import { listOpenAlerts } from '@/lib/alerts/index.mjs';
+import { AlertBanner, type OpenAlert } from './AlertBanner';
 
 export const metadata: Metadata = {
   title: 'İşlem Günlüğü',
@@ -32,6 +34,10 @@ const LABELS: Record<string, string> = {
   'operator.password_changed': 'Parola değiştirildi',
   'operator_user.created': 'Ekibe kişi eklendi',
   'operator_user.password_reset': 'Parola sıfırlandı',
+  'operator_user.phone_set': 'İkinci faktör numarası ayarlandı',
+  'otp.sent': 'Doğrulama kodu gönderildi',
+  'otp.verified': 'Doğrulama kodu doğrulandı',
+  'otp.failed': 'Doğrulama kodu reddedildi',
   'operator_user.suspended': 'Hesap askıya alındı',
   'operator_user.reactivated': 'Hesap yeniden etkinleştirildi',
   'booking.created': 'Rezervasyon oluşturuldu',
@@ -39,6 +45,16 @@ const LABELS: Record<string, string> = {
   'booking.redeem_failed': 'Bilet onayı reddedildi',
   'booking.cancelled': 'Rezervasyon iptal edildi',
   'booking.day_cancelled': 'Gün toplu iptal edildi',
+  'booking.expired': 'Ödeme süresi doldu, rezervasyon düştü',
+  'payment.started': 'Ödeme başlatıldı',
+  'payment.succeeded': 'Ödeme alındı',
+  'payment.failed': 'Ödeme başarısız',
+  'payment.denied': 'Ödeme REDDEDİLDİ (tutar uyuşmadı)',
+  'payment.refunded': 'Ödeme iade edildi',
+  'payment.refund_failed': 'İade başarısız',
+  'operator.submerchant_created': 'Ödeme ayarları değiştirildi',
+  'activity.image_uploaded': 'Görsel yüklendi',
+  'activity.image_deleted': 'Görsel silindi',
   'activity.created': 'Aktivite oluşturuldu',
   'activity.updated': 'Aktivite düzenlendi',
   'activity.published': 'Aktivite yayına alındı',
@@ -97,6 +113,10 @@ export default async function AuditLogPage({
   // Bu sayının yükselmesi kaba kuvvet denemesinin ilk işaretidir.
   const recentFailures = await countRecentLoginFailures(operatorId);
 
+  // Otomatik tespit kurallarının kapatılmamış bulguları. Yukarıdaki sayaç
+  // yalnızca başarısız girişe bakıyor; bunlar altı ayrı kuralın sonucu.
+  const openAlerts = (await listOpenAlerts(operatorId)) as OpenAlert[];
+
   const staff = new Map((await listOperatorUsers(operatorId)).map((u) => [u.id, u.name] as const));
   const actorName = (entry: AuditRecord) => {
     if (entry.actorType === 'operator') {
@@ -118,6 +138,8 @@ export default async function AuditLogPage({
           hesabın ne zaman ne yaptığını gösterir; bir uyuşmazlıkta ya da şüpheli bir durumda
           başvurulacak kayıt budur.
         </p>
+
+        <AlertBanner alerts={openAlerts} />
 
         {recentFailures >= 10 && (
           <div className="mb-lg flex items-start gap-2 rounded-xl border border-error bg-error-container p-md text-on-error-container">

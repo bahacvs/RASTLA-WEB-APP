@@ -137,8 +137,12 @@ export async function deleteUser(
   if (user.deletedAt) return { ok: false, reason: 'already_deleted' };
 
   if (!options.force) {
+    // `pending_payment` de aktiftir: ödeme o an sağlayıcının sayfasında sürüyor
+    // olabilir. Yalnız `confirmed`e bakılsaydı, hesap silinirken ödeme
+    // tamamlanır ve az sonra anonimleştirilmiş bir kullanıcıya ait geçerli bir
+    // bilet doğardı.
     const active = await client.all<{ code: string }>(
-      `SELECT code FROM bookings WHERE user_id = ? AND status = 'confirmed'`,
+      `SELECT code FROM bookings WHERE user_id = ? AND status IN ('confirmed', 'pending_payment')`,
       [userId]
     );
 
@@ -175,6 +179,7 @@ export type UserExport = {
   disaAktarmaTarihi: string;
   hesap: { ad: string; telefon: string; kayitTarihi: string };
   rezervasyonlar: unknown[];
+  odemeler: unknown[];
   islemGunlugu: unknown[];
   aciklama: string;
 };
@@ -202,6 +207,19 @@ export async function exportUserData(userId: string): Promise<UserExport | null>
     [userId]
   );
 
+  // Ödeme kayıtları da kişinin verisidir. Kart numarası zaten hiçbir zaman
+  // saklanmıyor; burada dönen `card_last_four` sağlayıcıdan gelen maskeli
+  // bilgidir ve kişinin kendisine gösterilmesinde sakınca yoktur.
+  const payments = await client.all(
+    `SELECT p.amount_try, p.commission_try, p.currency, p.status, p.provider,
+            p.card_family, p.card_last_four, p.created_at, b.code AS booking_code
+       FROM payments p
+       JOIN bookings b ON b.id = p.booking_id
+      WHERE b.user_id = ?
+      ORDER BY p.created_at DESC`,
+    [userId]
+  );
+
   const audit = await client.all(
     `SELECT at, action, outcome, ip, user_agent, meta
        FROM audit_log
@@ -218,6 +236,7 @@ export async function exportUserData(userId: string): Promise<UserExport | null>
       kayitTarihi: user.createdAt,
     },
     rezervasyonlar: bookings,
+    odemeler: payments,
     islemGunlugu: audit,
     aciklama:
       'Bu dosya, RASTLA sistemindeki kişisel verilerinizin tamamını içerir (KVKK md. 11). ' +
