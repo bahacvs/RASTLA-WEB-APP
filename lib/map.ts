@@ -30,6 +30,26 @@ export const TILE_HOST = 'api.maptiler.com';
  */
 export const WORKER_URL = '/maplibre/maplibre-gl-worker.mjs';
 
+/**
+ * Buluşma noktasına yol tarifi bağlantısı.
+ *
+ * Kasıtlı olarak bir SDK değil, düz bir bağlantı. Google Haritalar'ın
+ * evrensel adresi telefonda kurulu uygulamayı açar, yoksa tarayıcıya düşer;
+ * iOS ve Android'de aynı şekilde çalışır.
+ *
+ * Gizlilik açısından farkı önemli: bu adres **kullanıcı dokunmadıkça hiçbir
+ * istek üretmez.** Sayfalarımızdan Google'a giden bir çağrı yok, dolayısıyla
+ * "harita sağlayıcısı dışında dış istek yok" güvencesi ve aydınlatma metni
+ * olduğu gibi kalıyor. Bağlantıya `noreferrer` konuyor ki hangi sayfadan
+ * gelindiği de aktarılmasın.
+ *
+ * Hedef isim değil koordinat: buluşma noktaları iskele ve barınak gibi
+ * yerler, ada göre arama yanlış yere götürebilir.
+ */
+export function directionsUrl(lat: number, lng: number): string {
+  return `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
+}
+
 export function styleUrl(): string {
   return `https://${TILE_HOST}/maps/streets-v2/style.json?key=${MAPTILER_KEY}`;
 }

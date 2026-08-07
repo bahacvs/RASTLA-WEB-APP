@@ -8,6 +8,7 @@ import { Gallery } from './Gallery';
 import { getActivityBySlug, listPublishedActivities } from '@/lib/db/activities';
 import type { Activity } from '@/lib/catalog';
 import { formatPrice } from '@/lib/format';
+import { directionsUrl } from '@/lib/map';
 import { SITE_URL } from '@/lib/site';
 import { getOperator } from '@/lib/db/operators';
 
@@ -188,15 +189,26 @@ export default async function ActivityDetailPage({
                     sizes="(min-width: 768px) 33vw, 100vw"
                     className="object-cover"
                   />
-                  <div className="absolute right-2 bottom-2">
-                    <button
-                      type="button"
-                      className="flex items-center gap-1 rounded-lg bg-surface px-3 py-2 text-sm font-semibold text-primary shadow-sm transition-transform active:scale-95"
-                    >
-                      Yol Tarifi
-                      <Icon name="directions" size={16} />
-                    </button>
-                  </div>
+                  {/*
+                    Koordinat yoksa bağlantı hiç çizilmiyor.
+                    Buraya kadar ölü bir düğme duruyordu: "Yol Tarifi" yazıyor
+                    ama tıklayınca hiçbir şey olmuyordu. Çalışmayan bir vaat,
+                    olmayan bir özellikten kötüdür — kullanıcı buluşma yerini
+                    bulabileceğini sanıp gelmiyor.
+                  */}
+                  {activity.lat !== null && activity.lng !== null && (
+                    <div className="absolute right-2 bottom-2">
+                      <a
+                        href={directionsUrl(activity.lat, activity.lng)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-1 rounded-lg bg-surface px-3 py-2 text-sm font-semibold text-primary shadow-sm transition-transform active:scale-95"
+                      >
+                        Yol Tarifi
+                        <Icon name="directions" size={16} />
+                      </a>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
