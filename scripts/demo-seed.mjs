@@ -17,26 +17,20 @@
  *   node scripts/demo-seed.mjs --parola "..."  # kendi parolanı belirle
  */
 import { randomUUID, randomBytes } from 'node:crypto';
+import { basename } from 'node:path';
 import { db as connect } from '../lib/db/index.mjs';
 import { hashPassword } from '../lib/password.mjs';
 
-const args = process.argv.slice(2);
-const passwordArg = args.indexOf('--parola');
-
 /**
- * Ortak parola.
+ * Ortak parola üretici.
  *
- * Verilmezse rastgele üretilir ve **yalnızca bu çalıştırmada** ekrana yazılır.
+ * Verilmezse rastgele üretilir ve **yalnızca o çalıştırmada** ekrana yazılır.
  * Kodun içine sabit bir parola gömmek, herkese açık bir depoda o parolayı
  * yayımlamak demek olurdu.
  */
-const PASSWORD =
-  passwordArg >= 0 && args[passwordArg + 1]
-    ? args[passwordArg + 1]
-    : `demo-${randomBytes(6).toString('base64url')}`;
-
-const db = await connect();
-const now = new Date().toISOString();
+export function randomPassword() {
+  return `demo-${randomBytes(6).toString('base64url')}`;
+}
 
 // --------------------------------------------------------------- işletmeler
 
@@ -225,8 +219,22 @@ function times(start, end, step) {
   return out;
 }
 
-for (const op of OPERATORS) {
-  await db.run(
+/**
+ * Demo verisini verilen istemciye yazar.
+ *
+ * İstemci **dışarıdan geliyor**: bu betik normalde TCP üzerinden bağlanır ama
+ * 5432'nin kapalı olduğu ağlarda kurulum sağlayıcının HTTPS ucundan yapılmak
+ * zorunda kalıyor. Gövde tek kopya kaldığı sürece iki yol da aynı veriyi
+ * üretir.
+ *
+ * @param {{run: Function, get: Function}} db
+ * @param {string} password
+ */
+export async function seedDemo(db, password) {
+  const now = new Date().toISOString();
+
+  for (const op of OPERATORS) {
+    await db.run(
     `INSERT INTO operators (id, name, created_at) VALUES (?, ?, ?)
        ON CONFLICT (id) DO UPDATE SET name = excluded.name`,
     [op.id, op.name, now]
@@ -252,7 +260,7 @@ for (const op of OPERATORS) {
         op.id,
         email,
         role === 'owner' ? 'Demo Sahibi' : 'Demo Personeli',
-        hashPassword(PASSWORD),
+        hashPassword(password),
         role,
         now,
       ]
@@ -324,21 +332,49 @@ for (const a of ACTIVITIES) {
   }
 }
 
+  return { operators: OPERATORS, activityCount, slotCount, horizonDays: HORIZON_DAYS };
+}
+
 // ------------------------------------------------------------------- rapor
 
-console.log(`\n${OPERATORS.length} demo işletmesi hazır.`);
-console.log(`${activityCount} yeni ilan, ${slotCount} slot üretildi (${HORIZON_DAYS} günlük ufuk).\n`);
+/**
+ * Sonucu ve giriş bilgilerini yazar.
+ *
+ * @param {{operators: typeof OPERATORS, activityCount: number, slotCount: number, horizonDays: number}} result
+ * @param {string} password
+ */
+export function report(result, password) {
+  console.log(`\n${result.operators.length} demo işletmesi hazır.`);
+  console.log(
+    `${result.activityCount} yeni ilan, ${result.slotCount} slot üretildi ` +
+      `(${result.horizonDays} günlük ufuk).\n`
+  );
 
-console.log('Giriş bilgileri — /isletme adresinden:\n');
-for (const op of OPERATORS) {
-  console.log(`  ${op.name}`);
-  console.log(`    sahip    : ${op.owner}`);
-  console.log(`    personel : ${op.staff}`);
+  console.log('Giriş bilgileri — /isletme adresinden:\n');
+  for (const op of result.operators) {
+    console.log(`  ${op.name}`);
+    console.log(`    sahip    : ${op.owner}`);
+    console.log(`    personel : ${op.staff}`);
+  }
+
+  console.log(`\n  ortak parola: ${password}\n`);
+  console.log('Sahip rolü: aktiviteler, ödeme ayarları, ekip, işlem günlüğü.');
+  console.log('Personel rolü: yalnızca bilet okutma ve rezervasyon listesi.\n');
+  console.log('Bu hesaplar TANITIM içindir. Gerçek kullanıma geçerken hepsini');
+  console.log('askıya alın: /isletme/ekip ekranından ya da operator-account betiğiyle.\n');
 }
-console.log(`\n  ortak parola: ${PASSWORD}\n`);
-console.log('Sahip rolü: aktiviteler, ödeme ayarları, ekip, işlem günlüğü.');
-console.log('Personel rolü: yalnızca bilet okutma ve rezervasyon listesi.\n');
-console.log('Bu hesaplar TANITIM içindir. Gerçek kullanıma geçerken hepsini');
-console.log('askıya alın: /isletme/ekip ekranından ya da operator-account betiğiyle.\n');
 
-await db.close();
+// ------------------------------------------------------- komut satırı girişi
+//
+// Betik doğrudan çalıştırıldığında varsayılan (TCP) istemciyle bağlanır.
+// `seedDemo` dışa aktarıldığı için başka bir istemciyle de çağrılabilir —
+// 5432'nin kapalı olduğu ağlarda kurulum HTTPS ucundan yapılabiliyor.
+if (process.argv[1] && import.meta.url.endsWith(basename(process.argv[1]))) {
+  const args = process.argv.slice(2);
+  const flag = args.indexOf('--parola');
+  const password = flag >= 0 && args[flag + 1] ? args[flag + 1] : randomPassword();
+
+  const db = await connect();
+  report(await seedDemo(db, password), password);
+  await db.close();
+}
