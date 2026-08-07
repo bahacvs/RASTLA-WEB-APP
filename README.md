@@ -27,13 +27,17 @@ RASTLA, Türkiye'deki su sporları ve yerel turistik aktiviteleri tek platformda
 | `/` | Ana sayfa — arama formu, kategoriler, popüler ve bugün müsait deneyimler |
 | `/ara` | Arama — metin ve kategori filtresi, liste/harita geçişi, filtre paneli |
 | `/aktivite/[slug]` | Aktivite detayı — galeri, bilgiler, harita, değerlendirmeler |
-| `/rezervasyon/[slug]` | Rezervasyon — tarih, saat, katılımcı seçimi, iletişim ve tutar hesabı |
+| `/rezervasyon/[slug]` | Rezervasyon — tarih, saat, katılımcı seçimi, numara doğrulama ve tutar hesabı |
+| `/odeme/donus` | Ödeme sağlayıcısının dönüş ucu — sonuç sağlayıcıdan sorulur |
+| `/odeme/sonuc` | Ödeme tamamlanamadığında gelinen sayfa |
 | `/bilet/[code]` | QR kodlu bilet |
+| `/gorsel/[id]` | Yüklenen aktivite görselleri — kendi alan adımızdan sunulur |
 | `/rezervasyonlarim` | Kullanıcının kendi rezervasyonları |
 | `/hesabim` | Verilerini indirme ve hesap silme (KVKK md. 11) |
 | `/isletme` | İşletme girişi |
 | `/isletme/tara` | Bilet okutma ve onaylama |
-| `/isletme/aktiviteler` | Aktivite ekleme, düzenleme, yayına alma |
+| `/isletme/aktiviteler` | Aktivite ekleme, düzenleme, görsel yükleme, yayına alma |
+| `/isletme/odeme-ayarlari` | Alt üye işyeri başvurusu ve komisyon bilgisi (sahip) |
 | `/isletme/aktiviteler/[id]/takvim` | Takvim kuralı ve slot yönetimi |
 | `/isletme/rezervasyonlar` | Güne göre rezervasyonlar ve doluluk |
 | `/isletme/ekip` | Ekip yönetimi — hesap ekleme, parola sıfırlama, askıya alma (sahip) |
