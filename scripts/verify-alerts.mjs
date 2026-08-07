@@ -142,7 +142,11 @@ async function alertsFor(operatorId) {
     `import { runAlerts } from ${JSON.stringify(new URL('../lib/alerts/index.mjs', import.meta.url).href)};
 import { db } from ${JSON.stringify(new URL('../lib/db/index.mjs', import.meta.url).href)};
 const result = await runAlerts({ now: new Date(${now.getTime()}) });
-process.stdout.write(String(result.created));
+// İşaretli satır: yarışı KAZANAN süreç aynı zamanda e-postayı gönderen
+// süreçtir ve konsol posta sağlayıcısı stdout'a yazar. Çıplak sayı
+// yazılınca kazananın çıktısı posta satırlarıyla karışıp NaN oluyordu —
+// yani tam da kanıtlaması gereken süreç sayılamıyordu.
+process.stdout.write('\\nRASTLA_SONUC:' + result.created + '\\n');
 await (await db()).close();
 `
   );
@@ -151,7 +155,10 @@ await (await db()).close();
   const results = await Promise.all(
     Array.from({ length: 12 }, () =>
       execFileAsync(process.execPath, [worker], { encoding: 'utf8', timeout: 60000 })
-        .then((r) => Number(r.stdout.trim()))
+        .then((r) => {
+          const line = r.stdout.match(/RASTLA_SONUC:(-?\d+)/);
+          return line ? Number(line[1]) : Number.NaN;
+        })
         .catch(() => -1)
     )
   );
