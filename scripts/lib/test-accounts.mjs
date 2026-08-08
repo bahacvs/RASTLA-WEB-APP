@@ -98,6 +98,51 @@ export async function ensureTestAccounts() {
   }
 }
 
+/**
+ * RASTLA operasyon ekibi test hesapları.
+ *
+ * İki rol de gerekiyor: `reviewer` işletme doğrular ama komisyona ve hak
+ * edişe dokunamaz. Yalnızca `admin` sınansaydı, inceleme rolünün yanlış
+ * tarafa düşmesi — yani her gün ilan bakan birinin sözleşme değiştirebilmesi —
+ * görülmezdi.
+ */
+export const PLATFORM_ACCOUNTS = [
+  { email: 'test-admin@rastla.local', name: 'Test Yönetici', role: 'admin' },
+  { email: 'test-inceleme@rastla.local', name: 'Test İnceleme', role: 'reviewer' },
+];
+
+export function platformEmailFor(role = 'admin') {
+  const found = PLATFORM_ACCOUNTS.find((a) => a.role === role);
+  if (!found) throw new Error(`platform test hesabı tanımlı değil: ${role}`);
+  return found.email;
+}
+
+export async function ensurePlatformAccounts() {
+  const db = await connect();
+  const now = new Date().toISOString();
+
+  for (const account of PLATFORM_ACCOUNTS) {
+    await db.run(
+      `INSERT INTO platform_users (id, email, name, password_hash, role, status, created_at)
+       VALUES (?, ?, ?, ?, ?, 'active', ?)
+       ON CONFLICT (email) DO UPDATE SET
+         password_hash = excluded.password_hash,
+         status = 'active',
+         role = excluded.role`,
+      [randomUUID(), account.email, account.name, hashPassword(TEST_PASSWORD), account.role, now]
+    );
+  }
+}
+
+/** Yönetim paneline gerçek giriş formundan girer. */
+export async function loginAsPlatform(page, baseUrl, role = 'admin') {
+  await page.goto(`${baseUrl}/yonetim`, { waitUntil: 'networkidle' });
+  await page.fill('#email', platformEmailFor(role));
+  await page.fill('#password', TEST_PASSWORD);
+  await page.getByRole('button', { name: 'Giriş Yap' }).click();
+  await page.waitForURL(/\/yonetim\/isletmeler/, { timeout: 15000 });
+}
+
 /** Giriş formunu gerçek yoldan doldurur — oturum çerezi elle üretilmez. */
 export async function loginAs(page, baseUrl, operatorId, role = 'owner') {
   await page.goto(`${baseUrl}/isletme`, { waitUntil: 'networkidle' });

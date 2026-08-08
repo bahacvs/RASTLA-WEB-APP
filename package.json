@@ -13,7 +13,8 @@
     "operator:create": "node scripts/operator-account.mjs",
     "retention": "node scripts/gorev.mjs saklama",
     "gorev": "node scripts/gorev.mjs",
-    "prebuild": "node scripts/copy-maplibre-worker.mjs"
+    "prebuild": "node scripts/copy-maplibre-worker.mjs",
+    "platform:create": "node scripts/platform-account.mjs"
   },
   "dependencies": {
     "@fontsource/inter": "^5.3.0",

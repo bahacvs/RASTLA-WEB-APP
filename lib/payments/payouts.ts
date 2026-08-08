@@ -1,4 +1,5 @@
 import { record } from '@/lib/db/audit';
+import { getOperator } from '@/lib/db/operators';
 import { getSucceededPayment } from '@/lib/db/payments';
 import {
   claimRelease,
@@ -76,6 +77,38 @@ export async function holdPayoutForBooking(input: {
  * etmiştir, RASTLA'nın aktaracağı bir şey yok.
  */
 export async function releasePayoutForBooking(bookingId: string): Promise<void> {
+  // Hak edişi durdurulmuş işletmede pay BLOKE KALIR.
+  //
+  // Bu kontrol bilinçli olarak koşullu UPDATE'in DIŞINDA ve bu bir istisna
+  // değil: durdurma bir yönetici kararı, yarışılan bir sayaç değil. Yarışan
+  // şey "bu bileti kim okuttu" ve o karar aşağıdaki tek ifadede veriliyor.
+  // Durdurma bayrağını ifadeye katmak, defteri operators tablosuna bağlayıp
+  // her serbest bırakmayı birleştirmeye zorlardı; kazandırdığı bir güvence
+  // yok, çünkü iki eşzamanlı okutmadan biri "durduruldu"yu diğeri
+  // "durdurulmadı"yı görse bile sonuç yine tek bir serbest bırakma.
+  const held = await getPayout(bookingId);
+  if (held?.status === 'held') {
+    const operator = await getOperator(held.operatorId);
+    if (operator?.payoutsSuspended) {
+      await recordProviderOutcome(bookingId, {
+        ok: false,
+        error: 'hak ediş durduruldu — RASTLA incelemesi',
+      });
+      await record({
+        action: 'payout.suspended',
+        actorType: 'system',
+        operatorId: held.operatorId,
+        targetType: 'booking',
+        targetId: bookingId,
+        outcome: 'denied',
+        ip: null,
+        userAgent: null,
+        meta: { netTRY: held.netTRY },
+      });
+      return;
+    }
+  }
+
   const claimed = await claimRelease(bookingId);
   if (!claimed.ok) return;
 

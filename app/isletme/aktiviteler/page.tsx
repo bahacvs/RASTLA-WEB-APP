@@ -6,7 +6,7 @@ import { requireOperatorPage } from '@/lib/auth';
 import { listActivitiesForOperator } from '@/lib/db/activities';
 import { listRules } from '@/lib/db/slots';
 import { formatPrice } from '@/lib/format';
-import { CATEGORY_LABELS } from '@/lib/catalog';
+import { ACTIVITY_STATUS_LABELS, CATEGORY_LABELS } from '@/lib/catalog';
 import { toggleActivityStatusAction } from '@/app/actions/activity';
 
 export const metadata: Metadata = {
@@ -57,6 +57,12 @@ export default async function OperatorActivitiesPage() {
             {activities.map((activity) => {
               const rules = activeRules.get(activity.id) ?? [];
               const published = activity.status === 'published';
+              // İncelemedeki ilan yayına verilmiş ama henüz görünmüyor. Bu
+              // ayrımın ekranda olması şart: "Yayına Al"a basıp hiçbir şey
+              // olmamış gibi görünmek, işletmeye sistemin bozuk olduğunu
+              // düşündürürdü.
+              const inReview = activity.status === 'pending_review';
+              const live = published || inReview;
 
               return (
                 <li
@@ -75,10 +81,12 @@ export default async function OperatorActivitiesPage() {
                       className={`shrink-0 rounded-full px-2 py-1 text-label-bold ${
                         published
                           ? 'bg-secondary-container text-on-secondary-container'
-                          : 'bg-surface-container-high text-on-surface-variant'
+                          : inReview
+                            ? 'bg-tertiary-container text-on-tertiary-container'
+                            : 'bg-surface-container-high text-on-surface-variant'
                       }`}
                     >
-                      {published ? 'Yayında' : 'Taslak'}
+                      {ACTIVITY_STATUS_LABELS[activity.status]}
                     </span>
                   </div>
 
@@ -118,15 +126,15 @@ export default async function OperatorActivitiesPage() {
                       <input type="hidden" name="id" value={activity.id} />
                       <button
                         type="submit"
-                        disabled={rules.length === 0 && !published}
+                        disabled={rules.length === 0 && !live}
                         title={
-                          rules.length === 0 && !published
+                          rules.length === 0 && !live
                             ? 'Yayına almadan önce takvim tanımlayın'
                             : undefined
                         }
                         className="rounded-lg bg-primary px-4 py-2 text-label-bold text-on-primary disabled:cursor-not-allowed disabled:opacity-50"
                       >
-                        {published ? 'Yayından Kaldır' : 'Yayına Al'}
+                        {live ? (inReview ? 'İncelemeden Geri Çek' : 'Yayından Kaldır') : 'Yayına Al'}
                       </button>
                     </form>
                   </div>

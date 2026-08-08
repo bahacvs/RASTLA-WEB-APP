@@ -6,6 +6,7 @@ import {
   createActivity,
   getActivityById,
   setActivityStatus,
+  publishTargetFor,
   uniqueSlug,
   updateActivity,
   type ActivityInput,
@@ -177,14 +178,23 @@ export async function toggleActivityStatusAction(formData: FormData) {
   const owned = await assertOwnership(id);
   if (!owned) return;
 
-  const publishing = owned.activity.status !== 'published';
-  await setActivityStatus(id, publishing ? 'published' : 'draft');
+  // Yayında ya da incelemede olan bir ilan taslağa döner; taslak ise yayına
+  // verilir. "İncelemedeyken tekrar bas" geri çekmek anlamına geliyor ve
+  // olması gereken bu: işletme kendi ilanını kuyruktan çekebilmeli.
+  const publishing = owned.activity.status === 'draft';
+
+  // Doğrulanmamış işletmenin ilanı doğrudan yayına ÇIKMAZ, incelemeye düşer.
+  const target = publishing
+    ? publishTargetFor(owned.session.operator.verificationStatus)
+    : 'draft';
+
+  await setActivityStatus(id, target);
   await log(
     owned.session,
     publishing ? 'activity.published' : 'activity.unpublished',
     'activity',
     id,
-    { slug: owned.activity.slug }
+    { slug: owned.activity.slug, durum: target }
   );
 
   revalidatePath('/isletme/aktiviteler');

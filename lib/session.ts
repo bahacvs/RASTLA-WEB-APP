@@ -77,6 +77,29 @@ export async function clearOperatorSession() {
 }
 
 /**
+ * RASTLA operasyon ekibinin oturumu — işletme oturumundan AYRI çerez.
+ *
+ * Aynı çerezde taşınsaydı, bir işletme hesabı ile platform hesabı arasındaki
+ * fark yalnızca veritabanı sorgusuna kalırdı ve o sorgunun bir yerde
+ * atlanması, işletme personelinin yönetim paneline girmesi demek olurdu.
+ * Ayrı çerez bu hatayı yapısal olarak imkânsız kılıyor: işletme oturumu
+ * `/yonetim` için hiçbir şey ifade etmiyor.
+ */
+const PLATFORM_COOKIE = 'rastla_platform';
+
+export async function setPlatformSession(platformUserId: string) {
+  (await cookies()).set(PLATFORM_COOKIE, pack(platformUserId), COOKIE_OPTIONS);
+}
+
+export async function getPlatformUserId(): Promise<string | null> {
+  return unpack((await cookies()).get(PLATFORM_COOKIE)?.value);
+}
+
+export async function clearPlatformSession() {
+  (await cookies()).delete(PLATFORM_COOKIE);
+}
+
+/**
  * Yarım kalmış işletme girişi — parola doğru, ikinci faktör bekleniyor.
  *
  * Ayrı ve **kısa ömürlü** bir çerezde taşınır. Asıl oturum çerezine

@@ -77,6 +77,9 @@ export const AUDIT_ACTIONS = [
   // Defterde ilerledi ama sağlayıcıya iletilemedi. Ayrı bir eylem: paranın
   // fiilen aktarılmadığı tek durum bu ve elle müdahale gerektirir.
   'payout.provider_failed',
+  // Hak edişi durdurulmuş işletmede serbest bırakma reddedildi. Ayrı eylem:
+  // bir arıza değil, RASTLA'nın kasıtlı kararı ve gerekçesi sorulabilmeli.
+  'payout.suspended',
 
   // Katalog
   'activity.created',
@@ -88,6 +91,17 @@ export const AUDIT_ACTIONS = [
   'schedule.slot_toggled',
   'activity.image_uploaded',
   'activity.image_deleted',
+
+  // RASTLA operasyon paneli. Hepsi ticari sonuç doğuran işlemler; "kim
+  // yaptı" sorusu bu satırlarda cevaplanıyor.
+  'platform.login',
+  'platform.login_failed',
+  'operator.verification_changed',
+  'operator.commission_changed',
+  'operator.payouts_suspended',
+  'operator.payouts_resumed',
+  'activity.review_approved',
+  'activity.review_rejected',
 
   // Kişisel veri hakları
   'account.exported',

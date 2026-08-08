@@ -50,7 +50,34 @@ CREATE TABLE IF NOT EXISTS operators (
   -- değiştirmek, o işletmeyle imzalanmış ticari sözleşmenin de güncellenmesini
   -- gerektirir. İşletme başına oran Faz F'te panelden belirlenecek.
   commission_bp   INTEGER NOT NULL DEFAULT 1800
-                  CHECK (commission_bp >= 0 AND commission_bp <= 10000)
+                  CHECK (commission_bp >= 0 AND commission_bp <= 10000),
+
+  -- ---- RASTLA doğrulaması ----
+  --
+  -- Müşteri tarafındaki "doğrulanmış işletme" rozeti buna bağlı. Önce rozet
+  -- HERKESE gösteriliyordu ve bu, doğrulanmamış bir işletme için müşteriye
+  -- söylenmiş yanlış bir cümleydi: rozet bir şey iddia ediyorsa arkasında bir
+  -- kontrol olmak zorunda.
+  --
+  -- basvuru          -> kaydoldu, henüz belge vermedi
+  -- belge_bekleniyor -> istenen belgeler eksik
+  -- inceleniyor      -> belgeler geldi, RASTLA bakıyor
+  -- dogrulandi       -> onaylandı; rozet ancak bu durumda gösterilir
+  -- durduruldu       -> geçici olarak askıda (uyuşmazlık, şikâyet)
+  -- kapatildi        -> ilişki sonlandı
+  verification_status TEXT NOT NULL DEFAULT 'basvuru'
+                  CHECK (verification_status IN ('basvuru', 'belge_bekleniyor',
+                         'inceleniyor', 'dogrulandi', 'durduruldu', 'kapatildi')),
+  -- RASTLA'nın iç notu. Müşteriye ve işletmeye GÖSTERİLMEZ.
+  verification_note TEXT,
+  verified_at     TEXT,
+
+  -- Hak ediş durdurma. Uyuşmazlık ya da şikâyet hâlinde para sağlayıcıda
+  -- bloke kalmaya devam eder; rezervasyon ve check-in çalışmayı sürdürür.
+  -- İkisi ayrı tutuluyor çünkü işletmeyi tamamen kapatmak müşterinin elindeki
+  -- geçerli bileti de geçersiz kılardı.
+  payouts_suspended INTEGER NOT NULL DEFAULT 0
+                  CHECK (payouts_suspended IN (0, 1))
 );
 
 -- İşletme personelinin kişisel hesabı.
@@ -178,8 +205,21 @@ CREATE TABLE IF NOT EXISTS activities (
   rating            REAL NOT NULL DEFAULT 0,
   review_count      INTEGER NOT NULL DEFAULT 0,
 
+  -- draft          -> işletme üzerinde çalışıyor, kimse görmüyor
+  -- pending_review -> yayına verildi, RASTLA kontrolünde. MÜŞTERİYE GÖRÜNMEZ.
+  -- published      -> yayında
+  --
+  -- İnceleme adımı yalnızca **doğrulanmamış** işletmelerin ilanları için
+  -- işliyor (bkz. lib/db/activities.ts). Doğrulanmış bir işletmeyi her ilanda
+  -- yeniden incelemek, kontrolün bir kez yapılan işletme doğrulaması olduğu
+  -- gerçeğiyle çelişirdi; buna karşılık daha hiç doğrulanmamış bir işletmenin
+  -- ilanının kontrolsüz yayına çıkması, rozetle verilen güvenceyi boşa
+  -- çıkarırdı.
+  --
+  -- Kısıt ADLANDIRILDI: durum listesi genişledi ve göçte bulunabilmesi gerek.
   status            TEXT NOT NULL DEFAULT 'draft'
-                    CHECK (status IN ('draft', 'published')),
+                    CONSTRAINT activities_status_check
+                    CHECK (status IN ('draft', 'pending_review', 'published')),
 
   created_at        TEXT NOT NULL
 );

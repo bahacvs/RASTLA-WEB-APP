@@ -1,6 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import { db, toCount } from './index.mjs';
-import type { Activity, ActivityCategory, CapacityMode, Review } from '../catalog';
+import type {
+  Activity,
+  ActivityCategory,
+  ActivityStatus,
+  CapacityMode,
+  Review,
+} from '../catalog';
 
 /**
  * Aktivite deposu.
@@ -37,7 +43,7 @@ type Row = {
   instant_confirm: number;
   rating: number;
   review_count: number;
-  status: 'draft' | 'published';
+  status: ActivityStatus;
   /**
    * SUM() sonucu. Postgres bunu bigint döndürür ve `pg` sürücüsü DİZGİ olarak
    * verir; bu yüzden tip burada number değil ve toActivity içinde çevrilir.
@@ -168,7 +174,7 @@ export type ActivityInput = {
   reviews?: Review[];
   rating?: number;
   reviewCount?: number;
-  status?: 'draft' | 'published';
+  status?: ActivityStatus;
 };
 
 function toParams(input: ActivityInput) {
@@ -251,8 +257,34 @@ export async function updateActivity(
   return getActivityById(id);
 }
 
-export async function setActivityStatus(id: string, status: 'draft' | 'published') {
+export async function setActivityStatus(id: string, status: ActivityStatus) {
   await (await db()).run('UPDATE activities SET status = ? WHERE id = ?', [status, id]);
+}
+
+/**
+ * İşletme ilanı yayına vermek istediğinde varılacak durum.
+ *
+ * **Doğrulanmamış işletmenin ilanı doğrudan yayına çıkmaz**, RASTLA
+ * incelemesine düşer. Doğrulanmış işletme doğrudan yayına çıkar.
+ *
+ * Alternatif — her ilanı tek tek incelemek — bilinçli olarak seçilmedi:
+ * kontrolün konusu ilan metni değil İŞLETMENİN KENDİSİ, ve o kontrol bir kez
+ * yapılıyor. Her ilanı incelemek, doğrulanmış bir işletmeyi fiyat
+ * değiştirdiği için yeniden kuyruğa sokmak olurdu; ölçeklenmez ve incelemeyi
+ * bir onay damgasına indirger. Öte yandan hiç doğrulanmamış bir işletmenin
+ * ilanının kontrolsüz yayına çıkması, rozetle verilen güvenceyi boşa
+ * çıkarırdı.
+ */
+export function publishTargetFor(verificationStatus: string): ActivityStatus {
+  return verificationStatus === 'dogrulandi' ? 'published' : 'pending_review';
+}
+
+/** RASTLA incelemesini bekleyen ilanlar — /yonetim kuyruğu. */
+export async function listPendingReview(): Promise<Activity[]> {
+  const rows = await (
+    await db()
+  ).all<Row>(`SELECT * FROM activities WHERE status = 'pending_review' ORDER BY created_at`);
+  return rows.map(toActivity);
 }
 
 /** Başlıktan URL'e uygun bir slug türetir; çakışırsa sonuna sayı ekler. */
