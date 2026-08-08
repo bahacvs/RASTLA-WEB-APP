@@ -1,9 +1,9 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { notFound, redirect } from 'next/navigation';
+import { notFound } from 'next/navigation';
 import { OperatorNav } from '@/components/OperatorNav';
 import { ActivityForm } from '../ActivityForm';
-import { currentOperator } from '@/lib/auth';
+import { requireOperatorPage } from '@/lib/auth';
 import { getActivityById } from '@/lib/db/activities';
 import { listImages } from '@/lib/db/activity-images';
 import { ImageManager } from './ImageManager';
@@ -14,10 +14,7 @@ export const metadata: Metadata = {
 };
 
 export default async function EditActivityPage({ params }: { params: Promise<{ id: string }> }) {
-  const session = await currentOperator();
-  if (!session) redirect('/isletme');
-  // Aktivite yönetimi sahibe ayrılmış; personel bilet ekranına döner.
-  if (session.user.role !== 'owner') redirect('/isletme/tara');
+  const session = await requireOperatorPage('aktivite.yonet');
   const operatorId = session.operator.id;
 
   const { id } = await params;

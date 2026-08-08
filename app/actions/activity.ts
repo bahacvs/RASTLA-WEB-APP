@@ -11,7 +11,7 @@ import {
   type ActivityInput,
 } from '@/lib/db/activities';
 import { createRule, setRuleActive, setSlotStatus, syncSlots, getSlot } from '@/lib/db/slots';
-import { currentOperator, type OperatorSession } from '@/lib/auth';
+import { requireCapability, type OperatorSession } from '@/lib/auth';
 import { isActivityCategory, type CapacityMode } from '@/lib/catalog';
 import { record, type AuditAction } from '@/lib/db/audit';
 import { requestContext } from '@/lib/request-context';
@@ -39,21 +39,22 @@ async function log(
 }
 
 /**
- * Aktivite yönetimi sahiplere ayrılmıştır.
+ * Aktivite yönetimi sahip ve yöneticiye açıktır, saha personeline kapalı.
  *
- * Personel bilet okutur ve rezervasyon listesini görür; fiyat değiştirmek,
- * takvim tanımlamak ve yayına almak ticari kararlardır. Kontrol her eylemde
- * sunucu tarafında yapılır — bağlantıyı menüden gizlemek yetkilendirme değildir.
+ * Saha personeli bilet okutur ve günün rezervasyonlarını görür; fiyat
+ * değiştirmek, takvim tanımlamak ve yayına almak ticari kararlardır ve sahilde
+ * telefonla çalışan birinin işi değildir.
+ *
+ * Kontrol her eylemde sunucu tarafında yapılır — bağlantıyı menüden gizlemek
+ * yetkilendirme değildir.
  */
-async function requireOwner() {
-  const session = await currentOperator();
-  if (!session || session.user.role !== 'owner') return null;
-  return session;
+async function requireActivityAccess() {
+  return requireCapability('aktivite.yonet');
 }
 
 /** Sahibin yalnızca kendi aktivitesine dokunabilmesini sağlar. */
 async function assertOwnership(activityId: string) {
-  const session = await requireOwner();
+  const session = await requireActivityAccess();
   if (!session) return null;
 
   const activity = await getActivityById(activityId);
@@ -114,7 +115,7 @@ export async function createActivityAction(
   _prev: ActivityFormState,
   formData: FormData
 ): Promise<ActivityFormState> {
-  const session = await requireOwner();
+  const session = await requireActivityAccess();
   if (!session) return { error: 'Bu işlem için işletme sahibi yetkisi gerekir.' };
 
   const input = readForm(formData, session.operator.id);

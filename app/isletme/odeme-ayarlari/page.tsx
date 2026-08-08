@@ -1,8 +1,7 @@
 import type { Metadata } from 'next';
-import { redirect } from 'next/navigation';
 import { OperatorNav } from '@/components/OperatorNav';
 import { Icon } from '@/components/Icon';
-import { currentOperator } from '@/lib/auth';
+import { requireOperatorPage } from '@/lib/auth';
 import { getOperator, getPaymentProfile } from '@/lib/db/operators';
 import { isPaymentEnabled, splitAmount } from '@/lib/payments';
 import { PaymentProfileForm, CreateSubmerchantForm } from './PaymentForms';
@@ -14,10 +13,7 @@ export const metadata: Metadata = {
 };
 
 export default async function PaymentSettingsPage() {
-  const session = await currentOperator();
-  if (!session) redirect('/isletme');
-  // Rol kontrolü sunucuda: menüyü gizlemek yetkilendirme değildir.
-  if (session.user.role !== 'owner') redirect('/isletme/tara');
+  const session = await requireOperatorPage('odeme.yonet');
 
   const operator = (await getOperator(session.operator.id))!;
   const profile = (await getPaymentProfile(session.operator.id))!;

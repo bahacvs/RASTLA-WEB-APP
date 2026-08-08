@@ -1,25 +1,35 @@
 import Link from 'next/link';
 import { operatorLogoutAction } from '@/app/actions/operator';
+import { roleCan, ROLE_LABELS, type Capability } from '@/lib/permissions';
 import type { OperatorSession } from '@/lib/auth';
 
-// Personelin işi: bilet okutmak ve o günün listesini görmek.
-const LINKS = [
-  { href: '/isletme/tara', label: 'Bilet Okut' },
-  { href: '/isletme/rezervasyonlar', label: 'Rezervasyonlar' },
-];
-
-// Fiyat, takvim, ekip ve denetim kaydı ticari kararlardır; sahibe ayrılmıştır.
-// Menüyü gizlemek yetkilendirme değildir — kontrol ayrıca sunucuda yapılır.
-const OWNER_LINKS = [
-  { href: '/isletme/aktiviteler', label: 'Aktiviteler' },
-  { href: '/isletme/odeme-ayarlari', label: 'Ödeme' },
-  { href: '/isletme/ekip', label: 'Ekip' },
-  { href: '/isletme/gunluk', label: 'İşlem Günlüğü' },
+/**
+ * Menü, kişinin yeteneklerine göre daralır.
+ *
+ * Her bağlantı hangi yeteneği gerektirdiğini yanında taşıyor; önce "sahip mi
+ * değil mi" diye iki listeye bölünmüştü ve üçüncü rol gelince o ayrım
+ * yöneticiyi saha personeliyle aynı kefeye koyuyordu.
+ *
+ * DİKKAT — bu liste **yetkilendirme değil.** Bağlantıyı gizlemek sayfayı
+ * korumaz; asıl engel her sayfanın başındaki `requireOperatorPage` ve her
+ * sunucu eyleminin başındaki `requireCapability` çağrısıdır. Buradaki filtre
+ * yalnızca kişiye giremeyeceği kapıları göstermemek için.
+ */
+const LINKS: { href: string; label: string; needs: Capability }[] = [
+  // 'bugun.goruntule' yeteneği tanımlı ama ekranı henüz yok; bağlantı, sayfa
+  // açıldığında eklenecek. Olmayan bir sayfaya menüden bağlantı vermek,
+  // tıklayana 404 göstermek demek.
+  { href: '/isletme/tara', label: 'Bilet Okut', needs: 'checkin.yap' },
+  { href: '/isletme/rezervasyonlar', label: 'Rezervasyonlar', needs: 'rezervasyon.goruntule' },
+  { href: '/isletme/aktiviteler', label: 'Aktiviteler', needs: 'aktivite.yonet' },
+  { href: '/isletme/odeme-ayarlari', label: 'Ödeme', needs: 'odeme.yonet' },
+  { href: '/isletme/ekip', label: 'Ekip', needs: 'ekip.yonet' },
+  { href: '/isletme/gunluk', label: 'İşlem Günlüğü', needs: 'gunluk.goruntule' },
 ];
 
 /** İşletme panelinin ortak üst çubuğu. */
 export function OperatorNav({ session }: { session: OperatorSession }) {
-  const links = session.user.role === 'owner' ? [...LINKS, ...OWNER_LINKS] : LINKS;
+  const links = LINKS.filter(({ needs }) => roleCan(session.user.role, needs));
 
   return (
     <header className="border-b border-surface-variant bg-surface">
@@ -29,7 +39,7 @@ export function OperatorNav({ session }: { session: OperatorSession }) {
             {session.operator.name}
           </p>
           <p className="truncate text-label-sm text-on-surface-variant">
-            {session.user.name} · {session.user.role === 'owner' ? 'Sahip' : 'Personel'}
+            {session.user.name} · {ROLE_LABELS[session.user.role]}
           </p>
         </div>
         <form action={operatorLogoutAction}>

@@ -334,6 +334,7 @@ node scripts/verify-ticket-flow.mjs   # rezervasyon -> bilet -> onay -> ikinci o
 node scripts/verify-offline-ticket.mjs # bağlantı kesikken bilet ve QR açılıyor mu
 node scripts/verify-offline.mjs       # harita karoları dışında dış istek var mı
 node scripts/verify-nearby.mjs        # konuma göre sıralama ve konumun ağa ÇIKMADIĞI
+node scripts/verify-permissions.mjs   # üç rolün hangi ekrana girip giremediği
 node scripts/verify-audit.mjs         # işlem günlüğü: ne kaydediliyor, ne KAYDEDİLMİYOR
 node scripts/verify-rate-limit.mjs    # hız sınırı ve 30 süreçli eşzamanlılık
 node scripts/verify-jobs.mjs          # zamanlayıcı ucunun yetkilendirmesi

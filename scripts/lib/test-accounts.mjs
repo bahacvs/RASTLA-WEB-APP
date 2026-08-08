@@ -34,6 +34,15 @@ export const TEST_ACCOUNTS = [
     role: 'staff',
     phone: null,
   },
+  // Yönetici: operasyonu yürütür ama finansa giremez. Üç rolün de sınanması
+  // gerekiyor; yalnızca uçlar (sahip ve saha personeli) test edilseydi
+  // aradaki rolün yanlış tarafa düşmesi görülmezdi.
+  {
+    operatorId: 'buyukcekmece-wsc',
+    email: 'test-yonetici@buyukcekmece.local',
+    role: 'manager',
+    phone: null,
+  },
   // İkinci faktörü olan hesap.
   {
     operatorId: 'buyukcekmece-wsc',
@@ -79,7 +88,7 @@ export async function ensureTestAccounts() {
         randomUUID(),
         account.operatorId,
         account.email,
-        `Test ${account.role === 'owner' ? 'Sahibi' : 'Personeli'}`,
+        `Test ${{ owner: 'Sahibi', manager: 'Yöneticisi', staff: 'Personeli' }[account.role]}`,
         hashPassword(TEST_PASSWORD),
         account.role,
         now,

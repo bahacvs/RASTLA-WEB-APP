@@ -71,9 +71,15 @@ CREATE TABLE IF NOT EXISTS operator_users (
   -- doğrulanmaya devam eder.
   password_hash  TEXT NOT NULL,
 
-  -- owner: ekip yönetebilir, aktivite düzenleyebilir
-  -- staff: yalnızca bilet okutur ve rezervasyon görür
-  role           TEXT NOT NULL CHECK (role IN ('owner', 'staff')),
+  -- owner   : her şey — finans, hak ediş, banka bilgisi, ekip yönetimi
+  -- manager : operasyon — takvim, aktivite, rezervasyon, manuel kayıt.
+  --           Finansa ve banka bilgisine erişemez; rezervasyonu oluşturan ile
+  --           parayı yönlendiren aynı kişi olmasın diye (görev ayrılığı).
+  -- staff   : saha — yalnızca bugünü görür ve bilet okutur. Müşteri listesini
+  --           toplu indiremez; ayrılan çalışanın elinde kalmamalı.
+  --
+  -- Yetenek eşlemesi lib/permissions.ts içinde, tek kaynak olarak duruyor.
+  role           TEXT NOT NULL CHECK (role IN ('owner', 'manager', 'staff')),
 
   status         TEXT NOT NULL DEFAULT 'active'
                  CHECK (status IN ('active', 'suspended')),
@@ -83,6 +89,34 @@ CREATE TABLE IF NOT EXISTS operator_users (
 );
 
 CREATE INDEX IF NOT EXISTS idx_operator_users_operator ON operator_users(operator_id, status);
+
+-- RASTLA operasyon ekibi.
+--
+-- Ayrı tablo, çünkü bu kişiler bir işletmeye bağlı değil. `operator_users`
+-- içine sıkıştırmak `operator_id`'yi anlamsızlaştırırdı: ya uydurma bir
+-- işletmeye bağlanacaklardı ya da sütun NULL olacak ve o andan itibaren
+-- "hangi işletmenin personeli" sorusunun cevabı belirsizleşecekti. Yetki
+-- alanları da bambaşka — işletme doğrulama, ilan onayı, hak ediş durdurma.
+--
+-- Aynı e-posta hem işletme hem platform hesabı olabilir; ikisi ayrı oturum
+-- çerezi taşır ve biri diğerinin yetkisini vermez.
+CREATE TABLE IF NOT EXISTS platform_users (
+  id             TEXT PRIMARY KEY,
+  email          TEXT NOT NULL UNIQUE,   -- küçük harfe indirgenmiş
+  name           TEXT NOT NULL,
+  phone          TEXT,
+  password_hash  TEXT NOT NULL,
+
+  -- admin    : her şey, platform hesabı açabilir
+  -- reviewer : işletme doğrulama ve ilan onayı; komisyona ve hak edişe dokunamaz
+  role           TEXT NOT NULL CHECK (role IN ('admin', 'reviewer')),
+
+  status         TEXT NOT NULL DEFAULT 'active'
+                 CHECK (status IN ('active', 'suspended')),
+
+  created_at     TEXT NOT NULL,
+  last_login_at  TEXT
+);
 
 -- İşletmenin yönettiği aktiviteler. Önceden lib/data.ts içinde sabitti.
 CREATE TABLE IF NOT EXISTS activities (

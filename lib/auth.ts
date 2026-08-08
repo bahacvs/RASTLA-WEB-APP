@@ -1,6 +1,8 @@
+import { redirect } from 'next/navigation';
 import { getOperatorUserId, getUserId } from './session';
 import { getOperator, getOperatorUser, type Operator, type OperatorUser } from './db/operators';
 import { getUser } from './db/users';
+import { roleCan, type Capability } from './permissions';
 
 /**
  * Oturumdaki misafirin kimliği — silinmiş hesaplar hariç.
@@ -49,4 +51,58 @@ export async function currentOperatorId(): Promise<string | null> {
 
 export function isOwner(session: OperatorSession | null): boolean {
   return session?.user.role === 'owner';
+}
+
+/**
+ * Yetki kontrolü — rol karşılaştırması yerine yetenek sorgusu.
+ *
+ * Önce her yerde `session.user.role !== 'owner'` yazıyordu ve bu, üçüncü bir
+ * rol eklenemez hâle getirmişti: "sahip değilse yasak" kuralı yöneticiyi de
+ * saha personeliyle aynı kefeye koyuyordu. Yetenek sorulunca rol eklemek
+ * yalnızca lib/permissions.ts'i değiştirmek oluyor.
+ */
+export function can(session: OperatorSession | null, capability: Capability): boolean {
+  return session ? roleCan(session.user.role, capability) : false;
+}
+
+/**
+ * Oturumu çözer ve yeteneği doğrular; biri eksikse null döner.
+ *
+ * Sunucu eylemlerinin ilk satırı bu olmalı. Arayüzde düğmeyi gizlemek yeterli
+ * değil — sunucu eylemleri adresi bilen herkese açıktır ve doğrulama testleri
+ * tam olarak bunu, arayüzü atlayarak sınıyor.
+ */
+export async function requireCapability(
+  capability: Capability
+): Promise<OperatorSession | null> {
+  const session = await currentOperator();
+  return can(session, capability) ? session : null;
+}
+
+/**
+ * Rolüne göre kişinin gideceği ilk ekran.
+ *
+ * Tek yerde duruyor çünkü her yetkisiz yönlendirme buraya düşüyor; sabit
+ * yazılsaydı ekran adı değiştiğinde bir kısmı geride kalırdı.
+ */
+export function operatorHome(session: OperatorSession | null): string {
+  // Bugün ekranı açıldığında burası '/isletme/bugun' olacak — tek satır.
+  return session ? '/isletme/tara' : '/isletme';
+}
+
+/**
+ * Korumalı sunucu bileşenlerinin ilk satırı.
+ *
+ * Oturum yoksa girişe, yetki yoksa kişinin kendi ana ekranına yönlendirir —
+ * yetkisiz birine 404 göstermek "böyle bir sayfa yok" demek olurdu ve yanlış
+ * bilgi verirdi; oysa sayfa var, kişi giremiyor.
+ *
+ * `redirect()` fırlattığı için dönüş tipi null içermiyor: çağıran taraf
+ * oturumu doğrudan kullanabilir.
+ */
+export async function requireOperatorPage(capability: Capability): Promise<OperatorSession> {
+  const session = await currentOperator();
+  if (!session) redirect('/isletme');
+  if (!can(session, capability)) redirect(operatorHome(session));
+  return session;
 }

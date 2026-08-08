@@ -1,9 +1,8 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { redirect } from 'next/navigation';
 import { OperatorNav } from '@/components/OperatorNav';
 import { Icon } from '@/components/Icon';
-import { currentOperator } from '@/lib/auth';
+import { requireOperatorPage } from '@/lib/auth';
 import { listActivitiesForOperator } from '@/lib/db/activities';
 import { listRules } from '@/lib/db/slots';
 import { formatPrice } from '@/lib/format';
@@ -16,10 +15,7 @@ export const metadata: Metadata = {
 };
 
 export default async function OperatorActivitiesPage() {
-  const session = await currentOperator();
-  if (!session) redirect('/isletme');
-  // Aktivite yönetimi sahibe ayrılmış; personel bilet ekranına döner.
-  if (session.user.role !== 'owner') redirect('/isletme/tara');
+  const session = await requireOperatorPage('aktivite.yonet');
   const operatorId = session.operator.id;
 
   const activities = await listActivitiesForOperator(operatorId);

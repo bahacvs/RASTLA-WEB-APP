@@ -11,7 +11,11 @@ import { hashPassword, verifyPassword } from '@/lib/password.mjs';
  * "kim yaptı" sorusunun cevaplanabilmesi gerekir.
  */
 
-export type OperatorRole = 'owner' | 'staff';
+// Rol listesi ve hangi rolün neye yetkili olduğu lib/permissions.ts'te tek
+// kaynak olarak duruyor; burada yeniden tanımlamak ikisinin ayrışmasına
+// davetiye olurdu.
+export type { OperatorRole } from '@/lib/permissions';
+import type { OperatorRole } from '@/lib/permissions';
 export type OperatorUserStatus = 'active' | 'suspended';
 
 /** iyzico'nun tanıdığı alt üye işyeri türleri. */
