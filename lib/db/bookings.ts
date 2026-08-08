@@ -19,6 +19,53 @@ export type BookingStatus =
 /** İptali kimin yaptığı. `weather` ayrı tutulur: müşteri kusurlu değildir. */
 export type CancelReason = 'customer' | 'operator' | 'weather';
 
+/**
+ * Rezervasyonun geldiği kanal.
+ *
+ * İşletmenin bütün kanallarını sisteme almanın asıl sebebi komisyon değil,
+ * müsaitliğin doğru olması: telefondan alınan bir rezervasyon sisteme
+ * girilmezse RASTLA müşterisine boş görünen saat aslında doludur.
+ */
+export type BookingSource =
+  | 'rastla'
+  | 'link'
+  | 'instagram'
+  | 'whatsapp'
+  | 'phone'
+  | 'hotel'
+  | 'agency'
+  | 'manual';
+
+export const BOOKING_SOURCES: BookingSource[] = [
+  'rastla',
+  'link',
+  'instagram',
+  'whatsapp',
+  'phone',
+  'hotel',
+  'agency',
+  'manual',
+];
+
+export const SOURCE_LABELS: Record<BookingSource, string> = {
+  rastla: 'RASTLA',
+  link: 'Kendi bağlantım',
+  instagram: 'Instagram',
+  whatsapp: 'WhatsApp',
+  phone: 'Telefon',
+  hotel: 'Otel',
+  agency: 'Acente',
+  manual: 'Resepsiyon / elle',
+};
+
+export type PaymentMode = 'online' | 'onsite' | 'deposit';
+
+export const PAYMENT_MODE_LABELS: Record<PaymentMode, string> = {
+  online: 'Ödendi',
+  onsite: 'Tesiste',
+  deposit: 'Kapora',
+};
+
 export type Booking = {
   id: string;
   code: string;
@@ -29,6 +76,15 @@ export type Booking = {
   slotId: string | null;
   /** Slottan düşen miktar; iptalde aynı miktar geri verilir. */
   units: number;
+  /** Slotun ekipman sayacından düşen araç sayısı; havuz yoksa 0. */
+  equipmentUnits: number;
+  source: BookingSource;
+  paymentMode: PaymentMode;
+  /** Manuel kaydı açan işletme personeli; RASTLA rezervasyonlarında null. */
+  createdBy: string | null;
+  /** Check-in'de kaç kişi geldi; okutulmadıysa null. */
+  attended: number | null;
+  noShowAt: string | null;
   bookingDate: string;
   bookingTime: string;
   adults: number;
@@ -57,6 +113,12 @@ type Row = {
   operator_id: string;
   slot_id: string | null;
   units: number;
+  equipment_units: number;
+  source: BookingSource;
+  payment_mode: PaymentMode;
+  created_by: string | null;
+  attended: number | null;
+  no_show_at: string | null;
   booking_date: string;
   booking_time: string;
   adults: number;
@@ -82,6 +144,12 @@ function toBooking(row: Row): Booking {
     operatorId: row.operator_id,
     slotId: row.slot_id,
     units: row.units,
+    equipmentUnits: row.equipment_units ?? 0,
+    source: row.source ?? 'rastla',
+    paymentMode: row.payment_mode ?? 'online',
+    createdBy: row.created_by ?? null,
+    attended: row.attended ?? null,
+    noShowAt: row.no_show_at ?? null,
     bookingDate: row.booking_date,
     bookingTime: row.booking_time,
     adults: row.adults,
@@ -122,6 +190,13 @@ export async function createBooking(input: {
   operatorId: string;
   slotId: string | null;
   units: number;
+  /** Slotun ekipman sayacından düşen araç sayısı; havuz yoksa 0. */
+  equipmentUnits?: number;
+  /** Rezervasyon hangi kanaldan geldi. Varsayılan RASTLA pazaryeri. */
+  source?: BookingSource;
+  paymentMode?: PaymentMode;
+  /** Manuel kaydı açan işletme personeli; RASTLA rezervasyonlarında null. */
+  createdBy?: string | null;
   bookingDate: string;
   bookingTime: string;
   adults: number;
@@ -156,6 +231,12 @@ export async function createBooking(input: {
     operator_id: input.operatorId,
     slot_id: input.slotId,
     units: input.units,
+    equipment_units: input.equipmentUnits ?? 0,
+    source: input.source ?? 'rastla',
+    payment_mode: input.paymentMode ?? 'online',
+    created_by: input.createdBy ?? null,
+    attended: null,
+    no_show_at: null,
     booking_date: input.bookingDate,
     booking_time: input.bookingTime,
     adults: input.adults,
@@ -177,11 +258,13 @@ export async function createBooking(input: {
     await db()
   ).run(
     `INSERT INTO bookings
-       (id, code, user_id, activity_slug, operator_id, slot_id, units, booking_date,
+       (id, code, user_id, activity_slug, operator_id, slot_id, units, equipment_units,
+        source, payment_mode, created_by, attended, no_show_at, booking_date,
         booking_time, adults, children, total_try, status, created_at, terms_accepted_at,
         confirmed_at, expired_at, redeemed_at, redeemed_by, cancelled_at, cancel_reason)
      VALUES
-       (@id, @code, @user_id, @activity_slug, @operator_id, @slot_id, @units, @booking_date,
+       (@id, @code, @user_id, @activity_slug, @operator_id, @slot_id, @units, @equipment_units,
+        @source, @payment_mode, @created_by, @attended, @no_show_at, @booking_date,
         @booking_time, @adults, @children, @total_try, @status, @created_at, @terms_accepted_at,
         @confirmed_at, @expired_at, @redeemed_at, @redeemed_by, @cancelled_at, @cancel_reason)`,
     row
@@ -326,7 +409,7 @@ export async function cancelBooking(code: string, reason: CancelReason): Promise
   }
 
   const booking = (await getBookingByCode(normalized))!;
-  if (booking.slotId) await releaseCapacity(booking.slotId, booking.units);
+  if (booking.slotId) await releaseCapacity(booking.slotId, booking.units, booking.equipmentUnits);
 
   return { ok: true, booking };
 }

@@ -23,6 +23,9 @@ type Row = {
   lat: number | null;
   lng: number | null;
   capacity_mode: CapacityMode;
+  min_participants: number;
+  booking_cutoff_minutes: number;
+  prep_minutes: number;
   image: string | null;
   image_alt: string | null;
   included: string | null;
@@ -73,6 +76,9 @@ function toActivity(row: Row): Activity {
     lat: row.lat,
     lng: row.lng,
     capacityMode: row.capacity_mode,
+    minParticipants: row.min_participants ?? 1,
+    bookingCutoffMinutes: row.booking_cutoff_minutes ?? 0,
+    prepMinutes: row.prep_minutes ?? 0,
     image: row.image ?? '',
     imageAlt: row.image_alt ?? '',
     included: parseJson<string[]>(row.included),
@@ -148,6 +154,9 @@ export type ActivityInput = {
   lat?: number | null;
   lng?: number | null;
   capacityMode: CapacityMode;
+  minParticipants?: number;
+  bookingCutoffMinutes?: number;
+  prepMinutes?: number;
   capacityLabel?: string;
   instantConfirm?: boolean;
   image?: string;
@@ -175,6 +184,9 @@ function toParams(input: ActivityInput) {
     lat: input.lat ?? null,
     lng: input.lng ?? null,
     capacity_mode: input.capacityMode,
+    min_participants: input.minParticipants ?? 1,
+    booking_cutoff_minutes: input.bookingCutoffMinutes ?? 0,
+    prep_minutes: input.prepMinutes ?? 0,
     image: input.image ?? null,
     image_alt: input.imageAlt ?? null,
     included: input.included ? JSON.stringify(input.included) : null,
@@ -198,12 +210,14 @@ export async function createActivity(input: ActivityInput): Promise<Activity> {
   ).run(
     `INSERT INTO activities
          (id, operator_id, slug, title, category, description, price_try, duration_minutes,
-          location_name, lat, lng, capacity_mode, image, image_alt, included, safety,
+          location_name, lat, lng, capacity_mode, min_participants, booking_cutoff_minutes,
+          prep_minutes, image, image_alt, included, safety,
           gallery, meeting_point, reviews, capacity_label, instant_confirm, rating, review_count,
           status, created_at)
        VALUES
          (@id, @operator_id, @slug, @title, @category, @description, @price_try, @duration_minutes,
-          @location_name, @lat, @lng, @capacity_mode, @image, @image_alt, @included, @safety,
+          @location_name, @lat, @lng, @capacity_mode, @min_participants, @booking_cutoff_minutes,
+          @prep_minutes, @image, @image_alt, @included, @safety,
           @gallery, @meeting_point, @reviews, @capacity_label, @instant_confirm, @rating, @review_count,
           @status, @created_at)`,
     { id, ...toParams(input), created_at: new Date().toISOString() }
@@ -223,7 +237,9 @@ export async function updateActivity(
          slug = @slug, title = @title, category = @category, description = @description,
          price_try = @price_try, duration_minutes = @duration_minutes,
          location_name = @location_name, lat = @lat, lng = @lng,
-         capacity_mode = @capacity_mode, image = @image, image_alt = @image_alt,
+         capacity_mode = @capacity_mode, min_participants = @min_participants,
+         booking_cutoff_minutes = @booking_cutoff_minutes, prep_minutes = @prep_minutes,
+         image = @image, image_alt = @image_alt,
          included = @included, safety = @safety, gallery = @gallery,
          meeting_point = @meeting_point, reviews = @reviews, capacity_label = @capacity_label,
          instant_confirm = @instant_confirm, rating = @rating, review_count = @review_count,

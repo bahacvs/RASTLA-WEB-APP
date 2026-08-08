@@ -45,6 +45,12 @@ export type Activity = {
   lat: number | null;
   lng: number | null;
   capacityMode: CapacityMode;
+  /** Seans açılması için gereken en az katılımcı. */
+  minParticipants: number;
+  /** Seans başlangıcına şu kadar dakika kala rezervasyon kapanır. 0 = sınır yok. */
+  bookingCutoffMinutes: number;
+  /** Seanslar arası hazırlık payı; slot üretiminde aralığa eklenir. */
+  prepMinutes: number;
   capacityLabel?: string;
   image: string;
   imageAlt: string;

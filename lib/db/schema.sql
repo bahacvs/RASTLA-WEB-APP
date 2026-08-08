@@ -141,6 +141,18 @@ CREATE TABLE IF NOT EXISTS activities (
   capacity_mode     TEXT NOT NULL DEFAULT 'per_person'
                     CHECK (capacity_mode IN ('per_person', 'per_booking')),
 
+  -- Seans açılması için gereken en az katılımcı. Altında kalırsa işletme
+  -- iptal edip tam iade verebilir; müşteriye baştan söylenmiş olur.
+  min_participants  INTEGER NOT NULL DEFAULT 1 CHECK (min_participants > 0),
+
+  -- Seans başlangıcına şu kadar dakika kala rezervasyon kapanır. 0 = sınır
+  -- yok. Ekipmanın hazırlanması ve müşterinin yola çıkması için gereken pay.
+  booking_cutoff_minutes INTEGER NOT NULL DEFAULT 0 CHECK (booking_cutoff_minutes >= 0),
+
+  -- İki seans arasındaki hazırlık payı. Seans aralığına EKLENİR: 15 dakikalık
+  -- jet ski turu + 5 dakika hazırlık = 20 dakikada bir kalkış.
+  prep_minutes      INTEGER NOT NULL DEFAULT 0 CHECK (prep_minutes >= 0),
+
   image             TEXT,
   image_alt         TEXT,
 
@@ -196,6 +208,30 @@ CREATE INDEX IF NOT EXISTS idx_rules_activity ON schedule_rules(activity_id, act
 
 -- Kuraldan üretilmiş tekil zaman dilimi. Rezervasyon buraya bağlanır ve
 -- kapasite burada tutulur.
+-- Ekipman havuzu.
+--
+-- Bazı aktivitelerde kapasite kişi değil araçtır: 3 jet ski, 5 kano, 1 tekne,
+-- 2 eğitmen. Kişi kapasitesiyle ekipman kapasitesi farklı şeyleri sayar ve
+-- ikisi de bağımsız olarak dolabilir.
+--
+-- Şimdilik aktivite başına EN FAZLA BİR havuz kullanılıyor (en dar sınır
+-- hangisiyse o). Birden çok kaynağı aynı anda kısıtlamak (hem tekne hem
+-- eğitmen) çok daha karmaşık bir tahsis problemi ve pilot için gereksiz;
+-- tablo yapısı ileride ikinci havuza izin verecek şekilde kuruldu ama motor
+-- şu an ilkini kullanıyor.
+CREATE TABLE IF NOT EXISTS equipment_pools (
+  id                TEXT PRIMARY KEY,
+  activity_id       TEXT NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
+
+  name              TEXT NOT NULL,           -- "Jet ski", "Kano", "Eğitmen"
+  unit_count        INTEGER NOT NULL CHECK (unit_count > 0),
+  capacity_per_unit INTEGER NOT NULL DEFAULT 1 CHECK (capacity_per_unit > 0),
+
+  created_at        TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_equipment_pools_activity ON equipment_pools(activity_id);
+
 CREATE TABLE IF NOT EXISTS slots (
   id           TEXT PRIMARY KEY,
   activity_id  TEXT NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
@@ -211,12 +247,23 @@ CREATE TABLE IF NOT EXISTS slots (
   capacity     INTEGER NOT NULL CHECK (capacity > 0),
   booked       INTEGER NOT NULL DEFAULT 0,
 
+  -- Ekipman sınırı. NULL ise bu aktivitede ekipman havuzu tanımlı değildir ve
+  -- yalnızca kişi kapasitesi geçerlidir.
+  --
+  -- Kişi kapasitesi tek başına yetmiyor: jet skide asıl sınır araç sayısıdır.
+  -- 3 araç × 2 kişi tanımlı bir seansta 6 kişilik yer vardır, ama 6 kişi tek
+  -- başına gelirse (her biri ayrı araç isterse) 3'ünden fazlası alınamaz.
+  -- İki sayaç ayrı tutuluyor çünkü ikisi farklı şeyleri sayıyor.
+  unit_capacity INTEGER CHECK (unit_capacity IS NULL OR unit_capacity > 0),
+  units_booked  INTEGER NOT NULL DEFAULT 0,
+
   status       TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'closed')),
   created_at   TEXT NOT NULL,
 
   -- Aşırı rezervasyona karşı şema tarafındaki güvence. Koşullu UPDATE zaten
   -- engeller; bu kısıt son savunma hattıdır.
   CHECK (booked >= 0 AND booked <= capacity),
+  CHECK (units_booked >= 0 AND (unit_capacity IS NULL OR units_booked <= unit_capacity)),
 
   -- Aynı aktivite için aynı ana iki slot üretilemez; slot üretimini
   -- idempotent yapan şey budur.
@@ -243,6 +290,37 @@ CREATE TABLE IF NOT EXISTS bookings (
   -- per_person -> katılımcı sayısı, per_booking -> 1. İptalde aynı miktar
   -- geri verilir, bu yüzden rezervasyonla birlikte saklanır.
   units          INTEGER NOT NULL DEFAULT 1 CHECK (units > 0),
+
+  -- Slotun EKİPMAN sayacından düşen araç sayısı. Havuz yoksa 0.
+  -- Rezervasyonla saklanıyor çünkü havuz sonradan değişebilir; iptalde
+  -- yeniden hesaplamak, tutulandan farklı bir miktarı iade etme riski taşır.
+  equipment_units INTEGER NOT NULL DEFAULT 0 CHECK (equipment_units >= 0),
+
+  -- Rezervasyon nereden geldi.
+  --
+  -- İşletmenin bütün kanallarını sisteme almanın tek sebebi komisyon değil,
+  -- MÜSAİTLİĞİN DOĞRU OLMASI: telefondan alınan bir rezervasyon sisteme
+  -- girilmezse, RASTLA müşterisine boş görünen saat aslında doludur ve iki
+  -- grup aynı saatte iskeleye gelir.
+  source         TEXT NOT NULL DEFAULT 'rastla'
+                 CHECK (source IN ('rastla', 'link', 'instagram', 'whatsapp',
+                                   'phone', 'hotel', 'agency', 'manual')),
+
+  -- online  -> RASTLA üzerinden tahsil edildi
+  -- onsite  -> tesiste ödenecek/ödendi (manuel kayıtlar)
+  -- deposit -> kapora alındı, kalanı tesiste
+  payment_mode   TEXT NOT NULL DEFAULT 'online'
+                 CHECK (payment_mode IN ('online', 'onsite', 'deposit')),
+
+  -- Check-in'de kaç kişinin geldiği. NULL = henüz okutulmadı.
+  -- Rezervasyondaki kişi sayısından farklı olabilir; uyuşmazlıkta kanıt olur.
+  -- Hak ediş bu sayıya değil rezervasyon tutarına bağlıdır.
+  attended       INTEGER CHECK (attended IS NULL OR attended >= 0),
+  no_show_at     TEXT,
+
+  -- Manuel kaydı açan işletme personeli. RASTLA'dan gelen rezervasyonlarda
+  -- NULL. "Kim ekledi" sorusu uyuşmazlıkta soruluyor.
+  created_by     TEXT,
 
   booking_date   TEXT NOT NULL,   -- YYYY-MM-DD
   booking_time   TEXT NOT NULL,   -- HH:MM
@@ -337,6 +415,13 @@ CREATE TABLE IF NOT EXISTS payments (
 
   -- Sağlayıcıdan dönen MASKELİ kart bilgisi. Fişte ve destek görüşmesinde
   -- "hangi kartla ödedim" sorusunu cevaplar; kartı yeniden kullanmaya yetmez.
+  -- iyzico'nun kalem işlem kimliği (itemTransactions[].paymentTransactionId).
+  --
+  -- Alt üye işyerine giden payı serbest bırakmak ya da geri çevirmek için
+  -- ONAY çağrısının anahtarı budur; paymentId değil. Önce yakalanmıyordu ve
+  -- onay akışı bu yüzden kurulamıyordu.
+  item_transaction_ref TEXT,
+
   card_family     TEXT,
   card_last_four  TEXT CHECK (card_last_four IS NULL OR length(card_last_four) = 4),
 
