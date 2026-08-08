@@ -2,13 +2,24 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { Icon } from './Icon';
 import { formatPrice } from '@/lib/format';
+import { formatDistance } from '@/lib/geo';
 import type { Activity } from '@/lib/catalog';
 
 /**
  * Arama sonuçları listesindeki kart. Ana sayfa kartından farkı: konum ve süre
  * ayrı satırlarda, üstte "Hemen Onay" ya da doluluk uyarısı rozeti.
  */
-export function SearchResultCard({ activity }: { activity: Activity }) {
+export function SearchResultCard({
+  activity,
+  distanceKm = null,
+}: {
+  activity: Activity;
+  /**
+   * Kullanıcı konumunu paylaştıysa kuş uçuşu mesafe (km), yoksa null.
+   * Hesap tarayıcıda yapılır; koordinat sunucuya gitmez (bkz. lib/geo.ts).
+   */
+  distanceKm?: number | null;
+}) {
   return (
     <article className="flex flex-col overflow-hidden rounded-xl border border-outline-variant bg-surface-container-lowest shadow-card">
       <div className="relative h-48 w-full">
@@ -54,6 +65,11 @@ export function SearchResultCard({ activity }: { activity: Activity }) {
         <div className="flex items-center gap-xs text-body-md text-on-surface-variant">
           <Icon name="location_on" size={16} />
           {activity.location}
+          {distanceKm !== null && (
+            <span className="ml-auto shrink-0 rounded-full bg-secondary-container px-2 py-0.5 text-label-sm font-semibold text-on-secondary-container">
+              {formatDistance(distanceKm)}
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-xs text-body-md text-on-surface-variant">
           <Icon name="schedule" size={16} />
