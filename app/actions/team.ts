@@ -1,7 +1,7 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { currentOperator } from '@/lib/auth';
+import { currentOperator, requireCapability } from '@/lib/auth';
 import {
   checkPassword,
   createOperatorUser,
@@ -9,8 +9,8 @@ import {
   setOperatorUserPhone,
   setOperatorUserStatus,
   setPassword,
-  type OperatorRole,
 } from '@/lib/db/operators';
+import { OPERATOR_ROLES, type OperatorRole } from '@/lib/permissions';
 import { normalizePhone } from '@/lib/db/users';
 import { maskPhone } from '@/lib/sms';
 import { generatePassword, passwordProblem } from '@/lib/password.mjs';
@@ -56,14 +56,13 @@ async function log(
   });
 }
 
-async function requireOwner() {
-  const session = await currentOperator();
-  return session?.user.role === 'owner' ? session : null;
+async function requireTeamAccess() {
+  return requireCapability('ekip.yonet');
 }
 
 /** Hedef hesabın çağıranla aynı işletmede olduğunu doğrular. */
 async function requireSameOperator(userId: string) {
-  const session = await requireOwner();
+  const session = await requireTeamAccess();
   if (!session) return null;
 
   const target = await getOperatorUser(userId);
@@ -76,13 +75,19 @@ export async function createTeamMemberAction(
   _prev: TeamState,
   formData: FormData
 ): Promise<TeamState> {
-  const session = await requireOwner();
+  const session = await requireTeamAccess();
   if (!session) return { error: 'Bu işlem için işletme sahibi yetkisi gerekir.' };
 
   const email = String(formData.get('email') ?? '').trim();
   const name = String(formData.get('name') ?? '').trim();
   const phone = normalizePhone(String(formData.get('phone') ?? ''));
-  const role: OperatorRole = formData.get('role') === 'owner' ? 'owner' : 'staff';
+  // Tanınmayan değer en dar role düşer. Üçlü seçim geldiğinde "owner değilse
+  // staff" kuralı yöneticiyi sessizce saha personeli yapardı; beyaz liste
+  // hem doğru hem de dördüncü bir rol eklenirse yine güvenli tarafta kalır.
+  const roleRaw = String(formData.get('role') ?? '');
+  const role: OperatorRole = OPERATOR_ROLES.includes(roleRaw as OperatorRole)
+    ? (roleRaw as OperatorRole)
+    : 'staff';
 
   if (name.length < 2) return { error: 'Ad soyad girin.' };
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { error: 'Geçerli bir e-posta girin.' };

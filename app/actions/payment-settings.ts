@@ -1,7 +1,7 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { currentOperator } from '@/lib/auth';
+import { requireCapability } from '@/lib/auth';
 import { record } from '@/lib/db/audit';
 import { requestContext } from '@/lib/request-context';
 import {
@@ -46,9 +46,8 @@ export async function savePaymentProfileAction(
   _prev: PaymentSettingsState,
   formData: FormData
 ): Promise<PaymentSettingsState> {
-  const session = await currentOperator();
-  if (!session) return { error: 'Oturum sona ermiş.' };
-  if (session.user.role !== 'owner') return { error: 'Bu işlem için yetkiniz yok.' };
+  const session = await requireCapability('odeme.yonet');
+  if (!session) return { error: 'Bu işlem için yetkiniz yok.' };
 
   const legalTypeRaw = String(formData.get('legalType') ?? '');
   const legalType = LEGAL_TYPES.includes(legalTypeRaw as LegalType)
@@ -121,9 +120,8 @@ export async function createSubmerchantAction(
   _prev: PaymentSettingsState,
   formData: FormData
 ): Promise<PaymentSettingsState> {
-  const session = await currentOperator();
-  if (!session) return { error: 'Oturum sona ermiş.' };
-  if (session.user.role !== 'owner') return { error: 'Bu işlem için yetkiniz yok.' };
+  const session = await requireCapability('odeme.yonet');
+  if (!session) return { error: 'Bu işlem için yetkiniz yok.' };
 
   // Vergi numarası, TCKN ve IBAN bu adımda ÜÇÜNCÜ BİR TARAFA gidiyor. Aktarımın
   // sessizce olmaması gerekir: onay kutusu, işletmenin bunu bilerek yaptığının

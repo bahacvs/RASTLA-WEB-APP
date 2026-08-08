@@ -267,6 +267,65 @@ check(
   `durum ${confirmed.status}`
 );
 
+// --- 4c. Hak ediş: 12 süreç aynı payı serbest bırakmaya çalışıyor ---
+//
+// Ticari olarak en pahalı yarış bu: iki kasiyer aynı bileti aynı anda okutursa
+// hak ediş iki kez doğmamalı ve sağlayıcıya iki onay çağrısı gitmemeli.
+// SQLite'ta kanıtlandı (verify-payouts.mjs); üretim Postgres'te çalışacağı
+// için aynı kanıt burada da gerekiyor.
+
+await db.run(
+  `INSERT INTO payouts (id, booking_id, payment_id, operator_id, gross_try,
+     commission_try, refunded_try, net_try, status, provider_ref, held_at)
+   VALUES (?, ?, ?, ?, 1000, 180, 0, 820, 'held', ?, ?)`,
+  [randomUUID(), paidBookingId, paymentId, operatorId, `item-${suffix}`, now]
+);
+
+const releaseOutcomes = race(
+  12,
+  `UPDATE payouts SET status = 'released', released_at = ?
+    WHERE booking_id = ? AND status = 'held'`,
+  () => [new Date().toISOString(), paidBookingId]
+);
+const releaseWinners = releaseOutcomes.filter((o) => o === 1).length;
+
+check(
+  '12 eşzamanlı hak ediş serbest bırakmasından tam olarak biri geçiyor',
+  releaseWinners === 1,
+  `kazanan: ${releaseWinners}, sonuçlar: ${releaseOutcomes.join(',')}`
+);
+
+const releasedRow = await db.get(
+  'SELECT status, net_try, released_at FROM payouts WHERE booking_id = ?',
+  [paidBookingId]
+);
+check(
+  'yarış sonunda hak ediş defteri tutarlı',
+  releasedRow.status === 'released' &&
+    Number(releasedRow.net_try) === 820 &&
+    Boolean(releasedRow.released_at),
+  `${releasedRow.status} / net ${releasedRow.net_try}`
+);
+
+// Aynı rezervasyon için ikinci hak ediş satırı ŞEMA tarafından reddedilir:
+// payouts.booking_id UNIQUE. Kontrol kodda olsaydı iki eşzamanlı geri çağrı
+// ikisi de "yok" görüp ikisi de ekleyebilirdi.
+let payoutDuplicateRejected = false;
+try {
+  await db.run(
+    `INSERT INTO payouts (id, booking_id, payment_id, operator_id, gross_try,
+       commission_try, refunded_try, net_try, status, held_at)
+     VALUES (?, ?, ?, ?, 1000, 180, 0, 820, 'held', ?)`,
+    [randomUUID(), paidBookingId, paymentId, operatorId, now]
+  );
+} catch (error) {
+  payoutDuplicateRejected = /duplicate key|unique/i.test(String(error));
+}
+check(
+  'aynı rezervasyon için ikinci hak ediş satırı açılamıyor (Postgres UNIQUE)',
+  payoutDuplicateRejected
+);
+
 // İade idempotanlığı kodda değil ŞEMADA: UNIQUE (payment_id, reason).
 await db.run(
   `INSERT INTO refunds (id, payment_id, amount_try, reason, status, created_at)
@@ -376,6 +435,8 @@ check('geçersiz durum değeri reddediliyor', badStatusRejected);
 // --- Temizlik ---
 
 // Sıra önemli: yabancı anahtarlar yüzünden iade -> ödeme -> rezervasyon.
+// Sıra yabancı anahtarların TERSİ: payouts, payments'a bakıyor.
+await db.run('DELETE FROM payouts WHERE payment_id = ?', [paymentId]);
 await db.run('DELETE FROM refunds WHERE payment_id = ?', [paymentId]);
 await db.run('DELETE FROM payments WHERE id = ?', [paymentId]);
 await db.run('DELETE FROM bookings WHERE id = ?', [paidBookingId]);

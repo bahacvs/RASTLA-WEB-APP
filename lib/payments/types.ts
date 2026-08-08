@@ -44,12 +44,24 @@ export type PaymentResult =
       currency: string;
       cardFamily?: string;
       cardLastFour?: string;
+
+      /**
+       * Sepet kaleminin işlem kimliği (iyzico: `itemTransactions[].paymentTransactionId`).
+       *
+       * Ödemenin kimliği (`providerRef`) DEĞİL. Alt üye işyerine giden payı
+       * serbest bırakmak ya da geri çevirmek için sağlayıcının istediği anahtar
+       * budur; ödeme kimliğiyle onay çağrısı yapılamaz. Bu yüzden ayrı bir alan.
+       */
+      itemTransactionRef?: string;
     }
   | { ok: false; error: string; conversationId?: string };
 
 export type RefundResult =
   | { ok: true; providerRef: string }
   | { ok: false; error: string };
+
+/** Alt üye işyeri payının serbest bırakılması ya da geri çevrilmesi. */
+export type ApprovalResult = { ok: true } | { ok: false; error: string };
 
 export type SubmerchantInput = {
   operatorId: string;
@@ -77,4 +89,17 @@ export interface PaymentProvider {
   resolve(token: string): Promise<PaymentResult>;
   refund(input: { providerRef: string; amountTRY: number; ip: string | null }): Promise<RefundResult>;
   createSubmerchant(input: SubmerchantInput): Promise<SubmerchantResult>;
+
+  /**
+   * İşletmenin payını serbest bırakır — hizmet verildi.
+   *
+   * Pazaryeri modelinde ödeme anında para bölünüp gönderilmiyor: alt üye
+   * işyerinin payı sağlayıcıda BLOKE tutuluyor ve onay çağrısıyla açılıyor.
+   * Bu ayrım ürünün özü: müşteri parayı ödedi diye işletme kazanmış olmuyor,
+   * kazanç hizmetin verilmesiyle doğuyor.
+   */
+  approve(itemTransactionRef: string): Promise<ApprovalResult>;
+
+  /** Payı geri çevirir — müşteri gelmedi ya da iade edildi. */
+  disapprove(itemTransactionRef: string): Promise<ApprovalResult>;
 }

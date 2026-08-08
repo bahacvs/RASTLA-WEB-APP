@@ -10,6 +10,7 @@ import type { Activity } from '@/lib/catalog';
 import { formatPrice } from '@/lib/format';
 import { directionsUrl } from '@/lib/map';
 import { SITE_URL } from '@/lib/site';
+import { showsVerifiedBadge } from '@/lib/verification-status';
 import { getOperator } from '@/lib/db/operators';
 
 export async function generateStaticParams() {
@@ -90,7 +91,14 @@ export default async function ActivityDetailPage({
   if (!activity) notFound();
 
   const gallery = activity.gallery ?? [{ src: activity.image, alt: activity.imageAlt }];
-  const operatorName = (await getOperator(activity.operatorId))?.name;
+
+  const operator = await getOperator(activity.operatorId);
+  const operatorName = operator?.name;
+  // Rozet BİR ŞEY İDDİA EDİYOR ve ancak arkasında gerçek bir kontrol varsa
+  // gösterilir. Önce her işletmede çiziliyordu; bu, hiç doğrulanmamış bir
+  // işletme için müşteriye söylenmiş yanlış bir cümleydi. İşletme adı yine
+  // görünüyor — gizlenen şey ad değil, verilmemiş bir güvence.
+  const verified = operator ? showsVerifiedBadge(operator.verificationStatus) : false;
 
   return (
     <div className="flex min-h-screen flex-col pb-24 md:pb-0">
@@ -114,7 +122,12 @@ export default async function ActivityDetailPage({
               {operatorName && (
                 <div className="mb-xs flex items-center gap-2">
                   <span className="inline-flex items-center gap-1 rounded-full border border-outline-variant bg-surface-container-low px-2 py-1 text-label-sm text-on-surface-variant">
-                    <Icon name="verified" filled size={14} className="text-primary" />
+                    {verified && (
+                      <>
+                        <Icon name="verified" filled size={14} className="text-primary" />
+                        <span className="sr-only">Doğrulanmış işletme:</span>
+                      </>
+                    )}
                     {operatorName}
                   </span>
                 </div>

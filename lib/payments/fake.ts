@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { db } from '@/lib/db/index.mjs';
 import type {
+  ApprovalResult,
   CheckoutRequest,
   CheckoutSession,
   PaymentProvider,
@@ -33,9 +34,9 @@ import type {
  * bir harita o süreçlerden görünmezdi ve eşzamanlılık testi yapılamazdı.
  */
 async function ensureTable() {
-  await (
-    await db()
-  ).run(
+  const client = await db();
+
+  await client.run(
     `CREATE TABLE IF NOT EXISTS fake_payment_sessions (
        token TEXT PRIMARY KEY,
        conversation_id TEXT NOT NULL,
@@ -44,6 +45,62 @@ async function ensureTable() {
        paid_try INTEGER,
        created_at TEXT NOT NULL
      )`
+  );
+
+  // Onay çağrılarının defteri.
+  //
+  // Sağlayıcıya gerçekten gidilmediği için, "hizmet verilince pay serbest
+  // bırakıldı, gelmeyince geri çevrildi" iddiasının sınanabilmesinin tek yolu
+  // çağrının bir iz bırakması. Tabloda tutuluyor, bellekte değil: doğrulama
+  // betikleri ayrı işletim sistemi süreçleri açıyor ve bellekteki bir kayıt o
+  // süreçlerden görünmezdi.
+  await client.run(
+    `CREATE TABLE IF NOT EXISTS fake_item_approvals (
+       id TEXT PRIMARY KEY,
+       item_ref TEXT NOT NULL,
+       action TEXT NOT NULL,
+       created_at TEXT NOT NULL
+     )`
+  );
+}
+
+/**
+ * Test sağlayıcısının kalem işlem kimliği.
+ *
+ * Ödeme kimliğinden (`providerRef`) BİLEREK farklı türetiliyor: gerçek
+ * sağlayıcıda da farklılar ve kodun yanlışlıkla ödeme kimliğiyle onay çağırması
+ * testte fark edilmeli, üretimde değil.
+ */
+function itemRefFor(token: string): string {
+  return `fake-item-${token.slice(0, 12)}`;
+}
+
+async function recordApproval(itemRef: string, action: 'approve' | 'disapprove') {
+  if (!itemRef) return { ok: false as const, error: 'Kalem işlem kimliği yok.' };
+
+  await ensureTable();
+  await (
+    await db()
+  ).run(
+    `INSERT INTO fake_item_approvals (id, item_ref, action, created_at) VALUES (?, ?, ?, ?)`,
+    [randomBytes(12).toString('hex'), itemRef, action, new Date().toISOString()]
+  );
+
+  return { ok: true as const };
+}
+
+/**
+ * Bir kalem için kaydedilen onay çağrıları — yalnızca doğrulama betikleri için.
+ *
+ * Sayı da döndürülüyor çünkü sınanan iddialardan biri "tam olarak bir kez":
+ * eşzamanlı okutma denemelerinden kaçının sağlayıcıya ulaştığı ancak sayılarak
+ * görülebilir.
+ */
+export async function fakeApprovals(itemRef: string): Promise<{ action: string }[]> {
+  await ensureTable();
+  return (await db()).all<{ action: string }>(
+    'SELECT action FROM fake_item_approvals WHERE item_ref = ? ORDER BY created_at',
+    [itemRef]
   );
 }
 
@@ -107,11 +164,20 @@ export function fakeProvider(): PaymentProvider {
         currency: 'TRY',
         cardFamily: 'Test Kart',
         cardLastFour: '4242',
+        itemTransactionRef: itemRefFor(token),
       };
     },
 
     async refund(input): Promise<RefundResult> {
       return { ok: true, providerRef: `fake-refund-${input.providerRef}` };
+    },
+
+    async approve(itemTransactionRef: string): Promise<ApprovalResult> {
+      return recordApproval(itemTransactionRef, 'approve');
+    },
+
+    async disapprove(itemTransactionRef: string): Promise<ApprovalResult> {
+      return recordApproval(itemTransactionRef, 'disapprove');
     },
 
     async createSubmerchant(input: SubmerchantInput): Promise<SubmerchantResult> {

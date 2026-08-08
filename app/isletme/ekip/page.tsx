@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
-import { redirect } from 'next/navigation';
 import { OperatorNav } from '@/components/OperatorNav';
-import { currentOperator } from '@/lib/auth';
+import { ROLE_LABELS } from '@/lib/permissions';
+import { requireOperatorPage } from '@/lib/auth';
 import { listOperatorUsers } from '@/lib/db/operators';
 import { AddMemberForm, ChangeOwnPasswordForm, MemberControls } from './TeamControls';
 
@@ -11,9 +11,7 @@ export const metadata: Metadata = {
 };
 
 export default async function TeamPage() {
-  const session = await currentOperator();
-  if (!session) redirect('/isletme');
-  if (session.user.role !== 'owner') redirect('/isletme/tara');
+  const session = await requireOperatorPage('ekip.yonet');
 
   const members = await listOperatorUsers(session.operator.id);
 
@@ -59,7 +57,7 @@ export default async function TeamPage() {
 
                 <div className="flex shrink-0 flex-col items-end gap-1">
                   <span className="rounded-full bg-secondary-container px-2 py-1 text-label-bold text-on-secondary-container">
-                    {member.role === 'owner' ? 'Sahip' : 'Personel'}
+                    {ROLE_LABELS[member.role]}
                   </span>
                   {member.status === 'suspended' && (
                     <span className="rounded-full bg-error-container px-2 py-1 text-label-bold text-on-error-container">

@@ -19,6 +19,18 @@ export type BookingStatus =
 /** İptali kimin yaptığı. `weather` ayrı tutulur: müşteri kusurlu değildir. */
 export type CancelReason = 'customer' | 'operator' | 'weather';
 
+// Kaynak ve ödeme biçimi lib/booking-sources.ts'te: istemci bileşenleri de
+// kullanıyor ve bu modülü oradan içe aktarmak veritabanı katmanını tarayıcı
+// paketine çekerdi.
+export {
+  BOOKING_SOURCES,
+  SOURCE_LABELS,
+  PAYMENT_MODE_LABELS,
+  type BookingSource,
+  type PaymentMode,
+} from '@/lib/booking-sources';
+import type { BookingSource, PaymentMode } from '@/lib/booking-sources';
+
 export type Booking = {
   id: string;
   code: string;
@@ -29,6 +41,15 @@ export type Booking = {
   slotId: string | null;
   /** Slottan düşen miktar; iptalde aynı miktar geri verilir. */
   units: number;
+  /** Slotun ekipman sayacından düşen araç sayısı; havuz yoksa 0. */
+  equipmentUnits: number;
+  source: BookingSource;
+  paymentMode: PaymentMode;
+  /** Manuel kaydı açan işletme personeli; RASTLA rezervasyonlarında null. */
+  createdBy: string | null;
+  /** Check-in'de kaç kişi geldi; okutulmadıysa null. */
+  attended: number | null;
+  noShowAt: string | null;
   bookingDate: string;
   bookingTime: string;
   adults: number;
@@ -57,6 +78,12 @@ type Row = {
   operator_id: string;
   slot_id: string | null;
   units: number;
+  equipment_units: number;
+  source: BookingSource;
+  payment_mode: PaymentMode;
+  created_by: string | null;
+  attended: number | null;
+  no_show_at: string | null;
   booking_date: string;
   booking_time: string;
   adults: number;
@@ -82,6 +109,12 @@ function toBooking(row: Row): Booking {
     operatorId: row.operator_id,
     slotId: row.slot_id,
     units: row.units,
+    equipmentUnits: row.equipment_units ?? 0,
+    source: row.source ?? 'rastla',
+    paymentMode: row.payment_mode ?? 'online',
+    createdBy: row.created_by ?? null,
+    attended: row.attended ?? null,
+    noShowAt: row.no_show_at ?? null,
     bookingDate: row.booking_date,
     bookingTime: row.booking_time,
     adults: row.adults,
@@ -122,6 +155,13 @@ export async function createBooking(input: {
   operatorId: string;
   slotId: string | null;
   units: number;
+  /** Slotun ekipman sayacından düşen araç sayısı; havuz yoksa 0. */
+  equipmentUnits?: number;
+  /** Rezervasyon hangi kanaldan geldi. Varsayılan RASTLA pazaryeri. */
+  source?: BookingSource;
+  paymentMode?: PaymentMode;
+  /** Manuel kaydı açan işletme personeli; RASTLA rezervasyonlarında null. */
+  createdBy?: string | null;
   bookingDate: string;
   bookingTime: string;
   adults: number;
@@ -156,6 +196,12 @@ export async function createBooking(input: {
     operator_id: input.operatorId,
     slot_id: input.slotId,
     units: input.units,
+    equipment_units: input.equipmentUnits ?? 0,
+    source: input.source ?? 'rastla',
+    payment_mode: input.paymentMode ?? 'online',
+    created_by: input.createdBy ?? null,
+    attended: null,
+    no_show_at: null,
     booking_date: input.bookingDate,
     booking_time: input.bookingTime,
     adults: input.adults,
@@ -177,11 +223,13 @@ export async function createBooking(input: {
     await db()
   ).run(
     `INSERT INTO bookings
-       (id, code, user_id, activity_slug, operator_id, slot_id, units, booking_date,
+       (id, code, user_id, activity_slug, operator_id, slot_id, units, equipment_units,
+        source, payment_mode, created_by, attended, no_show_at, booking_date,
         booking_time, adults, children, total_try, status, created_at, terms_accepted_at,
         confirmed_at, expired_at, redeemed_at, redeemed_by, cancelled_at, cancel_reason)
      VALUES
-       (@id, @code, @user_id, @activity_slug, @operator_id, @slot_id, @units, @booking_date,
+       (@id, @code, @user_id, @activity_slug, @operator_id, @slot_id, @units, @equipment_units,
+        @source, @payment_mode, @created_by, @attended, @no_show_at, @booking_date,
         @booking_time, @adults, @children, @total_try, @status, @created_at, @terms_accepted_at,
         @confirmed_at, @expired_at, @redeemed_at, @redeemed_by, @cancelled_at, @cancel_reason)`,
     row
@@ -241,7 +289,15 @@ export type RedeemResult =
  */
 export async function redeemBooking(
   code: string,
-  redeemedByUserId: string
+  redeemedByUserId: string,
+  /**
+   * Kaç kişi geldi. Verilmezse rezervasyondaki kişi sayısı yazılır.
+   *
+   * Rezervasyondan farklı olabilir (4 kişilik rezervasyona 3 kişi gelir) ve
+   * uyuşmazlıkta kanıt olur. Hak edişi ETKİLEMEZ: müşteri satın aldığı yeri
+   * kullanmasa da işletme o yeri boş tutmuştur.
+   */
+  attended?: number
 ): Promise<RedeemResult> {
   const normalized = code.trim().toUpperCase();
 
@@ -249,9 +305,10 @@ export async function redeemBooking(
     await db()
   ).run(
     `UPDATE bookings
-        SET status = 'redeemed', redeemed_at = ?, redeemed_by = ?
+        SET status = 'redeemed', redeemed_at = ?, redeemed_by = ?,
+            attended = COALESCE(?, adults + children)
       WHERE code = ? AND status = 'confirmed'`,
-    [new Date().toISOString(), redeemedByUserId, normalized]
+    [new Date().toISOString(), redeemedByUserId, attended ?? null, normalized]
   );
 
   if (result.changes === 1) {
@@ -326,7 +383,7 @@ export async function cancelBooking(code: string, reason: CancelReason): Promise
   }
 
   const booking = (await getBookingByCode(normalized))!;
-  if (booking.slotId) await releaseCapacity(booking.slotId, booking.units);
+  if (booking.slotId) await releaseCapacity(booking.slotId, booking.units, booking.equipmentUnits);
 
   return { ok: true, booking };
 }
@@ -358,4 +415,33 @@ export async function cancelDay(
   }
 
   return { cancelled, skipped };
+}
+
+
+export type NoShowResult = { ok: true } | { ok: false; reason: 'not_found' | 'not_pending' };
+
+/**
+ * Müşteri gelmedi.
+ *
+ * Kapasite GERİ VERİLMEZ: seans yapıldı, yer tutuldu ve işletme o yeri
+ * başkasına satamadı. İade edilseydi geçmiş bir saatin doluluğu yanlış
+ * görünür ve raporlar bozulurdu.
+ *
+ * Aynı koşullu UPDATE deseni: iki kez işaretlenemez, işaretlenmiş bilet
+ * sonradan okutulamaz (status 'confirmed' olmaktan çıkar).
+ */
+export async function markNoShow(code: string, byUserId: string): Promise<NoShowResult> {
+  const result = await (
+    await db()
+  ).run(
+    `UPDATE bookings
+        SET no_show_at = ?, attended = 0, redeemed_by = ?
+      WHERE code = ? AND status = 'confirmed' AND no_show_at IS NULL`,
+    [new Date().toISOString(), byUserId, code.trim().toUpperCase()]
+  );
+
+  if (result.changes === 1) return { ok: true };
+
+  const booking = await getBookingByCode(code);
+  return { ok: false, reason: booking ? 'not_pending' : 'not_found' };
 }

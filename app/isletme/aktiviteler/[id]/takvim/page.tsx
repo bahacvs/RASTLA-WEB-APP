@@ -1,12 +1,13 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { notFound, redirect } from 'next/navigation';
+import { notFound } from 'next/navigation';
 import { OperatorNav } from '@/components/OperatorNav';
 import { Icon } from '@/components/Icon';
 import { ScheduleForm } from './ScheduleForm';
-import { currentOperator } from '@/lib/auth';
+import { LimitsForm } from './LimitsForm';
+import { requireOperatorPage } from '@/lib/auth';
 import { getActivityById } from '@/lib/db/activities';
-import { listRules, listSlots, timesForRule } from '@/lib/db/slots';
+import { getEquipmentPool, listRules, listSlots, timesForRule } from '@/lib/db/slots';
 import { toggleRuleAction, toggleSlotAction } from '@/app/actions/activity';
 
 export const metadata: Metadata = {
@@ -34,10 +35,7 @@ export default async function SchedulePage({
   params: Promise<{ id: string }>;
   searchParams: Promise<{ gun?: string }>;
 }) {
-  const session = await currentOperator();
-  if (!session) redirect('/isletme');
-  // Aktivite yönetimi sahibe ayrılmış; personel bilet ekranına döner.
-  if (session.user.role !== 'owner') redirect('/isletme/tara');
+  const session = await requireOperatorPage('takvim.yonet');
   const operatorId = session.operator.id;
 
   const { id } = await params;
@@ -49,6 +47,7 @@ export default async function SchedulePage({
 
   const rules = await listRules(activity.id);
   const slots = await listSlots(activity.id, day);
+  const pool = await getEquipmentPool(activity.id);
 
   return (
     <div className="min-h-screen">
@@ -72,6 +71,16 @@ export default async function SchedulePage({
         </div>
 
         <ScheduleForm activityId={activity.id} />
+
+        <div className="mt-lg">
+          <LimitsForm
+            activityId={activity.id}
+            minParticipants={activity.minParticipants}
+            bookingCutoffMinutes={activity.bookingCutoffMinutes}
+            prepMinutes={activity.prepMinutes}
+            pool={pool}
+          />
+        </div>
 
         {/* Tanımlı kurallar */}
         <section className="rounded-xl border border-outline-variant bg-surface-container-lowest p-md shadow-card">
@@ -171,7 +180,9 @@ export default async function SchedulePage({
                       <span className="block text-label-sm">
                         {slot.status === 'closed'
                           ? 'Kapalı'
-                          : `${slot.booked}/${slot.capacity} dolu`}
+                          : slot.unitCapacity !== null
+                            ? `${slot.booked}/${slot.capacity} kişi · ${slot.unitsBooked}/${slot.unitCapacity} araç`
+                            : `${slot.booked}/${slot.capacity} dolu`}
                       </span>
                     </button>
                   </form>

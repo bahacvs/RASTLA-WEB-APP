@@ -38,7 +38,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { chromium } from 'playwright';
 import { db as connect } from '../lib/db/index.mjs';
-import { ensureTestAccounts, TEST_PASSWORD, emailFor } from './lib/test-accounts.mjs';
+import { ensureTestAccounts, loginAs } from './lib/test-accounts.mjs';
 import { book, codeFromLog, pickAvailableSlot, testPhone } from './lib/booking.mjs';
 
 const BASE = process.env.BASE_URL ?? 'http://127.0.0.1:3000';
@@ -46,6 +46,9 @@ const BASE = process.env.BASE_URL ?? 'http://127.0.0.1:3000';
 const PAID_OPERATOR = 'buyukcekmece-wsc';
 const PAID_SLUG = 'elektrikli-sup-deneyimi';
 const FREE_OPERATOR = 'mimarsinan-marina';
+
+/** Varsayılan komisyon oranı (bkz. lib/db/index.mjs). Test onu doğruluyor. */
+const COMMISSION_BP = 1800;
 const FREE_SLUG = 'gun-batimi-sup-turu';
 
 const checks = [];
@@ -71,8 +74,8 @@ await ensureTestAccounts();
  * "anahtarsız işletmede ödeme başlamaz" kuralı gerçekten sınanmış oluyor.
  */
 await store.run(
-  `UPDATE operators SET submerchant_key = ?, commission_bp = 1000 WHERE id = ?`,
-  ['test-submerchant-key', PAID_OPERATOR]
+  `UPDATE operators SET submerchant_key = ?, commission_bp = ? WHERE id = ?`,
+  ['test-submerchant-key', COMMISSION_BP, PAID_OPERATOR]
 );
 await store.run(`UPDATE operators SET submerchant_key = NULL WHERE id = ?`, [FREE_OPERATOR]);
 
@@ -226,7 +229,8 @@ if (pending.error) {
 
   check(
     'Komisyon tam sayı: tutar = komisyon + işletme payı',
-    Number(pending.payment.commission_try) === Math.floor((Number(pending.payment.amount_try) * 1000) / 10000) &&
+    Number(pending.payment.commission_try) ===
+      Math.floor((Number(pending.payment.amount_try) * COMMISSION_BP) / 10000) &&
       Number(pending.payment.commission_try) <= Number(pending.payment.amount_try),
     `tutar ${pending.payment.amount_try}, komisyon ${pending.payment.commission_try}`
   );
@@ -234,11 +238,10 @@ if (pending.error) {
   // ---------- 3. Ödemesi bekleyen bilet okutulamaz ----------
   {
     const { context, page } = await freshPage();
-    await page.goto(`${BASE}/isletme`, { waitUntil: 'networkidle' });
-    await page.fill('#email', emailFor(PAID_OPERATOR, 'owner'));
-    await page.fill('#password', TEST_PASSWORD);
-    await page.getByRole('button', { name: 'Giriş Yap' }).click();
-    await page.waitForURL(/\/isletme\/tara/, { timeout: 15000 });
+    // Giriş sonrası varılan ekran role göre değişiyor (sahip artık Bugün'e
+    // düşüyor); bekleme mantığı tek yerde, test-accounts.mjs içinde.
+    await loginAs(page, BASE, PAID_OPERATOR, 'owner');
+    await page.goto(`${BASE}/isletme/tara`, { waitUntil: 'networkidle' });
 
     await page.fill('#code', pending.booking.code);
     await page.getByRole('button', { name: /Onayla/ }).first().click();
@@ -510,11 +513,7 @@ if (pending.error) {
     const payment = await paymentFor(booking.id);
 
     const { context: opContext, page: opPage } = await freshPage();
-    await opPage.goto(`${BASE}/isletme`, { waitUntil: 'networkidle' });
-    await opPage.fill('#email', emailFor(PAID_OPERATOR, 'owner'));
-    await opPage.fill('#password', TEST_PASSWORD);
-    await opPage.getByRole('button', { name: 'Giriş Yap' }).click();
-    await opPage.waitForURL(/\/isletme\/tara/, { timeout: 15000 });
+    await loginAs(opPage, BASE, PAID_OPERATOR, 'owner');
 
     await opPage.goto(`${BASE}/isletme/rezervasyonlar?gun=${booking.booking_date}`, {
       waitUntil: 'networkidle',

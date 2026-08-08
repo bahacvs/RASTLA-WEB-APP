@@ -16,8 +16,15 @@
  *   9. Yanlış CRON_SECRET ile iş ucu 401 alır.
  *
  * Kullanım:
- *   CRON_SECRET=gizli-cron-anahtari npm start > server.log &
+ *   CRON_SECRET=gizli-cron-anahtari ALERT_EMAIL_TO=guvenlik@ornek.local \
+ *     npm start > server.log &
  *   SERVER_LOG=server.log node scripts/verify-alerts.mjs
+ *
+ * `ALERT_EMAIL_TO` ZORUNLU. Tanımlı değilse uyarılar kaydedilir ama kimseye
+ * haber verilemez ve iş bilinçli olarak `ok: false` döner — "uyarı sistemi
+ * kurulu ama kimseye ulaşmıyor" hâli sessiz geçilmemeli. Süit bunu HTTP 500
+ * olarak görür; sunucu bu değişkenle başlatılmamışsa dört kontrol kalır ve
+ * sebebi kodda değil ortamdadır.
  */
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';

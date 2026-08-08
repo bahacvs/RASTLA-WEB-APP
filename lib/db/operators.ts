@@ -11,7 +11,17 @@ import { hashPassword, verifyPassword } from '@/lib/password.mjs';
  * "kim yaptı" sorusunun cevaplanabilmesi gerekir.
  */
 
-export type OperatorRole = 'owner' | 'staff';
+// Rol listesi ve hangi rolün neye yetkili olduğu lib/permissions.ts'te tek
+// kaynak olarak duruyor; burada yeniden tanımlamak ikisinin ayrışmasına
+// davetiye olurdu.
+export type { OperatorRole } from '@/lib/permissions';
+import type { OperatorRole } from '@/lib/permissions';
+
+// Doğrulama durumları saf veri ve istemci bileşenleri de okuyor; bu yüzden
+// lib/verification-status.ts içinde duruyor ve buradan yeniden dışa açılıyor.
+export { VERIFICATION_LABELS, VERIFICATION_STATUSES } from '@/lib/verification-status';
+export type { VerificationStatus } from '@/lib/verification-status';
+import type { VerificationStatus } from '@/lib/verification-status';
 export type OperatorUserStatus = 'active' | 'suspended';
 
 /** iyzico'nun tanıdığı alt üye işyeri türleri. */
@@ -28,8 +38,21 @@ export type Operator = {
    * tahsil edilip aktarılamayacak bir yere toplanmamalı.
    */
   submerchantKey: string | null;
-  /** RASTLA'nın payı, on binde. 1000 = %10. */
+  /** RASTLA'nın payı, on binde. 1800 = %18. */
   commissionBp: number;
+
+  /**
+   * RASTLA doğrulama durumu. Müşteri tarafındaki rozet buna bağlı.
+   *
+   * Sütun sonradan eklendiği için eski satırlarda NULL gelebilir; o durumda
+   * en TEMKİNLİ değer olan 'basvuru' varsayılıyor. Tersi yapılsaydı (eksik
+   * veriyi 'dogrulandi' saymak) rozet, hiç kontrol edilmemiş işletmelerde
+   * görünmeye devam ederdi.
+   */
+  verificationStatus: VerificationStatus;
+  verifiedAt: string | null;
+  /** Hak edişi durdurulmuş mu — uyuşmazlık hâlinde para bloke kalır. */
+  payoutsSuspended: boolean;
 };
 
 /** Alt üye işyeri başvurusu için gereken ticari bilgiler. */
@@ -71,6 +94,10 @@ type OperatorRow = {
   iban: string | null;
   legal_address: string | null;
   contact_email: string | null;
+  verification_status: VerificationStatus | null;
+  verification_note: string | null;
+  verified_at: string | null;
+  payouts_suspended: number | string | null;
 };
 
 type UserRow = {
@@ -93,7 +120,10 @@ function toOperator(row: OperatorRow): Operator {
     createdAt: row.created_at,
     submerchantKey: row.submerchant_key ?? null,
     // Sütun sonradan eklendi; eski satırlarda NULL gelebilir.
-    commissionBp: Number(row.commission_bp ?? 1000),
+    commissionBp: Number(row.commission_bp ?? 1800),
+    verificationStatus: row.verification_status ?? 'basvuru',
+    verifiedAt: row.verified_at ?? null,
+    payoutsSuspended: Number(row.payouts_suspended ?? 0) === 1,
   };
 }
 
@@ -231,6 +261,74 @@ export async function setSubmerchantKey(operatorId: string, key: string): Promis
     `UPDATE operators SET submerchant_key = ? WHERE id = ? AND submerchant_key IS NULL`,
     [key, operatorId]
   );
+  return result.changes === 1;
+}
+
+// ------------------------------------------------------- RASTLA doğrulaması
+
+/**
+ * İşletmenin doğrulama durumunu değiştirir.
+ *
+ * `verified_at` yalnızca 'dogrulandi' geçişinde yazılıyor ve geri alınmıyor:
+ * "ne zaman doğrulandı" bir olay kaydıdır. Durum sonra 'durduruldu'ya geçse
+ * de o tarihin silinmesi, geçmişte verilmiş bir kararı yok saymak olurdu.
+ */
+export async function setVerificationStatus(
+  operatorId: string,
+  status: VerificationStatus,
+  note: string | null
+): Promise<boolean> {
+  const result = await (
+    await db()
+  ).run(
+    `UPDATE operators
+        SET verification_status = ?,
+            verification_note = ?,
+            verified_at = CASE WHEN ? = 'dogrulandi' AND verified_at IS NULL
+                               THEN ? ELSE verified_at END
+      WHERE id = ?`,
+    [status, note, status, new Date().toISOString(), operatorId]
+  );
+  return result.changes === 1;
+}
+
+/**
+ * Komisyon oranını işletme başına belirler.
+ *
+ * Aralık burada da denetleniyor, şemadaki CHECK'e güvenilerek geçilmiyor:
+ * kısıt ihlali kullanıcıya anlaşılmaz bir veritabanı hatası olarak dönerdi ve
+ * hangi değerin kabul edilmediğini söylemezdi.
+ */
+export async function setCommissionBp(
+  operatorId: string,
+  commissionBp: number
+): Promise<{ ok: true } | { ok: false; reason: 'out_of_range' | 'not_found' }> {
+  if (!Number.isInteger(commissionBp) || commissionBp < 0 || commissionBp > 10000) {
+    return { ok: false, reason: 'out_of_range' };
+  }
+
+  const result = await (
+    await db()
+  ).run('UPDATE operators SET commission_bp = ? WHERE id = ?', [commissionBp, operatorId]);
+
+  return result.changes === 1 ? { ok: true } : { ok: false, reason: 'not_found' };
+}
+
+/**
+ * Hak edişi durdurur ya da açar.
+ *
+ * İşletmeyi kapatmaktan AYRI: rezervasyon ve check-in çalışmaya devam eder,
+ * yalnızca para sağlayıcıda bloke kalır. Birleştirilseydi, uyuşmazlık
+ * çözülene kadar müşterinin elindeki geçerli bilet de kullanılamaz olurdu —
+ * müşteri, işletmeyle RASTLA arasındaki anlaşmazlığın tarafı değil.
+ */
+export async function setPayoutsSuspended(
+  operatorId: string,
+  suspended: boolean
+): Promise<boolean> {
+  const result = await (
+    await db()
+  ).run('UPDATE operators SET payouts_suspended = ? WHERE id = ?', [suspended ? 1 : 0, operatorId]);
   return result.changes === 1;
 }
 

@@ -1,5 +1,6 @@
 import { createHmac, randomBytes } from 'node:crypto';
 import type {
+  ApprovalResult,
   CheckoutRequest,
   CheckoutSession,
   PaymentProvider,
@@ -107,6 +108,26 @@ function amount(tryValue: number): string {
   return tryValue.toFixed(2);
 }
 
+/**
+ * Alt üye işyeri payını serbest bırakan/geri çeviren çağrı.
+ *
+ * İki uç yalnızca adresleriyle ayrılıyor; gövde ve hata işleme aynı. Ayrı ayrı
+ * yazılsaydı biri düzeltilip diğeri unutulurdu.
+ */
+async function itemApproval(uriPath: string, itemTransactionRef: string): Promise<ApprovalResult> {
+  if (!isIyzicoConfigured()) return { ok: false, error: 'iyzico yapılandırılmamış.' };
+  if (!itemTransactionRef) return { ok: false, error: 'Kalem işlem kimliği yok.' };
+
+  const response = await call<IyzicoBase>(uriPath, {
+    locale: 'tr',
+    conversationId: itemTransactionRef,
+    paymentTransactionId: itemTransactionRef,
+  });
+
+  const error = failed(response);
+  return error ? { ok: false, error } : { ok: true };
+}
+
 export function iyzicoProvider(): PaymentProvider {
   return {
     name: 'iyzico',
@@ -182,22 +203,7 @@ export function iyzicoProvider(): PaymentProvider {
     async resolve(token: string): Promise<PaymentResult> {
       if (!isIyzicoConfigured()) return { ok: false, error: 'iyzico yapılandırılmamış.' };
 
-      const response = await call<
-        IyzicoBase & {
-          paymentStatus?: string;
-          paymentId?: string;
-          conversationId?: string;
-          paidPrice?: string;
-          currency?: string;
-          cardAssociation?: string;
-          lastFourDigits?: string;
-        }
-      >('/payment/iyzipos/checkoutform/auth/ecom/detail', { locale: 'tr', token });
-
-      const error = failed(response);
-      if (error) return { ok: false, error };
-
-      const body = response as {
+      type Detail = IyzicoBase & {
         paymentStatus?: string;
         paymentId?: string;
         conversationId?: string;
@@ -205,7 +211,20 @@ export function iyzicoProvider(): PaymentProvider {
         currency?: string;
         cardAssociation?: string;
         lastFourDigits?: string;
+        // Sepetteki her kalem için ayrı bir işlem. Bizde sepet tek kalemli
+        // (bir rezervasyon), bu yüzden ilk eleman alınıyor.
+        itemTransactions?: { paymentTransactionId?: string }[];
       };
+
+      const response = await call<Detail>('/payment/iyzipos/checkoutform/auth/ecom/detail', {
+        locale: 'tr',
+        token,
+      });
+
+      const error = failed(response);
+      if (error) return { ok: false, error };
+
+      const body = response as Detail;
 
       if (body.paymentStatus !== 'SUCCESS') {
         return {
@@ -223,7 +242,16 @@ export function iyzicoProvider(): PaymentProvider {
         currency: body.currency ?? 'TRY',
         cardFamily: body.cardAssociation,
         cardLastFour: body.lastFourDigits,
+        itemTransactionRef: body.itemTransactions?.[0]?.paymentTransactionId,
       };
+    },
+
+    async approve(itemTransactionRef: string): Promise<ApprovalResult> {
+      return itemApproval('/payment/iyzipos/item/approve', itemTransactionRef);
+    },
+
+    async disapprove(itemTransactionRef: string): Promise<ApprovalResult> {
+      return itemApproval('/payment/iyzipos/item/disapprove', itemTransactionRef);
     },
 
     async refund(input): Promise<RefundResult> {

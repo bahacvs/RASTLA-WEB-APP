@@ -42,10 +42,42 @@ CREATE TABLE IF NOT EXISTS operators (
   legal_address   TEXT,
   contact_email   TEXT,
 
-  -- RASTLA'nın payı, on binde. 1000 = %10. Tam sayı tutuluyor ki kuruş
+  -- RASTLA'nın payı, on binde. 1800 = %18. Tam sayı tutuluyor ki kuruş
   -- hesabında kayan nokta yuvarlaması olmasın.
-  commission_bp   INTEGER NOT NULL DEFAULT 1000
-                  CHECK (commission_bp >= 0 AND commission_bp <= 10000)
+  --
+  -- DİKKAT — bu sayı yalnızca kod değil, SÖZLEŞME meselesi. Varsayılanı
+  -- değiştirmek yeni işletmeleri etkiler; var olan bir işletmenin oranını
+  -- değiştirmek, o işletmeyle imzalanmış ticari sözleşmenin de güncellenmesini
+  -- gerektirir. İşletme başına oran Faz F'te panelden belirlenecek.
+  commission_bp   INTEGER NOT NULL DEFAULT 1800
+                  CHECK (commission_bp >= 0 AND commission_bp <= 10000),
+
+  -- ---- RASTLA doğrulaması ----
+  --
+  -- Müşteri tarafındaki "doğrulanmış işletme" rozeti buna bağlı. Önce rozet
+  -- HERKESE gösteriliyordu ve bu, doğrulanmamış bir işletme için müşteriye
+  -- söylenmiş yanlış bir cümleydi: rozet bir şey iddia ediyorsa arkasında bir
+  -- kontrol olmak zorunda.
+  --
+  -- basvuru          -> kaydoldu, henüz belge vermedi
+  -- belge_bekleniyor -> istenen belgeler eksik
+  -- inceleniyor      -> belgeler geldi, RASTLA bakıyor
+  -- dogrulandi       -> onaylandı; rozet ancak bu durumda gösterilir
+  -- durduruldu       -> geçici olarak askıda (uyuşmazlık, şikâyet)
+  -- kapatildi        -> ilişki sonlandı
+  verification_status TEXT NOT NULL DEFAULT 'basvuru'
+                  CHECK (verification_status IN ('basvuru', 'belge_bekleniyor',
+                         'inceleniyor', 'dogrulandi', 'durduruldu', 'kapatildi')),
+  -- RASTLA'nın iç notu. Müşteriye ve işletmeye GÖSTERİLMEZ.
+  verification_note TEXT,
+  verified_at     TEXT,
+
+  -- Hak ediş durdurma. Uyuşmazlık ya da şikâyet hâlinde para sağlayıcıda
+  -- bloke kalmaya devam eder; rezervasyon ve check-in çalışmayı sürdürür.
+  -- İkisi ayrı tutuluyor çünkü işletmeyi tamamen kapatmak müşterinin elindeki
+  -- geçerli bileti de geçersiz kılardı.
+  payouts_suspended INTEGER NOT NULL DEFAULT 0
+                  CHECK (payouts_suspended IN (0, 1))
 );
 
 -- İşletme personelinin kişisel hesabı.
@@ -71,9 +103,15 @@ CREATE TABLE IF NOT EXISTS operator_users (
   -- doğrulanmaya devam eder.
   password_hash  TEXT NOT NULL,
 
-  -- owner: ekip yönetebilir, aktivite düzenleyebilir
-  -- staff: yalnızca bilet okutur ve rezervasyon görür
-  role           TEXT NOT NULL CHECK (role IN ('owner', 'staff')),
+  -- owner   : her şey — finans, hak ediş, banka bilgisi, ekip yönetimi
+  -- manager : operasyon — takvim, aktivite, rezervasyon, manuel kayıt.
+  --           Finansa ve banka bilgisine erişemez; rezervasyonu oluşturan ile
+  --           parayı yönlendiren aynı kişi olmasın diye (görev ayrılığı).
+  -- staff   : saha — yalnızca bugünü görür ve bilet okutur. Müşteri listesini
+  --           toplu indiremez; ayrılan çalışanın elinde kalmamalı.
+  --
+  -- Yetenek eşlemesi lib/permissions.ts içinde, tek kaynak olarak duruyor.
+  role           TEXT NOT NULL CHECK (role IN ('owner', 'manager', 'staff')),
 
   status         TEXT NOT NULL DEFAULT 'active'
                  CHECK (status IN ('active', 'suspended')),
@@ -83,6 +121,34 @@ CREATE TABLE IF NOT EXISTS operator_users (
 );
 
 CREATE INDEX IF NOT EXISTS idx_operator_users_operator ON operator_users(operator_id, status);
+
+-- RASTLA operasyon ekibi.
+--
+-- Ayrı tablo, çünkü bu kişiler bir işletmeye bağlı değil. `operator_users`
+-- içine sıkıştırmak `operator_id`'yi anlamsızlaştırırdı: ya uydurma bir
+-- işletmeye bağlanacaklardı ya da sütun NULL olacak ve o andan itibaren
+-- "hangi işletmenin personeli" sorusunun cevabı belirsizleşecekti. Yetki
+-- alanları da bambaşka — işletme doğrulama, ilan onayı, hak ediş durdurma.
+--
+-- Aynı e-posta hem işletme hem platform hesabı olabilir; ikisi ayrı oturum
+-- çerezi taşır ve biri diğerinin yetkisini vermez.
+CREATE TABLE IF NOT EXISTS platform_users (
+  id             TEXT PRIMARY KEY,
+  email          TEXT NOT NULL UNIQUE,   -- küçük harfe indirgenmiş
+  name           TEXT NOT NULL,
+  phone          TEXT,
+  password_hash  TEXT NOT NULL,
+
+  -- admin    : her şey, platform hesabı açabilir
+  -- reviewer : işletme doğrulama ve ilan onayı; komisyona ve hak edişe dokunamaz
+  role           TEXT NOT NULL CHECK (role IN ('admin', 'reviewer')),
+
+  status         TEXT NOT NULL DEFAULT 'active'
+                 CHECK (status IN ('active', 'suspended')),
+
+  created_at     TEXT NOT NULL,
+  last_login_at  TEXT
+);
 
 -- İşletmenin yönettiği aktiviteler. Önceden lib/data.ts içinde sabitti.
 CREATE TABLE IF NOT EXISTS activities (
@@ -107,6 +173,18 @@ CREATE TABLE IF NOT EXISTS activities (
   capacity_mode     TEXT NOT NULL DEFAULT 'per_person'
                     CHECK (capacity_mode IN ('per_person', 'per_booking')),
 
+  -- Seans açılması için gereken en az katılımcı. Altında kalırsa işletme
+  -- iptal edip tam iade verebilir; müşteriye baştan söylenmiş olur.
+  min_participants  INTEGER NOT NULL DEFAULT 1 CHECK (min_participants > 0),
+
+  -- Seans başlangıcına şu kadar dakika kala rezervasyon kapanır. 0 = sınır
+  -- yok. Ekipmanın hazırlanması ve müşterinin yola çıkması için gereken pay.
+  booking_cutoff_minutes INTEGER NOT NULL DEFAULT 0 CHECK (booking_cutoff_minutes >= 0),
+
+  -- İki seans arasındaki hazırlık payı. Seans aralığına EKLENİR: 15 dakikalık
+  -- jet ski turu + 5 dakika hazırlık = 20 dakikada bir kalkış.
+  prep_minutes      INTEGER NOT NULL DEFAULT 0 CHECK (prep_minutes >= 0),
+
   image             TEXT,
   image_alt         TEXT,
 
@@ -127,8 +205,21 @@ CREATE TABLE IF NOT EXISTS activities (
   rating            REAL NOT NULL DEFAULT 0,
   review_count      INTEGER NOT NULL DEFAULT 0,
 
+  -- draft          -> işletme üzerinde çalışıyor, kimse görmüyor
+  -- pending_review -> yayına verildi, RASTLA kontrolünde. MÜŞTERİYE GÖRÜNMEZ.
+  -- published      -> yayında
+  --
+  -- İnceleme adımı yalnızca **doğrulanmamış** işletmelerin ilanları için
+  -- işliyor (bkz. lib/db/activities.ts). Doğrulanmış bir işletmeyi her ilanda
+  -- yeniden incelemek, kontrolün bir kez yapılan işletme doğrulaması olduğu
+  -- gerçeğiyle çelişirdi; buna karşılık daha hiç doğrulanmamış bir işletmenin
+  -- ilanının kontrolsüz yayına çıkması, rozetle verilen güvenceyi boşa
+  -- çıkarırdı.
+  --
+  -- Kısıt ADLANDIRILDI: durum listesi genişledi ve göçte bulunabilmesi gerek.
   status            TEXT NOT NULL DEFAULT 'draft'
-                    CHECK (status IN ('draft', 'published')),
+                    CONSTRAINT activities_status_check
+                    CHECK (status IN ('draft', 'pending_review', 'published')),
 
   created_at        TEXT NOT NULL
 );
@@ -162,6 +253,30 @@ CREATE INDEX IF NOT EXISTS idx_rules_activity ON schedule_rules(activity_id, act
 
 -- Kuraldan üretilmiş tekil zaman dilimi. Rezervasyon buraya bağlanır ve
 -- kapasite burada tutulur.
+-- Ekipman havuzu.
+--
+-- Bazı aktivitelerde kapasite kişi değil araçtır: 3 jet ski, 5 kano, 1 tekne,
+-- 2 eğitmen. Kişi kapasitesiyle ekipman kapasitesi farklı şeyleri sayar ve
+-- ikisi de bağımsız olarak dolabilir.
+--
+-- Şimdilik aktivite başına EN FAZLA BİR havuz kullanılıyor (en dar sınır
+-- hangisiyse o). Birden çok kaynağı aynı anda kısıtlamak (hem tekne hem
+-- eğitmen) çok daha karmaşık bir tahsis problemi ve pilot için gereksiz;
+-- tablo yapısı ileride ikinci havuza izin verecek şekilde kuruldu ama motor
+-- şu an ilkini kullanıyor.
+CREATE TABLE IF NOT EXISTS equipment_pools (
+  id                TEXT PRIMARY KEY,
+  activity_id       TEXT NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
+
+  name              TEXT NOT NULL,           -- "Jet ski", "Kano", "Eğitmen"
+  unit_count        INTEGER NOT NULL CHECK (unit_count > 0),
+  capacity_per_unit INTEGER NOT NULL DEFAULT 1 CHECK (capacity_per_unit > 0),
+
+  created_at        TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_equipment_pools_activity ON equipment_pools(activity_id);
+
 CREATE TABLE IF NOT EXISTS slots (
   id           TEXT PRIMARY KEY,
   activity_id  TEXT NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
@@ -177,12 +292,23 @@ CREATE TABLE IF NOT EXISTS slots (
   capacity     INTEGER NOT NULL CHECK (capacity > 0),
   booked       INTEGER NOT NULL DEFAULT 0,
 
+  -- Ekipman sınırı. NULL ise bu aktivitede ekipman havuzu tanımlı değildir ve
+  -- yalnızca kişi kapasitesi geçerlidir.
+  --
+  -- Kişi kapasitesi tek başına yetmiyor: jet skide asıl sınır araç sayısıdır.
+  -- 3 araç × 2 kişi tanımlı bir seansta 6 kişilik yer vardır, ama 6 kişi tek
+  -- başına gelirse (her biri ayrı araç isterse) 3'ünden fazlası alınamaz.
+  -- İki sayaç ayrı tutuluyor çünkü ikisi farklı şeyleri sayıyor.
+  unit_capacity INTEGER CHECK (unit_capacity IS NULL OR unit_capacity > 0),
+  units_booked  INTEGER NOT NULL DEFAULT 0,
+
   status       TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'closed')),
   created_at   TEXT NOT NULL,
 
   -- Aşırı rezervasyona karşı şema tarafındaki güvence. Koşullu UPDATE zaten
   -- engeller; bu kısıt son savunma hattıdır.
   CHECK (booked >= 0 AND booked <= capacity),
+  CHECK (units_booked >= 0 AND (unit_capacity IS NULL OR units_booked <= unit_capacity)),
 
   -- Aynı aktivite için aynı ana iki slot üretilemez; slot üretimini
   -- idempotent yapan şey budur.
@@ -209,6 +335,37 @@ CREATE TABLE IF NOT EXISTS bookings (
   -- per_person -> katılımcı sayısı, per_booking -> 1. İptalde aynı miktar
   -- geri verilir, bu yüzden rezervasyonla birlikte saklanır.
   units          INTEGER NOT NULL DEFAULT 1 CHECK (units > 0),
+
+  -- Slotun EKİPMAN sayacından düşen araç sayısı. Havuz yoksa 0.
+  -- Rezervasyonla saklanıyor çünkü havuz sonradan değişebilir; iptalde
+  -- yeniden hesaplamak, tutulandan farklı bir miktarı iade etme riski taşır.
+  equipment_units INTEGER NOT NULL DEFAULT 0 CHECK (equipment_units >= 0),
+
+  -- Rezervasyon nereden geldi.
+  --
+  -- İşletmenin bütün kanallarını sisteme almanın tek sebebi komisyon değil,
+  -- MÜSAİTLİĞİN DOĞRU OLMASI: telefondan alınan bir rezervasyon sisteme
+  -- girilmezse, RASTLA müşterisine boş görünen saat aslında doludur ve iki
+  -- grup aynı saatte iskeleye gelir.
+  source         TEXT NOT NULL DEFAULT 'rastla'
+                 CHECK (source IN ('rastla', 'link', 'instagram', 'whatsapp',
+                                   'phone', 'hotel', 'agency', 'manual')),
+
+  -- online  -> RASTLA üzerinden tahsil edildi
+  -- onsite  -> tesiste ödenecek/ödendi (manuel kayıtlar)
+  -- deposit -> kapora alındı, kalanı tesiste
+  payment_mode   TEXT NOT NULL DEFAULT 'online'
+                 CHECK (payment_mode IN ('online', 'onsite', 'deposit')),
+
+  -- Check-in'de kaç kişinin geldiği. NULL = henüz okutulmadı.
+  -- Rezervasyondaki kişi sayısından farklı olabilir; uyuşmazlıkta kanıt olur.
+  -- Hak ediş bu sayıya değil rezervasyon tutarına bağlıdır.
+  attended       INTEGER CHECK (attended IS NULL OR attended >= 0),
+  no_show_at     TEXT,
+
+  -- Manuel kaydı açan işletme personeli. RASTLA'dan gelen rezervasyonlarda
+  -- NULL. "Kim ekledi" sorusu uyuşmazlıkta soruluyor.
+  created_by     TEXT,
 
   booking_date   TEXT NOT NULL,   -- YYYY-MM-DD
   booking_time   TEXT NOT NULL,   -- HH:MM
@@ -303,6 +460,13 @@ CREATE TABLE IF NOT EXISTS payments (
 
   -- Sağlayıcıdan dönen MASKELİ kart bilgisi. Fişte ve destek görüşmesinde
   -- "hangi kartla ödedim" sorusunu cevaplar; kartı yeniden kullanmaya yetmez.
+  -- iyzico'nun kalem işlem kimliği (itemTransactions[].paymentTransactionId).
+  --
+  -- Alt üye işyerine giden payı serbest bırakmak ya da geri çevirmek için
+  -- ONAY çağrısının anahtarı budur; paymentId değil. Önce yakalanmıyordu ve
+  -- onay akışı bu yüzden kurulamıyordu.
+  item_transaction_ref TEXT,
+
   card_family     TEXT,
   card_last_four  TEXT CHECK (card_last_four IS NULL OR length(card_last_four) = 4),
 
@@ -338,6 +502,64 @@ CREATE TABLE IF NOT EXISTS refunds (
 );
 
 CREATE INDEX IF NOT EXISTS idx_refunds_payment ON refunds(payment_id);
+
+-- Hak ediş defteri: işletmenin her rezervasyondan ne kazandığı.
+--
+-- Neden ayrı tablo, neden `payments` yetmiyor: ödeme MÜŞTERİ tarafındaki
+-- olaydır ("para tahsil edildi mi"), hak ediş İŞLETME tarafındaki olaydır
+-- ("bu paranın ne kadarı ne zaman işletmenin oldu"). İkisi aynı satırda
+-- tutulsaydı, ödemesi alınmış ama hizmeti verilmemiş bir rezervasyonun tutarı
+-- "kazanılmış" görünürdü.
+--
+-- Akış: ödeme onaylanınca kayıt `held` olarak açılır — para RASTLA'da, alt üye
+-- işyerinin payı sağlayıcıda BLOKE. Bilet okutulunca (hizmet verildi) `released`
+-- olur ve sağlayıcıya onay çağrısı gider. Müşteri gelmediyse ya da iade
+-- edildiyse `reversed` olur.
+--
+-- **`booking_id` UNIQUE, ve bu tesadüf değil.** Tek kullanım güvencesinin hak
+-- ediş tarafındaki karşılığı bu: aynı rezervasyon için ikinci bir hak ediş
+-- satırı veritabanı tarafından reddedilir. "Önce bak, varsa ekleme" yazılsaydı
+-- iki eşzamanlı geri çağrı arasından ikisi de geçebilirdi.
+CREATE TABLE IF NOT EXISTS payouts (
+  id             TEXT PRIMARY KEY,
+  booking_id     TEXT NOT NULL UNIQUE REFERENCES bookings(id),
+  payment_id     TEXT NOT NULL REFERENCES payments(id),
+  operator_id    TEXT NOT NULL,
+
+  gross_try      INTEGER NOT NULL CHECK (gross_try >= 0),
+  -- RASTLA'nın payı. Ödeme anındaki oranla DONDURULUR: komisyon oranı
+  -- sonradan değişse bile geçmiş hak edişler değişmez, yoksa mutabakat
+  -- geriye dönük olarak bozulurdu.
+  commission_try INTEGER NOT NULL DEFAULT 0 CHECK (commission_try >= 0),
+  refunded_try   INTEGER NOT NULL DEFAULT 0 CHECK (refunded_try >= 0),
+  -- gross - commission - refunded. Türetilebilir ama saklanıyor: mutabakat
+  -- raporu bu sütunu doğrudan topluyor ve hesabın hangi anki değerlerle
+  -- yapıldığı kayda geçmiş oluyor.
+  net_try        INTEGER NOT NULL,
+
+  -- held     -> hizmet verilmedi, pay sağlayıcıda bloke
+  -- released -> bilet okutuldu, pay işletmeye serbest bırakıldı
+  -- reversed -> gelmedi ya da iade edildi, pay geri çevrildi
+  status         TEXT NOT NULL CHECK (status IN ('held', 'released', 'reversed')),
+
+  -- Sağlayıcıdaki kalem işlem kimliği; onay/geri çevirme çağrısının anahtarı.
+  provider_ref   TEXT,
+  -- Sağlayıcıya giden onay çağrısı başarısız olursa sebebi burada durur.
+  -- Defterdeki durum yine de ilerler: "işletme bunu hak etti" bizim
+  -- kararımızdır, sağlayıcıya iletmek ise tekrarlanabilir bir teslim adımıdır.
+  failure_reason TEXT,
+
+  held_at        TEXT NOT NULL,
+  released_at    TEXT,
+  reversed_at    TEXT,
+
+  CHECK (
+    (status = 'released' AND released_at IS NOT NULL) OR
+    (status <> 'released' AND released_at IS NULL)
+  )
+);
+
+CREATE INDEX IF NOT EXISTS idx_payouts_operator ON payouts(operator_id, status);
 
 -- İşletmenin yüklediği aktivite görselleri.
 --

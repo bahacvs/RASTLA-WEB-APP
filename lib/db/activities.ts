@@ -1,6 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import { db, toCount } from './index.mjs';
-import type { Activity, ActivityCategory, CapacityMode, Review } from '../catalog';
+import type {
+  Activity,
+  ActivityCategory,
+  ActivityStatus,
+  CapacityMode,
+  Review,
+} from '../catalog';
 
 /**
  * Aktivite deposu.
@@ -23,6 +29,9 @@ type Row = {
   lat: number | null;
   lng: number | null;
   capacity_mode: CapacityMode;
+  min_participants: number;
+  booking_cutoff_minutes: number;
+  prep_minutes: number;
   image: string | null;
   image_alt: string | null;
   included: string | null;
@@ -34,7 +43,7 @@ type Row = {
   instant_confirm: number;
   rating: number;
   review_count: number;
-  status: 'draft' | 'published';
+  status: ActivityStatus;
   /**
    * SUM() sonucu. Postgres bunu bigint döndürür ve `pg` sürücüsü DİZGİ olarak
    * verir; bu yüzden tip burada number değil ve toActivity içinde çevrilir.
@@ -73,6 +82,9 @@ function toActivity(row: Row): Activity {
     lat: row.lat,
     lng: row.lng,
     capacityMode: row.capacity_mode,
+    minParticipants: row.min_participants ?? 1,
+    bookingCutoffMinutes: row.booking_cutoff_minutes ?? 0,
+    prepMinutes: row.prep_minutes ?? 0,
     image: row.image ?? '',
     imageAlt: row.image_alt ?? '',
     included: parseJson<string[]>(row.included),
@@ -148,6 +160,9 @@ export type ActivityInput = {
   lat?: number | null;
   lng?: number | null;
   capacityMode: CapacityMode;
+  minParticipants?: number;
+  bookingCutoffMinutes?: number;
+  prepMinutes?: number;
   capacityLabel?: string;
   instantConfirm?: boolean;
   image?: string;
@@ -159,7 +174,7 @@ export type ActivityInput = {
   reviews?: Review[];
   rating?: number;
   reviewCount?: number;
-  status?: 'draft' | 'published';
+  status?: ActivityStatus;
 };
 
 function toParams(input: ActivityInput) {
@@ -175,6 +190,9 @@ function toParams(input: ActivityInput) {
     lat: input.lat ?? null,
     lng: input.lng ?? null,
     capacity_mode: input.capacityMode,
+    min_participants: input.minParticipants ?? 1,
+    booking_cutoff_minutes: input.bookingCutoffMinutes ?? 0,
+    prep_minutes: input.prepMinutes ?? 0,
     image: input.image ?? null,
     image_alt: input.imageAlt ?? null,
     included: input.included ? JSON.stringify(input.included) : null,
@@ -198,12 +216,14 @@ export async function createActivity(input: ActivityInput): Promise<Activity> {
   ).run(
     `INSERT INTO activities
          (id, operator_id, slug, title, category, description, price_try, duration_minutes,
-          location_name, lat, lng, capacity_mode, image, image_alt, included, safety,
+          location_name, lat, lng, capacity_mode, min_participants, booking_cutoff_minutes,
+          prep_minutes, image, image_alt, included, safety,
           gallery, meeting_point, reviews, capacity_label, instant_confirm, rating, review_count,
           status, created_at)
        VALUES
          (@id, @operator_id, @slug, @title, @category, @description, @price_try, @duration_minutes,
-          @location_name, @lat, @lng, @capacity_mode, @image, @image_alt, @included, @safety,
+          @location_name, @lat, @lng, @capacity_mode, @min_participants, @booking_cutoff_minutes,
+          @prep_minutes, @image, @image_alt, @included, @safety,
           @gallery, @meeting_point, @reviews, @capacity_label, @instant_confirm, @rating, @review_count,
           @status, @created_at)`,
     { id, ...toParams(input), created_at: new Date().toISOString() }
@@ -223,7 +243,9 @@ export async function updateActivity(
          slug = @slug, title = @title, category = @category, description = @description,
          price_try = @price_try, duration_minutes = @duration_minutes,
          location_name = @location_name, lat = @lat, lng = @lng,
-         capacity_mode = @capacity_mode, image = @image, image_alt = @image_alt,
+         capacity_mode = @capacity_mode, min_participants = @min_participants,
+         booking_cutoff_minutes = @booking_cutoff_minutes, prep_minutes = @prep_minutes,
+         image = @image, image_alt = @image_alt,
          included = @included, safety = @safety, gallery = @gallery,
          meeting_point = @meeting_point, reviews = @reviews, capacity_label = @capacity_label,
          instant_confirm = @instant_confirm, rating = @rating, review_count = @review_count,
@@ -235,8 +257,34 @@ export async function updateActivity(
   return getActivityById(id);
 }
 
-export async function setActivityStatus(id: string, status: 'draft' | 'published') {
+export async function setActivityStatus(id: string, status: ActivityStatus) {
   await (await db()).run('UPDATE activities SET status = ? WHERE id = ?', [status, id]);
+}
+
+/**
+ * İşletme ilanı yayına vermek istediğinde varılacak durum.
+ *
+ * **Doğrulanmamış işletmenin ilanı doğrudan yayına çıkmaz**, RASTLA
+ * incelemesine düşer. Doğrulanmış işletme doğrudan yayına çıkar.
+ *
+ * Alternatif — her ilanı tek tek incelemek — bilinçli olarak seçilmedi:
+ * kontrolün konusu ilan metni değil İŞLETMENİN KENDİSİ, ve o kontrol bir kez
+ * yapılıyor. Her ilanı incelemek, doğrulanmış bir işletmeyi fiyat
+ * değiştirdiği için yeniden kuyruğa sokmak olurdu; ölçeklenmez ve incelemeyi
+ * bir onay damgasına indirger. Öte yandan hiç doğrulanmamış bir işletmenin
+ * ilanının kontrolsüz yayına çıkması, rozetle verilen güvenceyi boşa
+ * çıkarırdı.
+ */
+export function publishTargetFor(verificationStatus: string): ActivityStatus {
+  return verificationStatus === 'dogrulandi' ? 'published' : 'pending_review';
+}
+
+/** RASTLA incelemesini bekleyen ilanlar — /yonetim kuyruğu. */
+export async function listPendingReview(): Promise<Activity[]> {
+  const rows = await (
+    await db()
+  ).all<Row>(`SELECT * FROM activities WHERE status = 'pending_review' ORDER BY created_at`);
+  return rows.map(toActivity);
 }
 
 /** Başlıktan URL'e uygun bir slug türetir; çakışırsa sonuna sayı ekler. */

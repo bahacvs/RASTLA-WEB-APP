@@ -45,6 +45,12 @@ export type Activity = {
   lat: number | null;
   lng: number | null;
   capacityMode: CapacityMode;
+  /** Seans açılması için gereken en az katılımcı. */
+  minParticipants: number;
+  /** Seans başlangıcına şu kadar dakika kala rezervasyon kapanır. 0 = sınır yok. */
+  bookingCutoffMinutes: number;
+  /** Seanslar arası hazırlık payı; slot üretiminde aralığa eklenir. */
+  prepMinutes: number;
   capacityLabel?: string;
   image: string;
   imageAlt: string;
@@ -61,7 +67,26 @@ export type Activity = {
   remainingToday?: number;
   rating: number;
   reviewCount: number;
-  status: 'draft' | 'published';
+  status: ActivityStatus;
+};
+
+/**
+ * İlanın yaşam döngüsü.
+ *
+ * `pending_review` müşteriye GÖRÜNMEZ: yalnızca 'published' listeleniyor.
+ * İncelemedeki bir ilanın aramada çıkması, kontrolün hiç yapılmamasıyla aynı
+ * kapıya çıkardı.
+ *
+ * Tip burada, veri katmanında değil: istemci bileşenleri de bu durumu
+ * okuyor ve `lib/db/*` içinden alınsaydı veritabanı katmanı tarayıcı
+ * paketine girerdi (projede daha önce derlemeyi bozan hata tam olarak buydu).
+ */
+export type ActivityStatus = 'draft' | 'pending_review' | 'published';
+
+export const ACTIVITY_STATUS_LABELS: Record<ActivityStatus, string> = {
+  draft: 'Taslak',
+  pending_review: 'İncelemede',
+  published: 'Yayında',
 };
 
 export const CATEGORY_LABELS: Record<ActivityCategory, string> = {

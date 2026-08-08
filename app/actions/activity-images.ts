@@ -2,7 +2,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { revalidatePath } from 'next/cache';
-import { currentOperator } from '@/lib/auth';
+import { requireCapability } from '@/lib/auth';
 import { getActivityById } from '@/lib/db/activities';
 import {
   addImage,
@@ -30,8 +30,8 @@ export type ImageState = { error?: string; message?: string };
 
 /** Sahibin yalnızca kendi aktivitesine dokunabilmesini sağlar. */
 async function ownActivity(activityId: string) {
-  const session = await currentOperator();
-  if (!session || session.user.role !== 'owner') return null;
+  const session = await requireCapability('aktivite.yonet');
+  if (!session) return null;
 
   const activity = await getActivityById(activityId);
   if (!activity || activity.operatorId !== session.operator.id) return null;

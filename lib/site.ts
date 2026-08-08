@@ -21,3 +21,16 @@ export const SITE_NAME = 'RASTLA';
 
 export const SITE_DESCRIPTION =
   'RASTLA; su sporlarını ve yerel turistik aktiviteleri şeffaf fiyat, doğrulanmış işletme ve hızlı rezervasyon deneyimiyle bir araya getirir.';
+
+/**
+ * İşletme başvurularının gideceği adres.
+ *
+ * Varsayılan bilinçli olarak **açıkça sahte** (`ornek.com`) — legal/ altındaki
+ * belgelerle aynı yaklaşım. Gerçek görünen ama var olmayan bir adres yazmak,
+ * /partner sayfasındaki düğmelere basan işletmenin mesajının hiçbir yere
+ * ulaşmaması ve bunun kimsenin fark etmemesi demek olurdu.
+ *
+ * Yayına almadan önce `PARTNER_CONTACT_EMAIL` tanımlanmalı (bkz. KURULUM.md).
+ */
+export const PARTNER_CONTACT_EMAIL =
+  process.env.PARTNER_CONTACT_EMAIL ?? 'partner@ornek.com';

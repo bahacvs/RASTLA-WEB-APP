@@ -6,12 +6,20 @@ import {
   createActivity,
   getActivityById,
   setActivityStatus,
+  publishTargetFor,
   uniqueSlug,
   updateActivity,
   type ActivityInput,
 } from '@/lib/db/activities';
-import { createRule, setRuleActive, setSlotStatus, syncSlots, getSlot } from '@/lib/db/slots';
-import { currentOperator, type OperatorSession } from '@/lib/auth';
+import {
+  createRule,
+  setEquipmentPool,
+  setRuleActive,
+  setSlotStatus,
+  syncSlots,
+  getSlot,
+} from '@/lib/db/slots';
+import { requireCapability, type OperatorSession } from '@/lib/auth';
 import { isActivityCategory, type CapacityMode } from '@/lib/catalog';
 import { record, type AuditAction } from '@/lib/db/audit';
 import { requestContext } from '@/lib/request-context';
@@ -39,21 +47,22 @@ async function log(
 }
 
 /**
- * Aktivite yönetimi sahiplere ayrılmıştır.
+ * Aktivite yönetimi sahip ve yöneticiye açıktır, saha personeline kapalı.
  *
- * Personel bilet okutur ve rezervasyon listesini görür; fiyat değiştirmek,
- * takvim tanımlamak ve yayına almak ticari kararlardır. Kontrol her eylemde
- * sunucu tarafında yapılır — bağlantıyı menüden gizlemek yetkilendirme değildir.
+ * Saha personeli bilet okutur ve günün rezervasyonlarını görür; fiyat
+ * değiştirmek, takvim tanımlamak ve yayına almak ticari kararlardır ve sahilde
+ * telefonla çalışan birinin işi değildir.
+ *
+ * Kontrol her eylemde sunucu tarafında yapılır — bağlantıyı menüden gizlemek
+ * yetkilendirme değildir.
  */
-async function requireOwner() {
-  const session = await currentOperator();
-  if (!session || session.user.role !== 'owner') return null;
-  return session;
+async function requireActivityAccess() {
+  return requireCapability('aktivite.yonet');
 }
 
 /** Sahibin yalnızca kendi aktivitesine dokunabilmesini sağlar. */
 async function assertOwnership(activityId: string) {
-  const session = await requireOwner();
+  const session = await requireActivityAccess();
   if (!session) return null;
 
   const activity = await getActivityById(activityId);
@@ -114,7 +123,7 @@ export async function createActivityAction(
   _prev: ActivityFormState,
   formData: FormData
 ): Promise<ActivityFormState> {
-  const session = await requireOwner();
+  const session = await requireActivityAccess();
   if (!session) return { error: 'Bu işlem için işletme sahibi yetkisi gerekir.' };
 
   const input = readForm(formData, session.operator.id);
@@ -169,14 +178,23 @@ export async function toggleActivityStatusAction(formData: FormData) {
   const owned = await assertOwnership(id);
   if (!owned) return;
 
-  const publishing = owned.activity.status !== 'published';
-  await setActivityStatus(id, publishing ? 'published' : 'draft');
+  // Yayında ya da incelemede olan bir ilan taslağa döner; taslak ise yayına
+  // verilir. "İncelemedeyken tekrar bas" geri çekmek anlamına geliyor ve
+  // olması gereken bu: işletme kendi ilanını kuyruktan çekebilmeli.
+  const publishing = owned.activity.status === 'draft';
+
+  // Doğrulanmamış işletmenin ilanı doğrudan yayına ÇIKMAZ, incelemeye düşer.
+  const target = publishing
+    ? publishTargetFor(owned.session.operator.verificationStatus)
+    : 'draft';
+
+  await setActivityStatus(id, target);
   await log(
     owned.session,
     publishing ? 'activity.published' : 'activity.unpublished',
     'activity',
     id,
-    { slug: owned.activity.slug }
+    { slug: owned.activity.slug, durum: target }
   );
 
   revalidatePath('/isletme/aktiviteler');
@@ -298,4 +316,86 @@ export async function toggleSlotAction(formData: FormData) {
   });
 
   revalidatePath(`/isletme/aktiviteler/${activityId}/takvim`);
+}
+
+export type LimitsFormState = { error?: string; message?: string };
+
+/**
+ * Operasyon sınırları: minimum katılımcı, son rezervasyon kesiti, hazırlık
+ * süresi ve ekipman havuzu.
+ *
+ * Takvim kuralından AYRI tutuluyor çünkü ikisi farklı şeyler tanımlıyor.
+ * Kural bir tercihtir ("sabah 8'den akşam 6'ya çalışırım"); bunlar ise
+ * aktivitenin fiziksel gerçeğidir ("3 jet skim var, her biri 2 kişilik,
+ * arada 5 dakika hazırlık gerekiyor"). Aynı forma sıkıştırılsalardı, saati
+ * değiştirmek isteyen kişi araç sayısını da yeniden girmek zorunda kalırdı.
+ *
+ * Hazırlık süresi değişince slotlar yeniden eşitlenir: aralık değişmiş olur
+ * ve mevcut slotlar artık kuralı yansıtmaz.
+ */
+export async function saveLimitsAction(
+  _prev: LimitsFormState,
+  formData: FormData
+): Promise<LimitsFormState> {
+  const activityId = String(formData.get('activityId') ?? '');
+  const owned = await assertOwnership(activityId);
+  if (!owned) return { error: 'Bu aktiviteye erişim yetkiniz yok.' };
+
+  const minParticipants = Number(formData.get('minParticipants'));
+  const cutoff = Number(formData.get('bookingCutoffMinutes'));
+  const prep = Number(formData.get('prepMinutes'));
+
+  if (!Number.isInteger(minParticipants) || minParticipants < 1) {
+    return { error: 'Minimum katılımcı en az 1 olmalı.' };
+  }
+  if (!Number.isInteger(cutoff) || cutoff < 0) return { error: 'Kesit negatif olamaz.' };
+  if (!Number.isInteger(prep) || prep < 0) return { error: 'Hazırlık süresi negatif olamaz.' };
+
+  const poolName = String(formData.get('poolName') ?? '').trim();
+  const unitCount = Number(formData.get('unitCount'));
+  const capacityPerUnit = Number(formData.get('capacityPerUnit'));
+
+  // Havuz ya tam tanımlanır ya hiç. Yarım tanım (adı var sayısı yok) sessizce
+  // sınırsız kapasiteye dönüşürdü ve bu, aşırı rezervasyonun sebebi olurdu.
+  const wantsPool = poolName.length > 0;
+  if (wantsPool) {
+    if (!Number.isInteger(unitCount) || unitCount < 1) {
+      return { error: 'Ekipman sayısı en az 1 olmalı.' };
+    }
+    if (!Number.isInteger(capacityPerUnit) || capacityPerUnit < 1) {
+      return { error: 'Ekipman başına kapasite en az 1 olmalı.' };
+    }
+  }
+
+  await updateActivity(activityId, {
+    ...owned.activity,
+    operatorId: owned.operatorId,
+    location: owned.activity.location,
+    minParticipants,
+    bookingCutoffMinutes: cutoff,
+    prepMinutes: prep,
+  });
+
+  await setEquipmentPool(
+    activityId,
+    wantsPool ? { name: poolName, unitCount, capacityPerUnit } : null
+  );
+
+  // Hazırlık süresi seans aralığını değiştirir; slotlar buna göre yenilenir.
+  const sync = await syncSlots(activityId);
+
+  await log(owned.session, 'activity.updated', 'activity', activityId, {
+    minParticipants,
+    bookingCutoffMinutes: cutoff,
+    prepMinutes: prep,
+    equipment: wantsPool ? `${poolName} ${unitCount}x${capacityPerUnit}` : null,
+  });
+
+  revalidatePath(`/isletme/aktiviteler/${activityId}/takvim`);
+  return {
+    message:
+      sync.keptWithBookings.length > 0
+        ? `Kaydedildi. ${sync.keptWithBookings.length} slot rezervasyonu olduğu için korundu.`
+        : 'Kaydedildi.',
+  };
 }

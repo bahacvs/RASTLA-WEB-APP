@@ -4,7 +4,14 @@ import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { cancelBooking, createBooking, getBookingByCode } from '@/lib/db/bookings';
 import { findOrCreateUser, getUser, normalizePhone } from '@/lib/db/users';
-import { getSlot, listSlots, releaseCapacity, reserveCapacity, type Slot } from '@/lib/db/slots';
+import {
+  gateBooking,
+  getSlot,
+  listSlots,
+  releaseCapacity,
+  reserveCapacity,
+  type Slot,
+} from '@/lib/db/slots';
 import { getUserId, setUserSession } from '@/lib/session';
 import { currentUserId } from '@/lib/auth';
 import { sendVerificationCode, verifyCode } from '@/lib/verification';
@@ -42,10 +49,9 @@ export type BookingFormState = {
   phoneHint?: string;
 };
 
-/** Seçilen aktivitenin kapasite moduna göre slottan kaç birim düşeceğini hesaplar. */
-function unitsFor(capacityMode: 'per_person' | 'per_booking', party: number): number {
-  return capacityMode === 'per_person' ? party : 1;
-}
+// Birim hesabı `gateBooking`'e taşındı (lib/db/slots.ts): manuel rezervasyon
+// da aynı hesabı yapmak zorunda ve iki kopya, kapasite modunun bir yerde
+// güncellenip diğerinde unutulmasına açıktı.
 
 /** Takvimde bir gün seçildiğinde o günün slotlarını getirir. */
 export async function slotsForDate(activitySlug: string, date: string): Promise<Slot[]> {
@@ -152,10 +158,18 @@ export async function createBookingAction(
   // kimliğe güvenilmez.
   if (slot.activityId !== activity.id) return { error: 'Seçilen saat bu aktiviteye ait değil.' };
 
-  const units = unitsFor(activity.capacityMode, adults + children);
+  // Minimum katılımcı, son rezervasyon kesiti ve ekipman ihtiyacı tek kapıda.
+  // Manuel rezervasyon da aynı kapıdan geçiyor (bkz. lib/db/slots.ts).
+  const gate = await gateBooking(activity, slot, adults + children);
+  if (!gate.ok) return { error: gate.error };
 
-  const reserved = await reserveCapacity(slot.id, units);
+  const { units, equipment } = gate;
+
+  const reserved = await reserveCapacity(slot.id, units, equipment);
   if (!reserved.ok) {
+    if (reserved.reason === 'no_equipment') {
+      return { error: 'Bu saatte yeterli ekipman kalmadı. Lütfen başka bir saat seçin.' };
+    }
     if (reserved.reason === 'full') {
       return { error: 'Bu saat az önce doldu. Lütfen başka bir saat seçin.' };
     }
@@ -259,7 +273,7 @@ export async function createBookingAction(
     }
 
     // Rezervasyon yazılamadıysa kapasiteyi geri ver; yoksa yer boşuna kilitlenir.
-    await releaseCapacity(slot.id, units);
+    await releaseCapacity(slot.id, units, equipment);
     return { error: 'Rezervasyon oluşturulamadı. Lütfen tekrar deneyin.' };
   }
 

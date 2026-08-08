@@ -112,9 +112,15 @@ export function AddMemberForm() {
         <label htmlFor="role" className="mb-1 block text-label-bold text-on-surface-variant">
           Yetki
         </label>
+        {/*
+          Varsayılan en dar yetki. Yeni hesap açan kişi genellikle listeden
+          ilkini seçer; en geniş yetkiyi başa koymak, olması gerekenden fazla
+          yetkili hesapların birikmesiyle sonuçlanır.
+        */}
         <select id="role" name="role" defaultValue="staff" className={FIELD}>
-          <option value="staff">Personel — bilet okutur, rezervasyonları görür</option>
-          <option value="owner">Sahip — aktivite, takvim ve ekip yönetir</option>
+          <option value="staff">Saha personeli — bugünü görür, bilet okutur</option>
+          <option value="manager">Yönetici — takvim, aktivite ve rezervasyon yönetir</option>
+          <option value="owner">Sahip — finans, hak ediş ve ekip dahil her şey</option>
         </select>
       </div>
 

@@ -34,6 +34,15 @@ export const TEST_ACCOUNTS = [
     role: 'staff',
     phone: null,
   },
+  // Yönetici: operasyonu yürütür ama finansa giremez. Üç rolün de sınanması
+  // gerekiyor; yalnızca uçlar (sahip ve saha personeli) test edilseydi
+  // aradaki rolün yanlış tarafa düşmesi görülmezdi.
+  {
+    operatorId: 'buyukcekmece-wsc',
+    email: 'test-yonetici@buyukcekmece.local',
+    role: 'manager',
+    phone: null,
+  },
   // İkinci faktörü olan hesap.
   {
     operatorId: 'buyukcekmece-wsc',
@@ -79,7 +88,7 @@ export async function ensureTestAccounts() {
         randomUUID(),
         account.operatorId,
         account.email,
-        `Test ${account.role === 'owner' ? 'Sahibi' : 'Personeli'}`,
+        `Test ${{ owner: 'Sahibi', manager: 'Yöneticisi', staff: 'Personeli' }[account.role]}`,
         hashPassword(TEST_PASSWORD),
         account.role,
         now,
@@ -89,11 +98,58 @@ export async function ensureTestAccounts() {
   }
 }
 
+/**
+ * RASTLA operasyon ekibi test hesapları.
+ *
+ * İki rol de gerekiyor: `reviewer` işletme doğrular ama komisyona ve hak
+ * edişe dokunamaz. Yalnızca `admin` sınansaydı, inceleme rolünün yanlış
+ * tarafa düşmesi — yani her gün ilan bakan birinin sözleşme değiştirebilmesi —
+ * görülmezdi.
+ */
+export const PLATFORM_ACCOUNTS = [
+  { email: 'test-admin@rastla.local', name: 'Test Yönetici', role: 'admin' },
+  { email: 'test-inceleme@rastla.local', name: 'Test İnceleme', role: 'reviewer' },
+];
+
+export function platformEmailFor(role = 'admin') {
+  const found = PLATFORM_ACCOUNTS.find((a) => a.role === role);
+  if (!found) throw new Error(`platform test hesabı tanımlı değil: ${role}`);
+  return found.email;
+}
+
+export async function ensurePlatformAccounts() {
+  const db = await connect();
+  const now = new Date().toISOString();
+
+  for (const account of PLATFORM_ACCOUNTS) {
+    await db.run(
+      `INSERT INTO platform_users (id, email, name, password_hash, role, status, created_at)
+       VALUES (?, ?, ?, ?, ?, 'active', ?)
+       ON CONFLICT (email) DO UPDATE SET
+         password_hash = excluded.password_hash,
+         status = 'active',
+         role = excluded.role`,
+      [randomUUID(), account.email, account.name, hashPassword(TEST_PASSWORD), account.role, now]
+    );
+  }
+}
+
+/** Yönetim paneline gerçek giriş formundan girer. */
+export async function loginAsPlatform(page, baseUrl, role = 'admin') {
+  await page.goto(`${baseUrl}/yonetim`, { waitUntil: 'networkidle' });
+  await page.fill('#email', platformEmailFor(role));
+  await page.fill('#password', TEST_PASSWORD);
+  await page.getByRole('button', { name: 'Giriş Yap' }).click();
+  await page.waitForURL(/\/yonetim\/isletmeler/, { timeout: 15000 });
+}
+
 /** Giriş formunu gerçek yoldan doldurur — oturum çerezi elle üretilmez. */
 export async function loginAs(page, baseUrl, operatorId, role = 'owner') {
   await page.goto(`${baseUrl}/isletme`, { waitUntil: 'networkidle' });
   await page.fill('#email', emailFor(operatorId, role));
   await page.fill('#password', TEST_PASSWORD);
   await page.getByRole('button', { name: 'Giriş Yap' }).click();
-  await page.waitForURL(/\/isletme\/tara/, { timeout: 15000 });
+  // Giriş sonrası varsayılan ekran role göre değişiyor: Bugün'ü görebilen
+  // oraya, göremeyen bilet okutma ekranına düşüyor.
+  await page.waitForURL(/\/isletme\/(bugun|tara)/, { timeout: 15000 });
 }

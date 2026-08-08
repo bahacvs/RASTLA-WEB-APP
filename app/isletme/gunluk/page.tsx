@@ -1,9 +1,8 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { redirect } from 'next/navigation';
 import { OperatorNav } from '@/components/OperatorNav';
 import { Icon } from '@/components/Icon';
-import { currentOperator } from '@/lib/auth';
+import { requireOperatorPage } from '@/lib/auth';
 import { listOperatorUsers } from '@/lib/db/operators';
 import {
   countAudit,
@@ -89,9 +88,7 @@ export default async function AuditLogPage({
 }: {
   searchParams: Promise<{ sayfa?: string; eylem?: string }>;
 }) {
-  const session = await currentOperator();
-  if (!session) redirect('/isletme');
-  if (session.user.role !== 'owner') redirect('/isletme/tara');
+  const session = await requireOperatorPage('gunluk.goruntule');
 
   const { sayfa, eylem } = await searchParams;
   const page = Math.max(Number(sayfa) || 1, 1);

@@ -23,6 +23,16 @@ export type ScheduleRule = {
   active: boolean;
 };
 
+export type EquipmentPool = {
+  id: string;
+  activityId: string;
+  name: string;
+  /** Kaç araç var: 3 jet ski. */
+  unitCount: number;
+  /** Bir araca kaç kişi biner: 2. */
+  capacityPerUnit: number;
+};
+
 export type Slot = {
   id: string;
   activityId: string;
@@ -31,9 +41,14 @@ export type Slot = {
   time: string;
   capacity: number;
   booked: number;
+  /** Ekipman sınırı; havuz tanımlı değilse null. */
+  unitCapacity: number | null;
+  unitsBooked: number;
   status: 'open' | 'closed';
   /** Kalan yer. Kapalı slotta 0. */
   remaining: number;
+  /** Kalan araç. Havuz yoksa null — "sınırsız" ile "bitti" karışmasın. */
+  remainingUnits: number | null;
 };
 
 type RuleRow = {
@@ -57,6 +72,8 @@ type SlotRow = {
   slot_time: string;
   capacity: number;
   booked: number;
+  unit_capacity: number | null;
+  units_booked: number;
   status: 'open' | 'closed';
 };
 
@@ -84,8 +101,16 @@ function toSlot(row: SlotRow): Slot {
     time: row.slot_time,
     capacity: row.capacity,
     booked: row.booked,
+    unitCapacity: row.unit_capacity,
+    unitsBooked: row.units_booked ?? 0,
     status: row.status,
     remaining: row.status === 'open' ? Math.max(0, row.capacity - row.booked) : 0,
+    remainingUnits:
+      row.unit_capacity === null
+        ? null
+        : row.status === 'open'
+          ? Math.max(0, row.unit_capacity - (row.units_booked ?? 0))
+          : 0,
   };
 }
 
@@ -117,13 +142,71 @@ function weekdayIndex(date: Date): number {
  * Kuralın bir gün için ürettiği saatler.
  * start_time dahil, end_time hariç: 08:00–18:00 / 15 dk => 40 saat (08:00 … 17:45).
  */
-export function timesForRule(rule: Pick<ScheduleRule, 'startTime' | 'endTime' | 'intervalMinutes'>): string[] {
+export function timesForRule(
+  rule: Pick<ScheduleRule, 'startTime' | 'endTime' | 'intervalMinutes'>,
+  prepMinutes = 0
+): string[] {
   const start = toMinutes(rule.startTime);
   const end = toMinutes(rule.endTime);
   const times: string[] = [];
 
-  for (let m = start; m < end; m += rule.intervalMinutes) times.push(toTime(m));
+  // Hazırlık süresi aralığa EKLENİR, aralıktan düşülmez: 15 dakikalık tur +
+  // 5 dakika hazırlık = 20 dakikada bir kalkış. Düşülseydi seanslar üst üste
+  // biner ve ekip iki grubu aynı anda karşılamak zorunda kalırdı.
+  const step = rule.intervalMinutes + Math.max(0, prepMinutes);
+
+  for (let m = start; m < end; m += step) times.push(toTime(m));
   return times;
+}
+
+/**
+ * Aktivitenin ekipman havuzu — yoksa null.
+ *
+ * Şimdilik ilk havuz kullanılıyor (bkz. schema.sql'deki not). Birden çok
+ * kaynağı aynı anda kısıtlamak ayrı bir tahsis problemi.
+ */
+export async function getEquipmentPool(activityId: string): Promise<EquipmentPool | null> {
+  const row = await (
+    await db()
+  ).get<{ id: string; activity_id: string; name: string; unit_count: number; capacity_per_unit: number }>(
+    'SELECT * FROM equipment_pools WHERE activity_id = ? ORDER BY created_at LIMIT 1',
+    [activityId]
+  );
+
+  return row
+    ? {
+        id: row.id,
+        activityId: row.activity_id,
+        name: row.name,
+        unitCount: row.unit_count,
+        capacityPerUnit: row.capacity_per_unit,
+      }
+    : null;
+}
+
+export async function setEquipmentPool(
+  activityId: string,
+  input: { name: string; unitCount: number; capacityPerUnit: number } | null
+): Promise<void> {
+  const client = await db();
+  await client.run('DELETE FROM equipment_pools WHERE activity_id = ?', [activityId]);
+
+  if (input) {
+    await client.run(
+      `INSERT INTO equipment_pools (id, activity_id, name, unit_count, capacity_per_unit, created_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [randomUUID(), activityId, input.name, input.unitCount, input.capacityPerUnit, new Date().toISOString()]
+    );
+  }
+
+  // Havuz değişince İLERİDEKİ slotların sınırı güncellenir. Geçmiş ve
+  // rezervasyonu olan slotlar korunur: bir seansın dayandığı sınırı geriye
+  // dönük değiştirmek, o rezervasyonları geçersiz kılabilirdi.
+  await client.run(
+    `UPDATE slots SET unit_capacity = ?
+      WHERE activity_id = ? AND slot_date >= ? AND units_booked = 0`,
+    [input ? input.unitCount : null, activityId, toIsoDate(new Date())]
+  );
 }
 
 // ------------------------------------------------------------------- kurallar
@@ -187,12 +270,22 @@ export async function setRuleActive(ruleId: string, active: boolean) {
 export async function generateSlots(rule: ScheduleRule, horizonDays = 90): Promise<number> {
   if (!rule.active) return 0;
 
-  const times = timesForRule(rule);
+  // Hazırlık süresi ve ekipman sınırı aktiviteden gelir; kuralın kendisinde
+  // durmuyor çünkü ikisi de aktivitenin fiziksel gerçeği (kaç araç var, kaç
+  // dakikada hazırlanıyor), takvimin tercihi değil.
+  const activity = await (
+    await db()
+  ).get<{ prep_minutes: number }>('SELECT prep_minutes FROM activities WHERE id = ?', [
+    rule.activityId,
+  ]);
+  const pool = await getEquipmentPool(rule.activityId);
+
+  const times = timesForRule(rule, activity?.prep_minutes ?? 0);
   if (times.length === 0) return 0;
 
   const client = await db();
-  const INSERT = `INSERT INTO slots (id, activity_id, rule_id, slot_date, slot_time, capacity, booked, status, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, 0, 'open', ?)
+  const INSERT = `INSERT INTO slots (id, activity_id, rule_id, slot_date, slot_time, capacity, booked, unit_capacity, units_booked, status, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, 0, ?, 0, 'open', ?)
      ON CONFLICT (activity_id, slot_date, slot_time) DO NOTHING`;
 
   const today = new Date();
@@ -222,6 +315,7 @@ export async function generateSlots(rule: ScheduleRule, horizonDays = 90): Promi
         date,
         time,
         rule.capacity,
+        pool ? pool.unitCount : null,
         now,
       ]);
       added += result.changes;
@@ -337,29 +431,45 @@ export async function setSlotStatus(slotId: string, status: 'open' | 'closed') {
 
 export type ReserveResult =
   | { ok: true; slot: Slot }
-  | { ok: false; reason: 'not_found' | 'closed' | 'full' };
+  | { ok: false; reason: 'not_found' | 'closed' | 'full' | 'no_equipment' };
 
 /**
  * Slottan kapasite düşer. Aşırı rezervasyona kapalıdır.
  *
  * Garanti tek bir koşullu UPDATE'e dayanır — bilet onayındaki desenin aynısı:
  *
- *   UPDATE slots SET booked = booked + :units
- *    WHERE id = :id AND status = 'open' AND booked + :units <= capacity
+ *   UPDATE slots SET booked = booked + :units, units_booked = units_booked + :eq
+ *    WHERE id = :id AND status = 'open'
+ *      AND booked + :units <= capacity
+ *      AND (unit_capacity IS NULL OR units_booked + :eq <= unit_capacity)
  *
  * Bu ifade atomiktir. Son yeri iki kişi aynı anda almaya çalıştığında
  * güncellemeler sıraya girer; ilki kapasiteyi tüketir, ikincisinin WHERE
  * koşulu artık tutmaz ve 0 satır etkiler. Hiçbir yerde "önce say, uygun mu
  * bak, sonra ekle" yapılmaz — o yaklaşım yarış durumuna açıktır.
+ *
+ * EKİPMAN SINIRI AYNI İFADEYE EKLENDİ, ayrı bir sorgu olarak değil. İki ayrı
+ * UPDATE olsaydı arada başka bir işlem araya girebilir ve kişi kapasitesi
+ * tutulmuşken ekipman tutulamayabilirdi — geri alınması gereken yarım bir
+ * durum. Tek ifadede ya ikisi birden olur ya hiçbiri.
+ *
+ * @param units       kişi/rezervasyon sayacından düşecek miktar
+ * @param equipment   ekipman sayacından düşecek araç sayısı (havuz yoksa 0)
  */
-export async function reserveCapacity(slotId: string, units: number): Promise<ReserveResult> {
+export async function reserveCapacity(
+  slotId: string,
+  units: number,
+  equipment = 0
+): Promise<ReserveResult> {
   const result = await (
     await db()
   ).run(
     `UPDATE slots
-        SET booked = booked + ?
-      WHERE id = ? AND status = 'open' AND booked + ? <= capacity`,
-    [units, slotId, units]
+        SET booked = booked + ?, units_booked = units_booked + ?
+      WHERE id = ? AND status = 'open'
+        AND booked + ? <= capacity
+        AND (unit_capacity IS NULL OR units_booked + ? <= unit_capacity)`,
+    [units, equipment, slotId, units, equipment]
   );
 
   if (result.changes === 1) return { ok: true, slot: (await getSlot(slotId))! };
@@ -367,7 +477,79 @@ export async function reserveCapacity(slotId: string, units: number): Promise<Re
   const slot = await getSlot(slotId);
   if (!slot) return { ok: false, reason: 'not_found' };
   if (slot.status === 'closed') return { ok: false, reason: 'closed' };
+  // Kişi yeri varken ekipman bitmiş olabilir; kullanıcıya "dolu" demek yerine
+  // hangi sınıra takıldığı söylenebilsin diye ayrıldı.
+  if (slot.unitCapacity !== null && slot.unitsBooked + equipment > slot.unitCapacity) {
+    return { ok: false, reason: 'no_equipment' };
+  }
   return { ok: false, reason: 'full' };
+}
+
+/**
+ * Bir rezervasyonun kaç araç tuttuğunu hesaplar.
+ *
+ * 2 kişilik jet skiye 3 kişi binmek isterse 2 araç gider — bölme yukarı
+ * yuvarlanır. Havuz yoksa ekipman sayacı hiç kullanılmaz.
+ */
+export function equipmentUnitsFor(
+  participants: number,
+  pool: { capacityPerUnit: number } | null
+): number {
+  if (!pool) return 0;
+  return Math.ceil(participants / pool.capacityPerUnit);
+}
+
+export type BookingGate =
+  | { ok: true; units: number; equipment: number }
+  | { ok: false; error: string };
+
+/**
+ * Rezervasyon açılmadan ÖNCE geçilmesi gereken kapı.
+ *
+ * Hem müşterinin kendi rezervasyonu hem işletmenin manuel kaydı buradan
+ * geçer. Tek yerde durmasının sebebi somut: iki ayrı yol olsaydı, telefondan
+ * gelen müşteri için kesit uygulanmaz ve işletme farkında olmadan başlamış
+ * bir seansa kayıt açabilirdi.
+ *
+ * Kapasite BURADA tutulmuyor — yalnızca hesaplanıp doğrulanıyor. Tutma işi
+ * `reserveCapacity`'nin tek koşullu UPDATE'inde; araya başka bir adım
+ * koymak yarış penceresi açardı.
+ */
+export async function gateBooking(
+  activity: {
+    id: string;
+    capacityMode: 'per_person' | 'per_booking';
+    minParticipants: number;
+    bookingCutoffMinutes: number;
+  },
+  slot: { date: string; time: string },
+  participants: number,
+  now = new Date()
+): Promise<BookingGate> {
+  if (participants < activity.minParticipants) {
+    return {
+      ok: false,
+      error: `Bu aktivite en az ${activity.minParticipants} kişiyle yapılıyor.`,
+    };
+  }
+
+  if (activity.bookingCutoffMinutes > 0) {
+    const startsAt = new Date(`${slot.date}T${slot.time}:00`);
+    const minutesLeft = (startsAt.getTime() - now.getTime()) / 60000;
+    if (minutesLeft < activity.bookingCutoffMinutes) {
+      return {
+        ok: false,
+        error: `Bu saate rezervasyon kapandı; en geç ${activity.bookingCutoffMinutes} dakika önce alınabiliyor.`,
+      };
+    }
+  }
+
+  const pool = await getEquipmentPool(activity.id);
+  return {
+    ok: true,
+    units: activity.capacityMode === 'per_person' ? participants : 1,
+    equipment: equipmentUnitsFor(participants, pool),
+  };
 }
 
 /**

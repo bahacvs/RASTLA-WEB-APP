@@ -162,6 +162,26 @@ export default async function HomePage() {
             ))}
           </div>
         </section>
+        {/*
+          İşletme tarafına giden tek görünür kapı.
+          Alt gezinme çubuğuna KONMADI: o çubuk müşterinin dört ana ekranı
+          için ve beşinci bir sekme, ziyaretçilerin çoğuna hiç işe yaramayan
+          bir yer kaplardı. Sayfanın sonu doğru yer — buraya kadar gelen
+          ziyaretçi zaten ne aradığını biliyor.
+        */}
+        <section className="mb-xl rounded-xl border border-outline-variant bg-surface-container-low p-lg">
+          <h2 className="mb-xs text-headline-sm text-on-background">İşletmeniz mi var?</h2>
+          <p className="mb-md text-body-md text-on-surface-variant">
+            Boş kontenjanınızı gelire dönüştürün. Kurulum ücreti yok; yalnızca gerçekleşen
+            satıştan komisyon.
+          </p>
+          <Link
+            href="/partner"
+            className="inline-block rounded-lg bg-primary px-5 py-3 text-label-bold text-on-primary transition-transform active:scale-95"
+          >
+            RASTLA Partner
+          </Link>
+        </section>
       </main>
 
       <BottomNavBar />

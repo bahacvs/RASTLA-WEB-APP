@@ -174,11 +174,23 @@ const now = new Date().toISOString();
 
 // İşletmeler aktivitelerden önce yazılır: activities.operator_id bir yabancı
 // anahtardır ve foreign_keys açıktır.
+// Örnek işletmeler DOĞRULANMIŞ olarak yazılıyor.
+//
+// Bunlar RASTLA'nın kendi tanıttığı örnek kayıtlar; gerçek bir başvurudan
+// gelmiyorlar ve doğrulama kontrolünden geçmiş kabul ediliyorlar. Aksi hâlde
+// örnek verinin tamamı incelemede takılır ve "Yayına Al" hiçbir şey
+// göstermezdi. **Gerçek bir işletme bu yoldan gelmez**: kaydolan işletme
+// 'basvuru' ile başlar (şemadaki varsayılan) ve rozeti ancak /yonetim
+// üzerinden verilen kararla alır.
 for (const o of OPERATORS) {
   await db.run(
-    `INSERT INTO operators (id, name, created_at) VALUES (?, ?, ?)
-       ON CONFLICT (id) DO UPDATE SET name = excluded.name`,
-    [o.id, o.name, now]
+    `INSERT INTO operators (id, name, created_at, verification_status, verified_at)
+       VALUES (?, ?, ?, 'dogrulandi', ?)
+       ON CONFLICT (id) DO UPDATE SET
+         name = excluded.name,
+         verification_status = 'dogrulandi',
+         verified_at = COALESCE(operators.verified_at, excluded.verified_at)`,
+    [o.id, o.name, now, now]
   );
 }
 

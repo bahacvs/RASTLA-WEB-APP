@@ -22,7 +22,7 @@ import { join } from 'node:path';
 import { chromium } from 'playwright';
 import sharp from 'sharp';
 import { db as connect } from '../lib/db/index.mjs';
-import { ensureTestAccounts, TEST_PASSWORD, emailFor } from './lib/test-accounts.mjs';
+import { ensureTestAccounts, loginAs } from './lib/test-accounts.mjs';
 
 const BASE = process.env.BASE_URL ?? 'http://127.0.0.1:3000';
 const OWNER_OPERATOR = 'buyukcekmece-wsc';
@@ -100,13 +100,9 @@ check('bomba dosyası küçük ama devasa piksel taşıyor', bomb.length < 2_000
 
 // ------------------------------------------------------------------- yardımcı
 
-async function login(page, operatorId, role = 'owner') {
-  await page.goto(`${BASE}/isletme`, { waitUntil: 'networkidle' });
-  await page.fill('#email', emailFor(operatorId, role));
-  await page.fill('#password', TEST_PASSWORD);
-  await page.getByRole('button', { name: 'Giriş Yap' }).click();
-  await page.waitForURL(/\/isletme\/tara/, { timeout: 15000 });
-}
+// Giriş sonrası varılan ekran role göre değişiyor (sahip artık Bugün'e
+// düşüyor); bekleme mantığı tek yerde, scripts/lib/test-accounts.mjs içinde.
+const login = (page, operatorId, role = 'owner') => loginAs(page, BASE, operatorId, role);
 
 /**
  * Aktivite düzenleme ekranından dosya yükler ve ekrandaki cevabı döner.

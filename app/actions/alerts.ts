@@ -1,7 +1,7 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { currentOperator } from '@/lib/auth';
+import { requireCapability } from '@/lib/auth';
 import { resolveAlert } from '@/lib/alerts/index.mjs';
 
 export type AlertState = { error?: string };
@@ -21,9 +21,8 @@ export async function resolveAlertAction(
   _prev: AlertState,
   formData: FormData
 ): Promise<AlertState> {
-  const session = await currentOperator();
-  if (!session) return { error: 'Oturum sona ermiş.' };
-  if (session.user.role !== 'owner') return { error: 'Bu işlem için yetkiniz yok.' };
+  const session = await requireCapability('uyari.kapat');
+  if (!session) return { error: 'Bu işlem için yetkiniz yok.' };
 
   const alertId = String(formData.get('alertId') ?? '');
   if (!alertId) return { error: 'Uyarı bulunamadı.' };

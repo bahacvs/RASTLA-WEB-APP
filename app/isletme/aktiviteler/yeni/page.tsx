@@ -1,8 +1,7 @@
 import type { Metadata } from 'next';
-import { redirect } from 'next/navigation';
 import { OperatorNav } from '@/components/OperatorNav';
 import { ActivityForm } from '../ActivityForm';
-import { currentOperator } from '@/lib/auth';
+import { requireOperatorPage } from '@/lib/auth';
 
 export const metadata: Metadata = {
   title: 'Yeni Aktivite',
@@ -10,10 +9,7 @@ export const metadata: Metadata = {
 };
 
 export default async function NewActivityPage() {
-  const session = await currentOperator();
-  if (!session) redirect('/isletme');
-  // Aktivite yönetimi sahibe ayrılmış; personel bilet ekranına döner.
-  if (session.user.role !== 'owner') redirect('/isletme/tara');
+  const session = await requireOperatorPage('aktivite.yonet');
 
   return (
     <div className="min-h-screen">
