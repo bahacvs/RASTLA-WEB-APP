@@ -7,6 +7,8 @@ import { isMapEnabled } from '@/lib/map';
 import { SearchResultCard } from '@/components/SearchResultCard';
 import { BottomNavBar } from '@/components/BottomNavBar';
 import { FilterModal } from './FilterModal';
+import { sortByDistance } from '@/lib/geo';
+import { useNearby } from '@/lib/use-nearby';
 import {
   CATEGORIES,
   filterActivities,
@@ -36,6 +38,8 @@ export function SearchView({
     west: number;
   } | null>(null);
 
+  const nearby = useNearby();
+
   const results = useMemo(() => {
     const matched = filterActivities(activities, { query, category });
     if (!bounds) return matched;
@@ -50,6 +54,16 @@ export function SearchView({
         a.lng >= bounds.west
     );
   }, [activities, query, category, bounds]);
+
+  /**
+   * Konum verilmişse sonuçlar yakından uzağa sıralanır ve her karta mesafe
+   * yazılır. Verilmemişse liste olduğu gibi kalır — sıralama bir ek, filtre
+   * değil: konum paylaşmayan kullanıcı daha az sonuç görmüyor.
+   */
+  const ordered = useMemo(() => {
+    if (nearby.state.status !== 'ready') return results.map((item) => ({ item, km: null }));
+    return sortByDistance(results, nearby.state.coords);
+  }, [results, nearby.state]);
 
   return (
     <div className="pb-[80px]">
@@ -89,6 +103,27 @@ export function SearchView({
           >
             <Icon name="tune" size={18} />
             Filtrele
+          </button>
+
+          {/*
+            Konum izni burada, kullanıcının bastığı bir düğmeyle isteniyor.
+            Sayfa açılır açılmaz sormak daha çok reddedilir ve tarayıcı o
+            reddi kalıcı sayar — bir kez otomatik sorup reddedilmek, özelliği
+            o kullanıcı için tamamen kapatır.
+          */}
+          <button
+            type="button"
+            onClick={nearby.state.status === 'ready' ? nearby.clear : nearby.request}
+            disabled={nearby.state.status === 'asking'}
+            aria-pressed={nearby.state.status === 'ready'}
+            className={`flex items-center gap-xs rounded-full border px-4 py-2 text-label-bold whitespace-nowrap transition-transform active:scale-95 disabled:opacity-60 ${
+              nearby.state.status === 'ready'
+                ? 'border-primary bg-primary text-on-primary'
+                : 'border-outline-variant bg-surface-container-lowest text-on-surface-variant'
+            }`}
+          >
+            <Icon name="location_on" size={18} filled={nearby.state.status === 'ready'} />
+            {nearby.state.status === 'asking' ? 'Konum alınıyor…' : 'Yakınımdakiler'}
           </button>
 
           {/* Kategori çipleri. Aktif olan yeniden tıklanınca filtre kalkar. */}
@@ -147,13 +182,32 @@ export function SearchView({
           <div className="flex flex-col gap-md p-container-margin">
             <p className="text-body-md text-on-surface-variant" aria-live="polite">
               {results.length > 0
-                ? `${results.length} deneyim bulundu`
+                ? `${results.length} deneyim bulundu${
+                    nearby.state.status === 'ready' ? ' — sana en yakından sıralı' : ''
+                  }`
                 : 'Aramanla eşleşen deneyim yok'}
             </p>
 
+            {/*
+              Konum reddedilirse ya da alınamazsa liste normal sırasıyla
+              çalışmaya devam ediyor; bu bir bilgi satırı, hata ekranı değil.
+              Reddetmek özelliği kaybettirir, aramayı değil.
+            */}
+            {nearby.state.status === 'denied' && (
+              <p className="rounded-lg border border-outline-variant bg-surface-container px-3 py-2 text-body-md text-on-surface-variant">
+                Konum izni verilmedi. Sonuçlar normal sırayla listeleniyor; izni tarayıcı
+                ayarlarından açıp tekrar deneyebilirsin.
+              </p>
+            )}
+            {nearby.state.status === 'unavailable' && (
+              <p className="rounded-lg border border-outline-variant bg-surface-container px-3 py-2 text-body-md text-on-surface-variant">
+                Konum alınamadı. Sonuçlar normal sırayla listeleniyor.
+              </p>
+            )}
+
             {results.length > 0 ? (
-              results.map((activity) => (
-                <SearchResultCard key={activity.slug} activity={activity} />
+              ordered.map(({ item, km }) => (
+                <SearchResultCard key={item.slug} activity={item} distanceKm={km} />
               ))
             ) : (
               <div className="rounded-xl border border-outline-variant bg-surface-container-lowest p-lg text-center shadow-card">

@@ -64,11 +64,16 @@ function securityHeaders() {
     // Dış adrese yalnızca kaynak (origin) gider, tam yol gitmez. Bilet ve
     // rezervasyon adresleri kod içeriyor; bunların dışarı sızmaması gerekiyor.
     { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
-    // Kamera AÇIK bırakılıyor: /isletme/tara bilet okuturken kullanıyor.
-    // Kapatmak QR okuyucuyu bozardı. Geri kalanına ihtiyaç yok.
+    // Kamera AÇIK: /isletme/tara bilet okuturken kullanıyor.
+    // Konum AÇIK: /ara "Yakınımdakiler" ile sonuçları mesafeye göre sıralıyor.
+    //   Koordinat tarayıcıda kalıyor, sunucuya gönderilmiyor (bkz. lib/geo.ts) —
+    //   ama izin başlıkta kapalıysa tarayıcı API'yi hiç çağırtmaz, o yüzden
+    //   burada açık olmak zorunda.
+    // Geri kalanına ihtiyaç yok.
     {
       key: 'Permissions-Policy',
-      value: 'camera=(self), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()',
+      value:
+        'camera=(self), geolocation=(self), microphone=(), payment=(), usb=(), interest-cohort=()',
     },
   ];
 }

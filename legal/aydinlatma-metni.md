@@ -73,6 +73,14 @@ Arama ekranındaki harita, karo görüntülerini yurt dışındaki bir sağlayı
 
 İşletmelerin yüklediği aktivite fotoğrafları **RASTLA'nın kendi alan adından** sunulur; görsel görüntülemek için tarayıcınız başka bir sunucuya istek atmaz.
 
+### 2.6 Konumunuzu paylaştığınızda
+
+Arama ekranındaki **"Yakınımdakiler"** düğmesine bastığınızda tarayıcınız sizden konum izni ister. İzin verirseniz aktiviteler size en yakından uzağa sıralanır ve her ilanın yanında kuş uçuşu mesafe gösterilir.
+
+**Konum bilginiz RASTLA'nın sunucularına gönderilmez.** Hesaplama tamamen tarayıcınızda yapılır; koordinatınız hiçbir yere kaydedilmez, hiçbir kayda geçmez, çerez ya da yerel depoya yazılmaz ve sekmeyi kapattığınızda kalmaz. Bu nedenle konum verinize ilişkin bir saklama süresi ya da silme talebi söz konusu değildir — saklanan bir veri yoktur.
+
+İzin vermemeniz durumunda arama normal şekilde çalışmaya devam eder; yalnızca mesafeye göre sıralama yapılmaz. İzni istediğiniz zaman tarayıcı ayarlarınızdan geri alabilirsiniz.
+
 ## 3. Kişisel verilerinizin işlenme amaçları
 
 - Rezervasyonunuzun oluşturulması, biletinizin üretilmesi ve size iletilmesi
