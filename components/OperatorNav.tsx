@@ -16,9 +16,7 @@ import type { OperatorSession } from '@/lib/auth';
  * yalnızca kişiye giremeyeceği kapıları göstermemek için.
  */
 const LINKS: { href: string; label: string; needs: Capability }[] = [
-  // 'bugun.goruntule' yeteneği tanımlı ama ekranı henüz yok; bağlantı, sayfa
-  // açıldığında eklenecek. Olmayan bir sayfaya menüden bağlantı vermek,
-  // tıklayana 404 göstermek demek.
+  { href: '/isletme/bugun', label: 'Bugün', needs: 'bugun.goruntule' },
   { href: '/isletme/tara', label: 'Bilet Okut', needs: 'checkin.yap' },
   { href: '/isletme/rezervasyonlar', label: 'Rezervasyonlar', needs: 'rezervasyon.goruntule' },
   { href: '/isletme/aktiviteler', label: 'Aktiviteler', needs: 'aktivite.yonet' },

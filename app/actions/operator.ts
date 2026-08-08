@@ -157,7 +157,7 @@ export async function operatorLoginAction(
   });
 
   await setOperatorSession(result.user.id);
-  redirect('/isletme/tara');
+  redirect('/isletme/bugun');
 }
 
 /**
@@ -221,7 +221,7 @@ export async function operatorVerifyAction(
   });
 
   await setOperatorSession(user.id);
-  redirect('/isletme/tara');
+  redirect('/isletme/bugun');
 }
 
 /**

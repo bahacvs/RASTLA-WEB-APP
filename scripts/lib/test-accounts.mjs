@@ -104,5 +104,7 @@ export async function loginAs(page, baseUrl, operatorId, role = 'owner') {
   await page.fill('#email', emailFor(operatorId, role));
   await page.fill('#password', TEST_PASSWORD);
   await page.getByRole('button', { name: 'Giriş Yap' }).click();
-  await page.waitForURL(/\/isletme\/tara/, { timeout: 15000 });
+  // Giriş sonrası varsayılan ekran role göre değişiyor: Bugün'ü görebilen
+  // oraya, göremeyen bilet okutma ekranına düşüyor.
+  await page.waitForURL(/\/isletme\/(bugun|tara)/, { timeout: 15000 });
 }

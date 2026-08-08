@@ -50,6 +50,9 @@ export const AUDIT_ACTIONS = [
   // Bilet — geri alınamaz işlemler
   'booking.created',
   'booking.redeemed',
+  // Müşteri gelmedi. Ayrı bir eylem: 'iptal' değil — hizmet sunulmaya hazırdı
+  // ve yer tutuldu; uyuşmazlıkta ikisi farklı sonuç doğurur.
+  'booking.no_show',
   'booking.redeem_failed',
   'booking.cancelled',
   'booking.day_cancelled',

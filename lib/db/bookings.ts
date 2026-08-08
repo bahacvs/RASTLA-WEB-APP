@@ -19,52 +19,17 @@ export type BookingStatus =
 /** İptali kimin yaptığı. `weather` ayrı tutulur: müşteri kusurlu değildir. */
 export type CancelReason = 'customer' | 'operator' | 'weather';
 
-/**
- * Rezervasyonun geldiği kanal.
- *
- * İşletmenin bütün kanallarını sisteme almanın asıl sebebi komisyon değil,
- * müsaitliğin doğru olması: telefondan alınan bir rezervasyon sisteme
- * girilmezse RASTLA müşterisine boş görünen saat aslında doludur.
- */
-export type BookingSource =
-  | 'rastla'
-  | 'link'
-  | 'instagram'
-  | 'whatsapp'
-  | 'phone'
-  | 'hotel'
-  | 'agency'
-  | 'manual';
-
-export const BOOKING_SOURCES: BookingSource[] = [
-  'rastla',
-  'link',
-  'instagram',
-  'whatsapp',
-  'phone',
-  'hotel',
-  'agency',
-  'manual',
-];
-
-export const SOURCE_LABELS: Record<BookingSource, string> = {
-  rastla: 'RASTLA',
-  link: 'Kendi bağlantım',
-  instagram: 'Instagram',
-  whatsapp: 'WhatsApp',
-  phone: 'Telefon',
-  hotel: 'Otel',
-  agency: 'Acente',
-  manual: 'Resepsiyon / elle',
-};
-
-export type PaymentMode = 'online' | 'onsite' | 'deposit';
-
-export const PAYMENT_MODE_LABELS: Record<PaymentMode, string> = {
-  online: 'Ödendi',
-  onsite: 'Tesiste',
-  deposit: 'Kapora',
-};
+// Kaynak ve ödeme biçimi lib/booking-sources.ts'te: istemci bileşenleri de
+// kullanıyor ve bu modülü oradan içe aktarmak veritabanı katmanını tarayıcı
+// paketine çekerdi.
+export {
+  BOOKING_SOURCES,
+  SOURCE_LABELS,
+  PAYMENT_MODE_LABELS,
+  type BookingSource,
+  type PaymentMode,
+} from '@/lib/booking-sources';
+import type { BookingSource, PaymentMode } from '@/lib/booking-sources';
 
 export type Booking = {
   id: string;
@@ -324,7 +289,15 @@ export type RedeemResult =
  */
 export async function redeemBooking(
   code: string,
-  redeemedByUserId: string
+  redeemedByUserId: string,
+  /**
+   * Kaç kişi geldi. Verilmezse rezervasyondaki kişi sayısı yazılır.
+   *
+   * Rezervasyondan farklı olabilir (4 kişilik rezervasyona 3 kişi gelir) ve
+   * uyuşmazlıkta kanıt olur. Hak edişi ETKİLEMEZ: müşteri satın aldığı yeri
+   * kullanmasa da işletme o yeri boş tutmuştur.
+   */
+  attended?: number
 ): Promise<RedeemResult> {
   const normalized = code.trim().toUpperCase();
 
@@ -332,9 +305,10 @@ export async function redeemBooking(
     await db()
   ).run(
     `UPDATE bookings
-        SET status = 'redeemed', redeemed_at = ?, redeemed_by = ?
+        SET status = 'redeemed', redeemed_at = ?, redeemed_by = ?,
+            attended = COALESCE(?, adults + children)
       WHERE code = ? AND status = 'confirmed'`,
-    [new Date().toISOString(), redeemedByUserId, normalized]
+    [new Date().toISOString(), redeemedByUserId, attended ?? null, normalized]
   );
 
   if (result.changes === 1) {
@@ -441,4 +415,33 @@ export async function cancelDay(
   }
 
   return { cancelled, skipped };
+}
+
+
+export type NoShowResult = { ok: true } | { ok: false; reason: 'not_found' | 'not_pending' };
+
+/**
+ * Müşteri gelmedi.
+ *
+ * Kapasite GERİ VERİLMEZ: seans yapıldı, yer tutuldu ve işletme o yeri
+ * başkasına satamadı. İade edilseydi geçmiş bir saatin doluluğu yanlış
+ * görünür ve raporlar bozulurdu.
+ *
+ * Aynı koşullu UPDATE deseni: iki kez işaretlenemez, işaretlenmiş bilet
+ * sonradan okutulamaz (status 'confirmed' olmaktan çıkar).
+ */
+export async function markNoShow(code: string, byUserId: string): Promise<NoShowResult> {
+  const result = await (
+    await db()
+  ).run(
+    `UPDATE bookings
+        SET no_show_at = ?, attended = 0, redeemed_by = ?
+      WHERE code = ? AND status = 'confirmed' AND no_show_at IS NULL`,
+    [new Date().toISOString(), byUserId, code.trim().toUpperCase()]
+  );
+
+  if (result.changes === 1) return { ok: true };
+
+  const booking = await getBookingByCode(code);
+  return { ok: false, reason: booking ? 'not_pending' : 'not_found' };
 }

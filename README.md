@@ -336,6 +336,7 @@ node scripts/verify-offline.mjs       # harita karoları dışında dış istek 
 node scripts/verify-nearby.mjs        # konuma göre sıralama ve konumun ağa ÇIKMADIĞI
 node scripts/verify-permissions.mjs   # üç rolün hangi ekrana girip giremediği
 node scripts/verify-equipment.mjs     # ekipman kapasitesi ve gerçek yarış — sunucu gerekmez
+node scripts/verify-manual-booking.mjs # elle kayıt aynı kapasiteyi tüketiyor mu
 node scripts/verify-audit.mjs         # işlem günlüğü: ne kaydediliyor, ne KAYDEDİLMİYOR
 node scripts/verify-rate-limit.mjs    # hız sınırı ve 30 süreçli eşzamanlılık
 node scripts/verify-jobs.mjs          # zamanlayıcı ucunun yetkilendirmesi

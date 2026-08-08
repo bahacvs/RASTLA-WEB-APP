@@ -86,8 +86,8 @@ export async function requireCapability(
  * yazılsaydı ekran adı değiştiğinde bir kısmı geride kalırdı.
  */
 export function operatorHome(session: OperatorSession | null): string {
-  // Bugün ekranı açıldığında burası '/isletme/bugun' olacak — tek satır.
-  return session ? '/isletme/tara' : '/isletme';
+  if (!session) return '/isletme';
+  return can(session, 'bugun.goruntule') ? '/isletme/bugun' : '/isletme/tara';
 }
 
 /**
