@@ -300,6 +300,51 @@ npm run operator:create -- reset ahmet@ornek.com
 > sistemin bu sorusunu cevaplayabilmesi için tek sebep hesapların kişisel
 > olmasıdır.
 
+## 7b. RASTLA operasyon hesabı
+
+`/yonetim` altındaki panel işletme panelinden **tamamen ayrıdır**: ayrı tablo
+(`platform_users`), ayrı oturum çerezi, ayrı yetkiler. İşletme hesabıyla bu
+panele girilemez.
+
+İlk hesap uygulamadan açılamaz (tavuk-yumurta); sunucuda bir kez:
+
+```bash
+npm run platform:create -- add sen@ornek.com "Adın Soyadın" admin
+```
+
+Parola **yalnızca bir kez** yazdırılır. İki rol var:
+
+| Rol | Yapabildikleri |
+| --- | --- |
+| `reviewer` | İşletme doğrulama, ilan inceleme. Komisyona ve hak edişe dokunamaz. |
+| `admin` | Hepsi: komisyon oranı belirleme, hak ediş durdurma. |
+
+Panelde yapılan her işlem işlem günlüğüne düşer ve "kim yaptı" kayda geçer.
+
+> **İkinci faktör bu panelde yok.** İşletme girişindeki SMS doğrulaması burada
+> bilinçli olarak kullanılmadı: paneli bir SMS sağlayıcısına bağlamak, o
+> sağlayıcı çöktüğünde ilan onayının da durması demek olurdu. Hesap sayısı az
+> ve kontrollü; ikinci faktör bir sonraki turda **donanım anahtarıyla**
+> (WebAuthn) eklenmeli, SMS ile değil. Bu sınır bilinerek kabul edildi.
+
+### İşletme doğrulama
+
+Kaydolan her işletme `basvuru` durumunda başlar. Müşteriye gösterilen
+**"doğrulanmış işletme" rozeti yalnızca `dogrulandi` durumunda** çizilir; ara
+durumlar RASTLA'nın iç iş akışıdır ve dışarıya sızmaz.
+
+Doğrulanmamış bir işletmenin ilanı yayına verildiğinde doğrudan yayına
+çıkmaz, `/yonetim/ilanlar` kuyruğuna düşer. Doğrulanmış işletme doğrudan
+yayına çıkar — kontrolün konusu ilan metni değil işletmenin kendisidir ve o
+kontrol bir kez yapılır.
+
+### Hak ediş durdurma
+
+Uyuşmazlık ya da şikâyet hâlinde bir işletmenin hak edişi durdurulabilir. Bu
+işletmeyi kapatmak DEĞİLDİR: rezervasyon alınmaya ve bilet okutulmaya devam
+eder, yalnızca para sağlayıcıda bloke kalır. Müşteri, işletmeyle RASTLA
+arasındaki anlaşmazlığın tarafı değil.
+
 ## 8. Yurt dışına aktarım
 
 Barındırma (Vercel) ve harita sağlayıcısı (MapTiler) yurt dışında. 7499 sayılı
@@ -334,6 +379,10 @@ proje ayarlarından girilir.
 | `PAYMENT_PROVIDER` | **Hayır — üretimde asla** | Yalnızca test. `fake` verilirse ödeme alınmadan bilet üretilir. |
 | `BLOB_READ_WRITE_TOKEN` | **Evet** (görsel yüklenecekse) | Yüklenen görsellerin deposu. Yoksa dosya sistemi kullanılır ve **sunucusuz ortamda dosyalar kaybolur.** |
 | `STORAGE_PROVIDER` / `UPLOAD_PATH` | Hayır | Depoyu `local`'a zorlar; yerel kök dizini belirler. |
+| `PARTNER_CONTACT_EMAIL` | **Evet** (/partner yayındaysa) | İşletme başvurularının gideceği adres. Tanımsızsa sayfadaki düğmeler `partner@ornek.com` adresine yazar ve **mesajlar hiçbir yere ulaşmaz.** |
+| `PAYOUT_SCHEDULE` | Hayır | Hak ediş ekranında görünen aktarım takvimi cümlesi. Tanımsızsa "takvim henüz belirlenmedi" yazar — uydurma bir tarih gösterilmez. |
+| `RASTLA_KEEP_COMMISSION` | Hayır | `1` verilirse komisyon göçü atlanır: eski varsayılandaki (%10) işletmeler %18'e taşınmaz. Yürürlükteki sözleşmesi eski oranı yazan kurulumlar için. |
+| `ALERT_EMAIL_TO` | **Evet** | Otomatik ihlal uyarılarının gideceği adres. **Tanımsızsa uyarılar kaydedilir ama kimseye ulaşmaz** ve iş `ok: false` döner. |
 | `DEMO_MODE` | Hayır | `1` verilirse tanıtım kipi: site tamamen `noindex`, her sayfada uyarı şeridi. Gerçek kullanımda **tanımlanmamalı**. |
 
 ---

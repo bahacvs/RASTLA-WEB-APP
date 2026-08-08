@@ -36,14 +36,20 @@ Arama ve rezervasyondan SMS doğrulamasına, online ödemeden bilet okutmaya kad
 | `/gorsel/[id]` | Yüklenen aktivite görselleri — kendi alan adımızdan sunulur |
 | `/rezervasyonlarim` | Kullanıcının kendi rezervasyonları |
 | `/hesabim` | Verilerini indirme ve hesap silme (KVKK md. 11) |
+| `/partner` | RASTLA Partner — işletme tarafının açılış sayfası |
 | `/isletme` | İşletme girişi |
+| `/isletme/bugun` | **Bugün** — günün akışı, hızlı işlemler, elle rezervasyon (giriş sonrası varsayılan) |
 | `/isletme/tara` | Bilet okutma ve onaylama |
 | `/isletme/aktiviteler` | Aktivite ekleme, düzenleme, görsel yükleme, yayına alma |
 | `/isletme/odeme-ayarlari` | Alt üye işyeri başvurusu ve komisyon bilgisi (sahip) |
 | `/isletme/aktiviteler/[id]/takvim` | Takvim kuralı ve slot yönetimi |
 | `/isletme/rezervasyonlar` | Güne göre rezervasyonlar ve doluluk |
 | `/isletme/ekip` | Ekip yönetimi — hesap ekleme, parola sıfırlama, askıya alma (sahip) |
+| `/isletme/finans` | Hak ediş — bekleyen/hak edilen bakiye, CSV mutabakat raporu (sahip) |
 | `/isletme/gunluk` | İşlem günlüğü — kim, ne zaman, ne yaptı (sahip) |
+| `/yonetim` | RASTLA operasyon girişi — işletme panelinden AYRI oturum |
+| `/yonetim/isletmeler` | İşletme doğrulama, komisyon oranı, hak ediş durdurma |
+| `/yonetim/ilanlar` | Doğrulanmamış işletmelerin ilan inceleme kuyruğu |
 
 Arama `?q=` ve `?kategori=` parametrelerini kabul eder; ana sayfadaki form ve kategori çipleri buraya bağlanır. Arama Türkçe'ye duyarlıdır: aksan ve büyük/küçük harf farkı yok sayılır (`buyukcekmece` → `Büyükçekmece`).
 
@@ -346,6 +352,8 @@ node scripts/verify-account-rights.mjs # veri indirme ve hesap silme (KVKK md. 1
 # Ödeme (sunucu PAYMENT_PROVIDER=fake ile başlatılmış olmalı):
 PAYMENT_PROVIDER=fake npm start > server.log &
 SERVER_LOG=server.log node scripts/verify-payment.mjs  # yarış, süre aşımı, kurcalama, iade
+SERVER_LOG=server.log node scripts/verify-payouts.mjs  # hak ediş: bloke, serbest bırakma yarışı, onay
+SERVER_LOG=server.log node scripts/verify-platform.mjs # yönetim paneli: yetki ayrımı, rozet, durdurma
 
 node scripts/verify-uploads.mjs       # sahte dosya, bomba, EXIF/GPS temizliği, adet sınırı
 
@@ -376,7 +384,15 @@ Bilinen bir tuzak: `--spacing-md` gibi adlandırılmış boşluk tokenları Tail
 
 Ürün akışı uçtan uca tamam. Misafir aktiviteyi buluyor, saatini seçiyor, numarasını SMS ile doğruluyor, kartıyla ödüyor ve QR kodlu biletini alıyor. İşletme kendi aktivitelerini ekliyor, takvimini kuruyor, fotoğraflarını yüklüyor, bileti okutuyor ve gününü yönetiyor. Ödeme alınıyor, komisyon kesiliyor, iade gerektiğinde otomatik yapılıyor.
 
-Bunların hepsi **gerçek bir veritabanına** yazıyor (SQLite ya da Postgres, tek bir bağlantı dizesiyle seçilir) ve doğruluk iddiaları 16 süitle, ayrı işletim sistemi süreçleriyle, iki motorda birden sınanıyor.
+**Partner tarafı bir ilan paneli değil, operasyon sistemi.** Panel açıldığında ilk gelen soru "bugün ne var?" ve cevabı `/isletme/bugun`. Telefondan gelen rezervasyon aynı kapasiteyi tüketiyor, ekipman havuzu kişi sayısından bağımsız sınır koyuyor, katılım ve gelmeyen ayrı ayrı işaretleniyor. İkinci soru "ne kadar kazandım" ve cevabı `/isletme/finans`: ödeme alındığında işletmenin payı bloke ediliyor, hizmet verildiğinde serbest bırakılıyor — müşterinin ödemesi tek başına işletmenin kazancı değil.
+
+Bunların hepsi **gerçek bir veritabanına** yazıyor (SQLite ya da Postgres, tek bir bağlantı dizesiyle seçilir) ve doğruluk iddiaları 20 süitle, ayrı işletim sistemi süreçleriyle, iki motorda birden sınanıyor.
+
+### Bilinen sınır: iyzico onay akışı
+
+Hak edişin serbest bırakılması sağlayıcıya `approve`/`disapprove` çağrısıyla iletiliyor ve **bu uçlar gerçek bir üye işyeri anahtarı olmadan çağrılamadı.** Doğruluk iddialarının tamamı — yarış, idempotanlık, gelmedi durumu, iade — sağlayıcıdan bağımsız ve bizim durum makinemizde; `fake` sağlayıcı aynı sözleşmeyi uyguluyor ve çağrıları kaydediyor, `verify-payouts.mjs` bunları sınıyor. Sağlayıcıya özgü olan yalnızca uç adresi ve alan adları; ilk gerçek anahtarla doğrulanmalı.
+
+Yönetim panelinde (`/yonetim`) **ikinci faktör yok**; gerekçesi ve önerilen çözüm (SMS değil, WebAuthn) KURULUM.md 7b bölümünde.
 
 **Canlıya çıkmak için kod tarafında yapılacak bir şey yok.** Kalanlar sizden gelmesi gerekenler — iyzico üye işyeri anahtarları, ETBİS kaydı, hukukçu onayı, SMS/e-posta/depolama anahtarları ve işletmelerin ticari bilgileri. Hepsi sırayla [KURULUM.md](KURULUM.md) içinde; o belge tamamlanmadan gerçek para tahsil edilmemelidir.
 
