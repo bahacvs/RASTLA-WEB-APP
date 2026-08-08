@@ -257,6 +257,69 @@ export async function updateActivity(
   return getActivityById(id);
 }
 
+/**
+ * Yalnızca verilen alanları günceller.
+ *
+ * `updateActivity` tam satır yazıyor ve bu, çağıranı **dokunmadığı alanları
+ * geri yazmaya** zorluyor (`app/actions/activity.ts` bunu elle yapıyor: görsel,
+ * galeri, puan, durum hepsi mevcut değerden okunup yeniden veriliyor). Tek
+ * ekranlı formda katlanılabilir; sihirbazda değil — orada her adım aktivitenin
+ * yalnızca bir bölümünü biliyor ve bilmediği alanı geri yazmaya kalkarsa
+ * (örneğin yayın durumunu) sessizce bozar.
+ *
+ * Alan adları **beyaz listeden** geçiyor: anahtar doğrudan SQL'e gömülüyor ve
+ * çağıran taraf `Partial<ActivityInput>` versе de, listede olmayan bir ad
+ * sorguya giremez.
+ */
+const PATCHABLE = {
+  title: 'title',
+  category: 'category',
+  description: 'description',
+  priceTRY: 'price_try',
+  durationMinutes: 'duration_minutes',
+  location: 'location_name',
+  lat: 'lat',
+  lng: 'lng',
+  capacityMode: 'capacity_mode',
+  minParticipants: 'min_participants',
+  bookingCutoffMinutes: 'booking_cutoff_minutes',
+  prepMinutes: 'prep_minutes',
+  capacityLabel: 'capacity_label',
+  instantConfirm: 'instant_confirm',
+  included: 'included',
+  safety: 'safety',
+} as const satisfies Partial<Record<keyof ActivityInput, string>>;
+
+type PatchableKey = keyof typeof PATCHABLE;
+
+export async function updateActivityFields(
+  id: string,
+  patch: Partial<Pick<ActivityInput, PatchableKey>>
+): Promise<Activity | null> {
+  const sets: string[] = [];
+  const params: Record<string, unknown> = { id };
+
+  for (const [key, column] of Object.entries(PATCHABLE) as [PatchableKey, string][]) {
+    if (!(key in patch)) continue;
+    const value = patch[key];
+
+    sets.push(`${column} = @${column}`);
+    params[column] =
+      key === 'instantConfirm'
+        ? value
+          ? 1
+          : 0
+        : key === 'included' || key === 'safety'
+          ? JSON.stringify(value ?? [])
+          : (value ?? null);
+  }
+
+  if (sets.length === 0) return getActivityById(id);
+
+  await (await db()).run(`UPDATE activities SET ${sets.join(', ')} WHERE id = @id`, params);
+  return getActivityById(id);
+}
+
 export async function setActivityStatus(id: string, status: ActivityStatus) {
   await (await db()).run('UPDATE activities SET status = ? WHERE id = ?', [status, id]);
 }

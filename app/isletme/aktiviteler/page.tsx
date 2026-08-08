@@ -36,8 +36,15 @@ export default async function OperatorActivitiesPage() {
       <main className="mx-auto max-w-[48rem] px-container-margin py-lg">
         <div className="mb-lg flex items-center justify-between gap-4">
           <h1 className="text-headline-md text-on-background">Aktiviteler</h1>
+          {/*
+            Yeni aktivite artık sihirbazdan açılıyor: sıra (bilgi → konum →
+            takvim → görsel → yayın) orada görünüyor ve "Yayına Al neden
+            kapalı" sorusu ortadan kalkıyor. Tek ekranlı form
+            (/isletme/aktiviteler/yeni) duruyor ve DÜZENLEME için hâlâ doğru
+            araç — her şeyi bilen biri için beş adım gereksiz yavaşlatma.
+          */}
           <Link
-            href="/isletme/aktiviteler/yeni"
+            href="/isletme/aktiviteler/sihirbaz"
             className="flex items-center gap-1 rounded-lg bg-primary px-4 py-2 text-label-bold text-on-primary transition-transform active:scale-95"
           >
             <Icon name="add" size={18} />
@@ -49,7 +56,7 @@ export default async function OperatorActivitiesPage() {
           <div className="rounded-xl border border-outline-variant bg-surface-container-lowest p-lg text-center shadow-card">
             <p className="mb-sm text-headline-sm text-on-surface">Henüz aktivite yok</p>
             <p className="text-body-md text-on-surface-variant">
-              İlk aktivitenizi ekleyin, ardından takvimini tanımlayın.
+              Sihirbaz beş adımda yönlendirir: bilgiler, konum, takvim, görseller, yayın.
             </p>
           </div>
         ) : (

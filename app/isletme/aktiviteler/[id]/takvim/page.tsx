@@ -70,7 +70,7 @@ export default async function SchedulePage({
           </p>
         </div>
 
-        <ScheduleForm activityId={activity.id} />
+        <ScheduleForm activityId={activity.id} prepMinutes={activity.prepMinutes} />
 
         <div className="mt-lg">
           <LimitsForm
@@ -103,7 +103,7 @@ export default async function SchedulePage({
                       {rule.capacity} kapasite
                     </p>
                     <p className="text-label-sm text-on-surface-variant">
-                      {weekdayLabel(rule.weekdays)} · günde {timesForRule(rule).length} slot
+                      {weekdayLabel(rule.weekdays)} · günde {timesForRule(rule, activity.prepMinutes).length} slot
                     </p>
                   </div>
 

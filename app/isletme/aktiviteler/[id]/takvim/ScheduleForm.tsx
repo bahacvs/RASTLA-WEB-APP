@@ -2,6 +2,7 @@
 
 import { useActionState, useState } from 'react';
 import { createRuleAction, type ScheduleFormState } from '@/app/actions/activity';
+import { timesForRule } from '@/lib/schedule-times.mjs';
 
 const WEEKDAYS = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz'];
 
@@ -9,25 +10,25 @@ const FIELD =
   'h-12 w-full rounded-lg border border-outline-variant bg-surface px-3 text-body-md text-on-surface focus:ring-2 focus:ring-primary focus:outline-none';
 const LABEL = 'mb-1 block text-label-bold text-on-surface-variant';
 
-/** Kuralın bir günde kaç slot üreteceğini önden gösterir. */
-function slotCount(start: string, end: string, interval: number): number {
-  const toMin = (t: string) => {
-    const [h, m] = t.split(':').map(Number);
-    return h * 60 + m;
-  };
-  if (!/^\d{2}:\d{2}$/.test(start) || !/^\d{2}:\d{2}$/.test(end)) return 0;
-  const span = toMin(end) - toMin(start);
-  if (span <= 0 || interval <= 0) return 0;
-  return Math.ceil(span / interval);
-}
-
 /**
  * Takvim kuralı formu.
  *
  * "08:00'dan 18:00'e, 15 dakikada bir, her slotta 4 kişi" gibi bir tanım
  * yapılır ve slotlar bundan üretilir.
  */
-export function ScheduleForm({ activityId }: { activityId: string }) {
+/**
+ * `prepMinutes` prop olarak geliyor çünkü hazırlık payı aktivitenin alanı ve
+ * bu formun değil, aynı sayfadaki `LimitsForm`'un sorumluluğunda. Önizlemenin
+ * onu bilmesi ŞART: bilmediğinde kullanıcıya üretilecek olandan fazla slot
+ * vaat ediyordu.
+ */
+export function ScheduleForm({
+  activityId,
+  prepMinutes = 0,
+}: {
+  activityId: string;
+  prepMinutes?: number;
+}) {
   const [state, action, pending] = useActionState<ScheduleFormState, FormData>(createRuleAction, {});
 
   const [start, setStart] = useState('08:00');
@@ -35,7 +36,13 @@ export function ScheduleForm({ activityId }: { activityId: string }) {
   const [interval, setInterval] = useState(15);
   const [capacity, setCapacity] = useState(4);
 
-  const perDay = slotCount(start, end, interval);
+  // Slot sayısı, sunucunun slotları üretirken kullandığı fonksiyonun
+  // AYNISIYLA hesaplanıyor — ayrı bir formül tutmak ikisinin ayrışmasına yol
+  // açmıştı (bkz. lib/schedule-times.ts).
+  const perDay = timesForRule(
+    { startTime: start, endTime: end, intervalMinutes: interval },
+    prepMinutes
+  ).length;
 
   return (
     <form

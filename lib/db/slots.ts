@@ -1,5 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import { db } from './index.mjs';
+// Saat hesabı istemci formunun da kullandığı saf modülde; iki kopya tutmak
+// önizlemeyle gerçeğin ayrışmasına yol açmıştı (bkz. lib/schedule-times.ts).
+import { timesForRule } from '../schedule-times.mjs';
+
+export { timesForRule };
 
 /**
  * Müsaitlik motoru.
@@ -116,17 +121,6 @@ function toSlot(row: SlotRow): Slot {
 
 // ---------------------------------------------------------------- yardımcılar
 
-function toMinutes(time: string): number {
-  const [h, m] = time.split(':').map(Number);
-  return h * 60 + m;
-}
-
-function toTime(minutes: number): string {
-  const h = Math.floor(minutes / 60);
-  const m = minutes % 60;
-  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
-}
-
 function toIsoDate(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(
     date.getDate()
@@ -139,24 +133,31 @@ function weekdayIndex(date: Date): number {
 }
 
 /**
- * Kuralın bir gün için ürettiği saatler.
- * start_time dahil, end_time hariç: 08:00–18:00 / 15 dk => 40 saat (08:00 … 17:45).
+ * Bir kuralın ürettiği saatler — hazırlık payı dahil.
+ *
+ * **Üretim ve eşitleme bu tek fonksiyondan geçmek zorunda.** Önce ikisi ayrı
+ * hesaplıyordu: `generateSlots` hazırlık payını katıyor, `syncSlots` katmıyordu.
+ * Sonuç, hazırlık payı tanımlı bir aktivitede üretilen slotların eşitleme
+ * tarafından "hiçbir kuralın kapsamadığı" sayılıp ANINDA KAPATILMASIYDI —
+ * 15 dakika aralık + 5 dakika hazırlıkta üretilen 6 slotun 4'ü kapanıyordu.
+ * İşletme hazırlık payını girdiği anda müsaitliğinin çoğunu kaybediyordu.
+ *
+ * Hata, aynı sorunun iki yerde ayrı ayrı cevaplanmasından çıktı; bu yüzden
+ * düzeltme "iki yeri de düzelt" değil, **soruyu tek yere indirmek.**
+ *
+ * Hazırlık süresi kuralda değil aktivitede duruyor: kaç dakikada
+ * hazırlandığı aktivitenin fiziksel gerçeği, takvimin tercihi değil.
  */
-export function timesForRule(
-  rule: Pick<ScheduleRule, 'startTime' | 'endTime' | 'intervalMinutes'>,
-  prepMinutes = 0
-): string[] {
-  const start = toMinutes(rule.startTime);
-  const end = toMinutes(rule.endTime);
-  const times: string[] = [];
+async function ruleTimes(
+  rule: Pick<ScheduleRule, 'activityId' | 'startTime' | 'endTime' | 'intervalMinutes'>
+): Promise<string[]> {
+  const activity = await (
+    await db()
+  ).get<{ prep_minutes: number }>('SELECT prep_minutes FROM activities WHERE id = ?', [
+    rule.activityId,
+  ]);
 
-  // Hazırlık süresi aralığa EKLENİR, aralıktan düşülmez: 15 dakikalık tur +
-  // 5 dakika hazırlık = 20 dakikada bir kalkış. Düşülseydi seanslar üst üste
-  // biner ve ekip iki grubu aynı anda karşılamak zorunda kalırdı.
-  const step = rule.intervalMinutes + Math.max(0, prepMinutes);
-
-  for (let m = start; m < end; m += step) times.push(toTime(m));
-  return times;
+  return timesForRule(rule, activity?.prep_minutes ?? 0);
 }
 
 /**
@@ -270,17 +271,9 @@ export async function setRuleActive(ruleId: string, active: boolean) {
 export async function generateSlots(rule: ScheduleRule, horizonDays = 90): Promise<number> {
   if (!rule.active) return 0;
 
-  // Hazırlık süresi ve ekipman sınırı aktiviteden gelir; kuralın kendisinde
-  // durmuyor çünkü ikisi de aktivitenin fiziksel gerçeği (kaç araç var, kaç
-  // dakikada hazırlanıyor), takvimin tercihi değil.
-  const activity = await (
-    await db()
-  ).get<{ prep_minutes: number }>('SELECT prep_minutes FROM activities WHERE id = ?', [
-    rule.activityId,
-  ]);
   const pool = await getEquipmentPool(rule.activityId);
 
-  const times = timesForRule(rule, activity?.prep_minutes ?? 0);
+  const times = await ruleTimes(rule);
   if (times.length === 0) return 0;
 
   const client = await db();
@@ -348,7 +341,9 @@ export async function syncSlots(
   today.setHours(0, 0, 0, 0);
 
   for (const rule of rules) {
-    const times = timesForRule(rule);
+    // Üretimle AYNI kaynak: bkz. ruleTimes. Burada prep'siz hesaplamak,
+    // az önce üretilmiş slotları kapsam dışı sayıp kapatmak demekti.
+    const times = await ruleTimes(rule);
     const horizonEnd = new Date(today);
     horizonEnd.setDate(horizonEnd.getDate() + horizonDays);
 
