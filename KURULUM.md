@@ -204,17 +204,23 @@ koşumda GPS taşıyan gerçek bir dosyayla doğrular.
 
 ## 6d. Tanıtım (demo) sürümü
 
-Siteyi gerçek veriyle açmadan önce gezip incelemek için ayrı bir kip var.
+Siteyi gerçek veriyle açmadan önce gezip incelemek için ayrı bir kip var ve
+**varsayılan olarak AÇIKTIR.** Kapatmak için `DEMO_MODE=0` gerekir.
+
+Tersi de düşünülebilirdi (`DEMO_MODE=1` ile açmak) ve önce öyleydi; ama o
+kurguda değişkeni tanımlamayı unutmak, uydurma ilanların gerçekmiş gibi
+yayınlanması demekti — yani unutmanın bedeli en yüksek olduğu yerde
+ödeniyordu. Şimdi unutmanın bedeli yalnızca "site tanıtım gibi görünür".
 
 ```bash
-DEMO_MODE=1 node scripts/demo-seed.mjs
+node scripts/demo-seed.mjs
 ```
 
 Betik **uydurma** üç işletme, altı ilan, 60 günlük takvim ve her işletme için
 **sahip + personel** hesabı üretir; parolayı çalıştırma sonunda bir kez yazar
 (`--parola "..."` ile kendiniz de belirleyebilirsiniz).
 
-`DEMO_MODE=1` tanımlıyken:
+Kip açıkken:
 
 - robots.txt her şeyi kapatır, sitemap boşalır, sayfalar `noindex` olur
 - her sayfanın üstünde "TANITIM SÜRÜMÜ" şeridi görünür
@@ -225,7 +231,8 @@ gibi indekslenir; biri rezervasyon yapmaya çalışır, kimse karşılamaz.
 
 > **Derleme anı uyarısı:** `robots.txt`, `sitemap.xml`, ana sayfa ve aktivite
 > sayfaları **derleme sırasında** üretilir. Yani `DEMO_MODE` derleme sırasında
-> da tanımlı olmalı ve **veritabanı derlemeden önce doldurulmuş olmalıdır.**
+> da (kapatılacaksa) tanımlı olmalı ve **veritabanı derlemeden önce
+> doldurulmuş olmalıdır.**
 > Vercel'de sıra şu: önce veritabanını oluştur → `demo-seed` ile doldur →
 > ortam değişkenlerini gir → yeniden dağıt.
 
@@ -255,7 +262,8 @@ curl https://<alan-adiniz>/api/saglik
 | Dönen | Anlamı |
 | --- | --- |
 | `"motor": "sqlite"` | `DATABASE_URL` bu dağıtımda yok — yukarıdaki anlık görüntü tuzağı |
-| `"demo": false` (demo beklerken) | `DEMO_MODE` derleme anında yoktu |
+| `"demo": false` (demo beklerken) | `DEMO_MODE=0` derleme anında tanımlıydı |
+| `"demo": true` (gerçek kullanım beklerken) | `DEMO_MODE=0` yok ya da dağıtım o değişkenden önce yapıldı |
 | `erisilebilir: false`, `ENOTFOUND` / `ETIMEDOUT` | Bağlantı dizesindeki sunucuya ulaşılamıyor |
 | `erisilebilir: false`, `28P01` | Kullanıcı adı veya parola yanlış |
 
@@ -263,9 +271,14 @@ Uç **hiçbir sır döndürmez**: bağlantı dizesi, sunucu adı ve hata metni d
 verilmez, hata yalnızca sınıf adı ve sürücü koduna indirgenir. Tam hata
 Vercel'in Runtime Logs bölümünde durur.
 
-Gerçek kullanıma geçerken `DEMO_MODE` değişkenini **silin**, demo işletmelerin
-hesaplarını `/isletme/ekip` üzerinden askıya alın ve demo ilanlarını yayından
-kaldırın.
+Gerçek kullanıma geçerken `DEMO_MODE=0` tanımlayın **ve yeniden dağıtın**,
+demo işletmelerin hesaplarını `/isletme/ekip` üzerinden askıya alın, demo
+ilanlarını yayından kaldırın.
+
+> Şeridi kaldırmak teknik bir ayar değil, bir BEYANDIR: o an site "burada
+> yazan işletmeler gerçektir, alınan ücret gerçektir" demiş oluyor. Bu
+> belgedeki liste (ETBİS, iyzico, hukukçu onayı, gerçek işletme kayıtları)
+> tamamlanmadan `DEMO_MODE=0` verilmemeli.
 
 ## 7. İlk işletme hesapları
 
@@ -383,7 +396,7 @@ proje ayarlarından girilir.
 | `PAYOUT_SCHEDULE` | Hayır | Hak ediş ekranında görünen aktarım takvimi cümlesi. Tanımsızsa "takvim henüz belirlenmedi" yazar — uydurma bir tarih gösterilmez. |
 | `RASTLA_KEEP_COMMISSION` | Hayır | `1` verilirse komisyon göçü atlanır: eski varsayılandaki (%10) işletmeler %18'e taşınmaz. Yürürlükteki sözleşmesi eski oranı yazan kurulumlar için. |
 | `ALERT_EMAIL_TO` | **Evet** | Otomatik ihlal uyarılarının gideceği adres. **Tanımsızsa uyarılar kaydedilir ama kimseye ulaşmaz** ve iş `ok: false` döner. |
-| `DEMO_MODE` | Hayır | `1` verilirse tanıtım kipi: site tamamen `noindex`, her sayfada uyarı şeridi. Gerçek kullanımda **tanımlanmamalı**. |
+| `DEMO_MODE` | Hayır | **Varsayılan: tanıtım kipi AÇIK** — site tamamen `noindex` ve her sayfada uyarı şeridi. Gerçek kullanıma geçerken `0` verin; öncesinde bu belgedeki listenin tamamlanmış olması gerekir. |
 
 ---
 
