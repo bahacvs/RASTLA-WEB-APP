@@ -30,6 +30,16 @@ import { ensureTestAccounts, TEST_PASSWORD } from './lib/test-accounts.mjs';
 import { acceptTerms, SUBMIT } from './lib/booking.mjs';
 
 const BASE = process.env.BASE_URL ?? 'http://127.0.0.1:3000';
+
+/**
+ * Girişin BAŞARILI olduğunu gösteren adresler.
+ *
+ * Sabit tek bir ekran yazılmıyor: giriş sonrası varılan yer role göre
+ * değişiyor ve değişebiliyor da (saha personeli bir zamanlar bilet okutma
+ * ekranına düşüyordu, artık Bugün'e). Sınanan iddia "hangi ekran" değil,
+ * "oturum açıldı mı".
+ */
+const SIGNED_IN = /\/isletme\/(bugun|tara)/;
 const LOG = process.env.SERVER_LOG;
 
 const checks = [];
@@ -323,12 +333,12 @@ if (opCode) {
   await op.fill('#code', '111111');
   await op.getByRole('button', { name: /Doğrula ve Gir/ }).click();
   await op.waitForTimeout(1000);
-  check('yanlış ikinci faktör kodu reddediliyor', !/\/isletme\/tara/.test(op.url()), op.url());
+  check('yanlış ikinci faktör kodu reddediliyor', !SIGNED_IN.test(op.url()), op.url());
 
   await op.fill('#code', opCode);
   await op.getByRole('button', { name: /Doğrula ve Gir/ }).click();
-  await op.waitForURL(/\/isletme\/tara/, { timeout: 15000 }).catch(() => {});
-  check('doğru kodla oturum açılıyor', /\/isletme\/tara/.test(op.url()), op.url());
+  await op.waitForURL(SIGNED_IN, { timeout: 15000 }).catch(() => {});
+  check('doğru kodla oturum açılıyor', SIGNED_IN.test(op.url()), op.url());
 }
 await opCtx.close();
 
@@ -339,10 +349,10 @@ await legacy.goto(`${BASE}/isletme`, { waitUntil: 'networkidle' });
 await legacy.fill('#email', 'test-sahip@buyukcekmece.local');
 await legacy.fill('#password', TEST_PASSWORD);
 await legacy.getByRole('button', { name: 'Giriş Yap' }).click();
-await legacy.waitForURL(/\/isletme\/tara/, { timeout: 15000 }).catch(() => {});
+await legacy.waitForURL(SIGNED_IN, { timeout: 15000 }).catch(() => {});
 check(
   'numarasız hesap parolayla girmeye devam ediyor',
-  /\/isletme\/tara/.test(legacy.url()),
+  SIGNED_IN.test(legacy.url()),
   legacy.url()
 );
 await legacyCtx.close();
