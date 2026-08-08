@@ -42,9 +42,14 @@ CREATE TABLE IF NOT EXISTS operators (
   legal_address   TEXT,
   contact_email   TEXT,
 
-  -- RASTLA'nın payı, on binde. 1000 = %10. Tam sayı tutuluyor ki kuruş
+  -- RASTLA'nın payı, on binde. 1800 = %18. Tam sayı tutuluyor ki kuruş
   -- hesabında kayan nokta yuvarlaması olmasın.
-  commission_bp   INTEGER NOT NULL DEFAULT 1000
+  --
+  -- DİKKAT — bu sayı yalnızca kod değil, SÖZLEŞME meselesi. Varsayılanı
+  -- değiştirmek yeni işletmeleri etkiler; var olan bir işletmenin oranını
+  -- değiştirmek, o işletmeyle imzalanmış ticari sözleşmenin de güncellenmesini
+  -- gerektirir. İşletme başına oran Faz F'te panelden belirlenecek.
+  commission_bp   INTEGER NOT NULL DEFAULT 1800
                   CHECK (commission_bp >= 0 AND commission_bp <= 10000)
 );
 
@@ -457,6 +462,64 @@ CREATE TABLE IF NOT EXISTS refunds (
 );
 
 CREATE INDEX IF NOT EXISTS idx_refunds_payment ON refunds(payment_id);
+
+-- Hak ediş defteri: işletmenin her rezervasyondan ne kazandığı.
+--
+-- Neden ayrı tablo, neden `payments` yetmiyor: ödeme MÜŞTERİ tarafındaki
+-- olaydır ("para tahsil edildi mi"), hak ediş İŞLETME tarafındaki olaydır
+-- ("bu paranın ne kadarı ne zaman işletmenin oldu"). İkisi aynı satırda
+-- tutulsaydı, ödemesi alınmış ama hizmeti verilmemiş bir rezervasyonun tutarı
+-- "kazanılmış" görünürdü.
+--
+-- Akış: ödeme onaylanınca kayıt `held` olarak açılır — para RASTLA'da, alt üye
+-- işyerinin payı sağlayıcıda BLOKE. Bilet okutulunca (hizmet verildi) `released`
+-- olur ve sağlayıcıya onay çağrısı gider. Müşteri gelmediyse ya da iade
+-- edildiyse `reversed` olur.
+--
+-- **`booking_id` UNIQUE, ve bu tesadüf değil.** Tek kullanım güvencesinin hak
+-- ediş tarafındaki karşılığı bu: aynı rezervasyon için ikinci bir hak ediş
+-- satırı veritabanı tarafından reddedilir. "Önce bak, varsa ekleme" yazılsaydı
+-- iki eşzamanlı geri çağrı arasından ikisi de geçebilirdi.
+CREATE TABLE IF NOT EXISTS payouts (
+  id             TEXT PRIMARY KEY,
+  booking_id     TEXT NOT NULL UNIQUE REFERENCES bookings(id),
+  payment_id     TEXT NOT NULL REFERENCES payments(id),
+  operator_id    TEXT NOT NULL,
+
+  gross_try      INTEGER NOT NULL CHECK (gross_try >= 0),
+  -- RASTLA'nın payı. Ödeme anındaki oranla DONDURULUR: komisyon oranı
+  -- sonradan değişse bile geçmiş hak edişler değişmez, yoksa mutabakat
+  -- geriye dönük olarak bozulurdu.
+  commission_try INTEGER NOT NULL DEFAULT 0 CHECK (commission_try >= 0),
+  refunded_try   INTEGER NOT NULL DEFAULT 0 CHECK (refunded_try >= 0),
+  -- gross - commission - refunded. Türetilebilir ama saklanıyor: mutabakat
+  -- raporu bu sütunu doğrudan topluyor ve hesabın hangi anki değerlerle
+  -- yapıldığı kayda geçmiş oluyor.
+  net_try        INTEGER NOT NULL,
+
+  -- held     -> hizmet verilmedi, pay sağlayıcıda bloke
+  -- released -> bilet okutuldu, pay işletmeye serbest bırakıldı
+  -- reversed -> gelmedi ya da iade edildi, pay geri çevrildi
+  status         TEXT NOT NULL CHECK (status IN ('held', 'released', 'reversed')),
+
+  -- Sağlayıcıdaki kalem işlem kimliği; onay/geri çevirme çağrısının anahtarı.
+  provider_ref   TEXT,
+  -- Sağlayıcıya giden onay çağrısı başarısız olursa sebebi burada durur.
+  -- Defterdeki durum yine de ilerler: "işletme bunu hak etti" bizim
+  -- kararımızdır, sağlayıcıya iletmek ise tekrarlanabilir bir teslim adımıdır.
+  failure_reason TEXT,
+
+  held_at        TEXT NOT NULL,
+  released_at    TEXT,
+  reversed_at    TEXT,
+
+  CHECK (
+    (status = 'released' AND released_at IS NOT NULL) OR
+    (status <> 'released' AND released_at IS NULL)
+  )
+);
+
+CREATE INDEX IF NOT EXISTS idx_payouts_operator ON payouts(operator_id, status);
 
 -- İşletmenin yüklediği aktivite görselleri.
 --

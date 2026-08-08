@@ -23,6 +23,7 @@ export type Payment = {
   commissionTRY: number;
   currency: string;
   status: PaymentStatus;
+  itemTransactionRef: string | null;
   cardFamily: string | null;
   cardLastFour: string | null;
   failureReason: string | null;
@@ -41,6 +42,7 @@ type Row = {
   commission_try: number;
   currency: string;
   status: PaymentStatus;
+  item_transaction_ref: string | null;
   card_family: string | null;
   card_last_four: string | null;
   failure_reason: string | null;
@@ -60,6 +62,7 @@ function toPayment(row: Row): Payment {
     commissionTRY: row.commission_try,
     currency: row.currency,
     status: row.status,
+    itemTransactionRef: row.item_transaction_ref,
     cardFamily: row.card_family,
     cardLastFour: row.card_last_four,
     failureReason: row.failure_reason,
@@ -155,18 +158,24 @@ export async function markPaymentSucceeded(input: {
   providerRef: string;
   cardFamily?: string;
   cardLastFour?: string;
+  /**
+   * Sağlayıcının kalem işlem kimliği. Hak edişi serbest bırakmanın anahtarı;
+   * ödeme kimliğiyle onay çağrısı YAPILAMAZ, bu yüzden ayrı saklanıyor.
+   */
+  itemTransactionRef?: string;
 }): Promise<SettleResult> {
   const result = await (
     await db()
   ).run(
     `UPDATE payments
         SET status = 'succeeded', provider_ref = ?, card_family = ?, card_last_four = ?,
-            updated_at = ?
+            item_transaction_ref = ?, updated_at = ?
       WHERE id = ? AND status = 'initiated'`,
     [
       input.providerRef,
       input.cardFamily ?? null,
       input.cardLastFour ?? null,
+      input.itemTransactionRef ?? null,
       new Date().toISOString(),
       input.paymentId,
     ]

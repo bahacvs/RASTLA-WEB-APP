@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { requireCapability } from '@/lib/auth';
 import { getBookingByCode, markNoShow, redeemBooking } from '@/lib/db/bookings';
 import { record } from '@/lib/db/audit';
+import { releasePayoutForBooking, reversePayoutForBooking } from '@/lib/payments/payouts';
 import { requestContext } from '@/lib/request-context';
 
 /**
@@ -38,6 +39,11 @@ export async function markAttendedAction(
   }
 
   const result = await redeemBooking(code, session.user.id, attended);
+
+  // Hizmet verildi: işletmenin payı serbest bırakılır. Yalnızca okutmanın
+  // BAŞARILI olduğu dalda çağrılıyor — `redeemBooking` tek koşullu UPDATE
+  // olduğu için eşzamanlı iki okutmadan yalnızca biri buraya düşer.
+  if (result.ok) await releasePayoutForBooking(result.booking.id);
 
   if (!result.ok) {
     const reason =
@@ -87,6 +93,11 @@ export async function markNoShowAction(
   }
 
   const result = await markNoShow(code, session.user.id);
+
+  // Hizmet verilmedi: bloke pay sağlayıcıda geri çevrilir. Müşteriye para
+  // dönüp dönmeyeceği ayrı bir karar ve iptal politikasına tabi.
+  if (result.ok) await reversePayoutForBooking(booking.id);
+
   if (!result.ok) {
     return {
       error:

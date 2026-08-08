@@ -168,6 +168,8 @@ check('bilet kodu günlükte yok', !all.includes(code), code);
 const wrongCtx = await browser.newContext({ viewport: { width: 390, height: 844 } });
 const wrong = await wrongCtx.newPage();
 await loginAs(wrong, BASE, 'mimarsinan-marina');
+// Giriş sonrası varsayılan ekran Bugün; okutma ekranına ayrıca gidiliyor.
+await wrong.goto(`${BASE}/isletme/tara`, { waitUntil: 'networkidle' });
 await wrong.fill('#code', code);
 await wrong.getByRole('button', { name: 'Onayla' }).click();
 await wrong.waitForTimeout(1200);
@@ -227,7 +229,13 @@ const staffCtx = await browser.newContext({ viewport: { width: 390, height: 844 
 const sp = await staffCtx.newPage();
 await loginAs(sp, BASE, 'buyukcekmece-wsc', 'staff');
 await sp.goto(`${BASE}/isletme/gunluk`, { waitUntil: 'networkidle' });
-check('personel günlük sayfasına giremiyor', /\/isletme\/tara/.test(sp.url()), sp.url());
+// Varış adresi değil, KAPALI sayfada kalınmaması sınanıyor: rolün ana ekranı
+// `operatorHome` içinde tanımlı ve değişebiliyor.
+check(
+  'personel günlük sayfasına giremiyor',
+  /\/isletme\/(bugun|tara)$/.test(new URL(sp.url()).pathname),
+  sp.url()
+);
 await staffCtx.close();
 
 // ---------- 7. Müşteri iptali ----------

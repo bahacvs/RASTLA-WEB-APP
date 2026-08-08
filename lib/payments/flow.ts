@@ -16,6 +16,7 @@ import {
   type RefundReason,
 } from '@/lib/db/payments';
 import { paymentProvider, splitAmount } from './index';
+import { holdPayoutForBooking, refundAffectsPayout } from './payouts';
 
 /**
  * Ödeme akışının gövdesi.
@@ -226,6 +227,7 @@ export async function resolveCallback(
     providerRef: result.providerRef,
     cardFamily: result.cardFamily,
     cardLastFour: result.cardLastFour,
+    itemTransactionRef: result.itemTransactionRef,
   });
 
   // Ödeme kaydı zaten işaretlenmiş olsa bile onay DENENİR: iki adım arasında
@@ -251,6 +253,11 @@ export async function resolveCallback(
     });
     return { ok: false, reason: 'failed' };
   }
+
+  // Para tahsil edildi ama HENÜZ KİMSENİN DEĞİL: işletmenin payı hizmet
+  // verilene kadar bloke tutulur. Tekrar çağrılması zararsız — defterdeki
+  // UNIQUE kısıt ikinci kaydı reddeder.
+  await holdPayoutForBooking({ bookingId: booking.id, operatorId: booking.operatorId });
 
   // Tekrar gelen geri çağrı yeni bir kayıt üretmez: günlükte her başarılı
   // ödeme tam olarak bir satır.
@@ -330,6 +337,12 @@ export async function refundBooking(input: {
   }
 
   await completeRefund(opened.refundId, { ok: true, providerRef: result.providerRef });
+
+  // Para müşteriye döndü; işletmenin hak edişi de aynı ölçüde azalır. Defter
+  // güncellenmeseydi mutabakat raporu iade edilmiş bir tutarı hâlâ "işletmenin
+  // alacağı" olarak gösterirdi.
+  await refundAffectsPayout(input.bookingId, payment.amountTRY);
+
   await record({
     action: 'payment.refunded',
     actorType: 'system',

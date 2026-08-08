@@ -20,6 +20,7 @@ const LINKS: { href: string; label: string; needs: Capability }[] = [
   { href: '/isletme/tara', label: 'Bilet Okut', needs: 'checkin.yap' },
   { href: '/isletme/rezervasyonlar', label: 'Rezervasyonlar', needs: 'rezervasyon.goruntule' },
   { href: '/isletme/aktiviteler', label: 'Aktiviteler', needs: 'aktivite.yonet' },
+  { href: '/isletme/finans', label: 'Hak Ediş', needs: 'finans.goruntule' },
   { href: '/isletme/odeme-ayarlari', label: 'Ödeme', needs: 'odeme.yonet' },
   { href: '/isletme/ekip', label: 'Ekip', needs: 'ekip.yonet' },
   { href: '/isletme/gunluk', label: 'İşlem Günlüğü', needs: 'gunluk.goruntule' },

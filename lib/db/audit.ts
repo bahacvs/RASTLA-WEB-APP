@@ -69,6 +69,15 @@ export const AUDIT_ACTIONS = [
   'payment.refund_failed',
   'operator.submerchant_created',
 
+  // Hak ediş. Paranın işletmeye ne zaman geçtiğinin kaydı; mutabakat
+  // uyuşmazlığında bakılacak ilk yer burası.
+  'payout.held',
+  'payout.released',
+  'payout.reversed',
+  // Defterde ilerledi ama sağlayıcıya iletilemedi. Ayrı bir eylem: paranın
+  // fiilen aktarılmadığı tek durum bu ve elle müdahale gerektirir.
+  'payout.provider_failed',
+
   // Katalog
   'activity.created',
   'activity.updated',

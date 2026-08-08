@@ -108,6 +108,8 @@ await stranger.close();
 const wrong = await browser.newContext({ viewport: { width: 390, height: 844 } });
 const wp = await wrong.newPage();
 await loginAs(wp, BASE, 'mimarsinan-marina');
+// Giriş sonrası varsayılan ekran artık Bugün; okutma ekranına ayrıca gidiliyor.
+await wp.goto(`${BASE}/isletme/tara`, { waitUntil: 'networkidle' });
 
 await wp.fill('#code', code);
 await wp.getByRole('button', { name: 'Onayla' }).click();
@@ -122,6 +124,7 @@ await wrong.close();
 const operator = await browser.newContext({ viewport: { width: 390, height: 844 } });
 const op = await operator.newPage();
 await loginAs(op, BASE, 'buyukcekmece-wsc');
+await op.goto(`${BASE}/isletme/tara`, { waitUntil: 'networkidle' });
 
 // Hatalı kod reddedilmeli.
 await op.fill('#code', 'YOKB-OYLE-BIRK-ODXX');

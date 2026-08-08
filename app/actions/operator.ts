@@ -29,6 +29,7 @@ import {
 } from '@/lib/session';
 import { getActivityBySlug } from '@/lib/db/activities';
 import { refundBooking } from '@/lib/payments/flow';
+import { releasePayoutForBooking } from '@/lib/payments/payouts';
 import { record } from '@/lib/db/audit';
 import { requestContext } from '@/lib/request-context';
 import {
@@ -359,6 +360,10 @@ export async function redeemAction(_prev: ScanState, formData: FormData): Promis
     // Geçerli bir onay, o personelin başarısız deneme sayacını sıfırlar:
     // gerçek iş yapıldığı belli.
     await reset(failureBucket);
+
+    // Hizmet verildi: işletmenin payı serbest bırakılır. Bugün ekranındaki
+    // "Geldi" düğmesiyle aynı çağrı — iki ayrı yol, tek güvence.
+    await releasePayoutForBooking(result.booking.id);
 
     await record({
       ...actor,

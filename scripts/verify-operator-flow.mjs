@@ -173,15 +173,29 @@ check(
 );
 check('personel menüsünde Ekip yok', (await sp.getByRole('link', { name: 'Ekip' }).count()) === 0);
 
+/**
+ * Yetkisiz sayfa, kişinin KENDİ ana ekranına yönlendiriyor.
+ *
+ * Varış adresi sabit yazılmıyor: rolün ana ekranı `operatorHome` içinde
+ * tanımlı ve değişebiliyor (saha personeli bir zamanlar bilet okutma
+ * ekranına düşüyordu, artık Bugün'e). Sınanan iddia varılan yer değil,
+ * KAPALI OLAN sayfada kalınmaması.
+ */
+const HOME = /\/isletme\/(bugun|tara)$/;
+
 await sp.goto(`${BASE}/isletme/aktiviteler`, { waitUntil: 'networkidle' });
 check(
   'personel aktivite sayfasına doğrudan giremiyor',
-  /\/isletme\/tara/.test(sp.url()),
+  HOME.test(new URL(sp.url()).pathname),
   sp.url()
 );
 
 await sp.goto(`${BASE}/isletme/ekip`, { waitUntil: 'networkidle' });
-check('personel ekip sayfasına doğrudan giremiyor', /\/isletme\/tara/.test(sp.url()), sp.url());
+check(
+  'personel ekip sayfasına doğrudan giremiyor',
+  HOME.test(new URL(sp.url()).pathname),
+  sp.url()
+);
 
 await sp.goto(`${BASE}/isletme/rezervasyonlar`, { waitUntil: 'networkidle' });
 check(

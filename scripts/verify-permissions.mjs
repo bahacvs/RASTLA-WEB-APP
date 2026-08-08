@@ -33,20 +33,39 @@ const check = (name, pass, detail = '') => checks.push({ name, pass, detail });
  * yönlendiren aynı kişi olmasın diye (görev ayrılığı).
  */
 const MATRIX = [
+  { path: '/isletme/bugun', allowed: ['owner', 'manager', 'staff'] },
   { path: '/isletme/tara', allowed: ['owner', 'manager', 'staff'] },
   { path: '/isletme/rezervasyonlar', allowed: ['owner', 'manager', 'staff'] },
   { path: '/isletme/aktiviteler', allowed: ['owner', 'manager'] },
   { path: '/isletme/aktiviteler/yeni', allowed: ['owner', 'manager'] },
   { path: '/isletme/gunluk', allowed: ['owner', 'manager'] },
+  { path: '/isletme/finans', allowed: ['owner'] },
   { path: '/isletme/odeme-ayarlari', allowed: ['owner'] },
   { path: '/isletme/ekip', allowed: ['owner'] },
 ];
 
-/** Menüde görünmesi beklenen bağlantılar. */
+/**
+ * Menüde görünmesi beklenen bağlantılar — SIRASIYLA.
+ *
+ * Liste bilerek elle yazılıyor, `lib/permissions.ts` üzerinden türetilmiyor:
+ * türetilseydi test menüyü kendi kaynağıyla karşılaştırır ve yanlış bir yetki
+ * eşlemesi ikisinde birden aynı şekilde yanlış olurdu. Yeni bir ekran
+ * eklendiğinde bu listenin de güncellenmesi GEREKİYOR; bu bir zahmet değil,
+ * testin işe yaramasının sebebi.
+ */
 const MENU = {
-  owner: ['Bilet Okut', 'Rezervasyonlar', 'Aktiviteler', 'Ödeme', 'Ekip', 'İşlem Günlüğü'],
-  manager: ['Bilet Okut', 'Rezervasyonlar', 'Aktiviteler', 'İşlem Günlüğü'],
-  staff: ['Bilet Okut', 'Rezervasyonlar'],
+  owner: [
+    'Bugün',
+    'Bilet Okut',
+    'Rezervasyonlar',
+    'Aktiviteler',
+    'Hak Ediş',
+    'Ödeme',
+    'Ekip',
+    'İşlem Günlüğü',
+  ],
+  manager: ['Bugün', 'Bilet Okut', 'Rezervasyonlar', 'Aktiviteler', 'İşlem Günlüğü'],
+  staff: ['Bugün', 'Bilet Okut', 'Rezervasyonlar'],
 };
 
 await ensureTestAccounts();
