@@ -386,7 +386,7 @@ Bilinen bir tuzak: `--spacing-md` gibi adlandırılmış boşluk tokenları Tail
 
 **Partner tarafı bir ilan paneli değil, operasyon sistemi.** Panel açıldığında ilk gelen soru "bugün ne var?" ve cevabı `/isletme/bugun`. Telefondan gelen rezervasyon aynı kapasiteyi tüketiyor, ekipman havuzu kişi sayısından bağımsız sınır koyuyor, katılım ve gelmeyen ayrı ayrı işaretleniyor. İkinci soru "ne kadar kazandım" ve cevabı `/isletme/finans`: ödeme alındığında işletmenin payı bloke ediliyor, hizmet verildiğinde serbest bırakılıyor — müşterinin ödemesi tek başına işletmenin kazancı değil.
 
-Bunların hepsi **gerçek bir veritabanına** yazıyor (SQLite ya da Postgres, tek bir bağlantı dizesiyle seçilir) ve doğruluk iddiaları 20 süitle, ayrı işletim sistemi süreçleriyle, iki motorda birden sınanıyor.
+Bunların hepsi **gerçek bir veritabanına** yazıyor (SQLite ya da Postgres, tek bir bağlantı dizesiyle seçilir) ve doğruluk iddiaları 23 süitle, ayrı işletim sistemi süreçleriyle, iki motorda birden sınanıyor.
 
 ### Bilinen sınır: iyzico onay akışı
 
