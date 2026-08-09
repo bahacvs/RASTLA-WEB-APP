@@ -10,7 +10,7 @@ import {
   rescheduleBooking,
   type Booking,
 } from '@/lib/db/bookings';
-import { notifyCancellation, notifyCancellations, notifyReschedule } from '@/lib/notify';
+import { notifyCancellation, notifyCancellations, notifyReschedule } from '@/lib/notify.mjs';
 import { displayContact, getUser } from '@/lib/db/users';
 import {
   authenticateOperatorUser,

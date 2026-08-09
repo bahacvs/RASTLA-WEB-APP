@@ -1,7 +1,7 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 import { db } from './index.mjs';
-import { getSlot, releaseCapacity, reserveCapacity } from './slots';
-import { getActivityBySlug } from './activities';
+import { releaseCapacity } from './capacity.mjs';
+import { rescheduleBooking as moveBooking } from './reschedule.mjs';
 
 /**
  * `pending_payment` ve `expired` ödeme fazıyla eklendi.
@@ -443,88 +443,22 @@ export type RescheduleResult =
 /**
  * Rezervasyonu başka bir slota taşır.
  *
- * Hava kötüleştiğinde iptal tek seçenek olmamalı: müşteri parasını değil
- * aktiviteyi istiyor. Ama taşıma, iki slot ve bir rezervasyon üzerinde
- * yapılan **üç ayrı** değişiklik demek ve sıra burada belirleyici.
+ * Gövdesi `reschedule.mjs` içinde ve orada durmasının sebebi `capacity.mjs`
+ * ile aynı: doğrulama betiği bu işlevi AYRI DÜĞÜM SÜREÇLERİ olarak çağırıyor
+ * (on iki eşzamanlı taşıma denemesi ancak öyle sınanabilir) ve düğüm,
+ * TypeScript modülünü doğrudan yükleyemiyor. Sıranın neden bu sıra olduğu ve
+ * yarışın nasıl kesildiği o dosyada yazılı.
  *
- * SIRA — ve neden bu sıra:
- *
- *   1. YENİ slotta yer tutulur (`reserveCapacity`, tek koşullu UPDATE).
- *   2. Rezervasyon `WHERE code=? AND status='confirmed' AND slot_id=<eski>`
- *      koşuluyla taşınır.
- *   3. ESKİ slot serbest bırakılır.
- *
- * Herhangi bir adımda süreç ölürse sonuç şu olur: yeni yer tutulamadıysa
- * hiçbir şey değişmemiştir; 2. adım kaybedilirse yalnızca fazladan tutulmuş
- * bir yer kalır. Müşteri hiçbir durumda yersiz kalmaz. Ters sıra
- * (önce eski yeri bırak) daha "temiz" görünürdü ama arada geçen milisaniyede
- * o yeri başkası alabilir ve müşteri iki slotun da dışında kalırdı.
- *
- * 2. adımdaki `slot_id = <eski>` koşulu, iki eşzamanlı taşıma denemesinden
- * yalnızca birinin geçmesini sağlar: ikincisi 0 satır etkiler ve tuttuğu yeri
- * geri bırakır. Kapasitenin her yerdeki güvencesiyle aynı desen.
+ * Buradaki sarmalayıcı yalnızca satırı `Booking`e çeviriyor: çağıran taraf
+ * sütun adlarıyla değil, uygulamanın geri kalanıyla aynı biçimle çalışsın.
  */
-export async function rescheduleBooking(code: string, newSlotId: string): Promise<RescheduleResult> {
-  const normalized = code.trim().toUpperCase();
-
-  const booking = await getBookingByCode(normalized);
-  if (!booking) return { ok: false, reason: 'not_found' };
-  if (booking.status !== 'confirmed') return { ok: false, reason: 'not_confirmed' };
-  if (booking.slotId === newSlotId) return { ok: false, reason: 'same_slot' };
-
-  const target = await getSlot(newSlotId);
-  if (!target) return { ok: false, reason: 'slot_not_found' };
-
-  // Taşıma aynı aktivite içinde: başka bir aktiviteye taşımak fiyatı, süreyi
-  // ve ekipman hesabını değiştirir — o bir taşıma değil, yeni bir satıştır.
-  const activity = await getActivityBySlug(booking.activitySlug);
-  if (!activity || target.activityId !== activity.id) {
-    return { ok: false, reason: 'other_activity' };
-  }
-
-  // 1 — yeni yer tutulur.
-  const held = await reserveCapacity(newSlotId, booking.units, booking.equipmentUnits);
-  if (!held.ok) {
-    if (held.reason === 'not_found') return { ok: false, reason: 'slot_not_found' };
-    return { ok: false, reason: held.reason };
-  }
-
-  // 2 — rezervasyon taşınır. Eski slot koşulda: yarışta yalnızca biri geçer.
-  const moved = await (
-    await db()
-  ).run(
-    `UPDATE bookings
-        SET slot_id = ?, booking_date = ?, booking_time = ?, rescheduled_at = ?
-      WHERE code = ? AND status = 'confirmed' AND slot_id ${booking.slotId ? '= ?' : 'IS NULL'}`,
-    booking.slotId
-      ? [
-          newSlotId,
-          target.date,
-          target.time,
-          new Date().toISOString(),
-          normalized,
-          booking.slotId,
-        ]
-      : [newSlotId, target.date, target.time, new Date().toISOString(), normalized]
-  );
-
-  if (moved.changes !== 1) {
-    // Taşıma geçmedi: az önce tuttuğumuz yeri GERİ BIRAKIYORUZ. Bırakılmazsa
-    // kimsenin kullanmadığı bir yer sonsuza kadar kilitli kalırdı.
-    await releaseCapacity(newSlotId, booking.units, booking.equipmentUnits);
-    return { ok: false, reason: 'moved' };
-  }
-
-  // 3 — eski yer serbest.
-  if (booking.slotId) {
-    await releaseCapacity(booking.slotId, booking.units, booking.equipmentUnits);
-  }
-
-  return {
-    ok: true,
-    booking: (await getBookingByCode(normalized))!,
-    from: { date: booking.bookingDate, time: booking.bookingTime },
-  };
+export async function rescheduleBooking(
+  code: string,
+  newSlotId: string
+): Promise<RescheduleResult> {
+  const result = await moveBooking(code, newSlotId);
+  if (!result.ok) return { ok: false, reason: result.reason };
+  return { ok: true, booking: toBooking(result.booking as Row), from: result.from };
 }
 
 export type NoShowResult = { ok: true } | { ok: false; reason: 'not_found' | 'not_pending' };

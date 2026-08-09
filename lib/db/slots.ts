@@ -423,62 +423,18 @@ export async function setSlotStatus(slotId: string, status: 'open' | 'closed') {
 }
 
 // ------------------------------------------------------------ kapasite
+//
+// Tutma ve bırakma `capacity.mjs` içinde: aynı sayacın iki yönü ve ayrı
+// dosyalarda yaşarlarsa biri değişip diğeri unutulabilir. Ayrıca ödeme süresi
+// işi ve yeniden planlama düz düğüm betiği olarak da çalışıyor ve TypeScript
+// modülü yükleyemiyor. Buradan yeniden dışa aktarılıyorlar ki çağrı yerleri
+// "kapasite işleri slots.ts'te" beklentisini bozmasın.
 
 export type ReserveResult =
-  | { ok: true; slot: Slot }
+  | { ok: true }
   | { ok: false; reason: 'not_found' | 'closed' | 'full' | 'no_equipment' };
 
-/**
- * Slottan kapasite düşer. Aşırı rezervasyona kapalıdır.
- *
- * Garanti tek bir koşullu UPDATE'e dayanır — bilet onayındaki desenin aynısı:
- *
- *   UPDATE slots SET booked = booked + :units, units_booked = units_booked + :eq
- *    WHERE id = :id AND status = 'open'
- *      AND booked + :units <= capacity
- *      AND (unit_capacity IS NULL OR units_booked + :eq <= unit_capacity)
- *
- * Bu ifade atomiktir. Son yeri iki kişi aynı anda almaya çalıştığında
- * güncellemeler sıraya girer; ilki kapasiteyi tüketir, ikincisinin WHERE
- * koşulu artık tutmaz ve 0 satır etkiler. Hiçbir yerde "önce say, uygun mu
- * bak, sonra ekle" yapılmaz — o yaklaşım yarış durumuna açıktır.
- *
- * EKİPMAN SINIRI AYNI İFADEYE EKLENDİ, ayrı bir sorgu olarak değil. İki ayrı
- * UPDATE olsaydı arada başka bir işlem araya girebilir ve kişi kapasitesi
- * tutulmuşken ekipman tutulamayabilirdi — geri alınması gereken yarım bir
- * durum. Tek ifadede ya ikisi birden olur ya hiçbiri.
- *
- * @param units       kişi/rezervasyon sayacından düşecek miktar
- * @param equipment   ekipman sayacından düşecek araç sayısı (havuz yoksa 0)
- */
-export async function reserveCapacity(
-  slotId: string,
-  units: number,
-  equipment = 0
-): Promise<ReserveResult> {
-  const result = await (
-    await db()
-  ).run(
-    `UPDATE slots
-        SET booked = booked + ?, units_booked = units_booked + ?
-      WHERE id = ? AND status = 'open'
-        AND booked + ? <= capacity
-        AND (unit_capacity IS NULL OR units_booked + ? <= unit_capacity)`,
-    [units, equipment, slotId, units, equipment]
-  );
-
-  if (result.changes === 1) return { ok: true, slot: (await getSlot(slotId))! };
-
-  const slot = await getSlot(slotId);
-  if (!slot) return { ok: false, reason: 'not_found' };
-  if (slot.status === 'closed') return { ok: false, reason: 'closed' };
-  // Kişi yeri varken ekipman bitmiş olabilir; kullanıcıya "dolu" demek yerine
-  // hangi sınıra takıldığı söylenebilsin diye ayrıldı.
-  if (slot.unitCapacity !== null && slot.unitsBooked + equipment > slot.unitCapacity) {
-    return { ok: false, reason: 'no_equipment' };
-  }
-  return { ok: false, reason: 'full' };
-}
+export { releaseCapacity, reserveCapacity } from './capacity.mjs';
 
 /**
  * Bir rezervasyonun kaç araç tuttuğunu hesaplar.
@@ -547,12 +503,3 @@ export async function gateBooking(
   };
 }
 
-/**
- * İptalde kapasiteyi geri verir. Negatife düşmesi şema kısıtıyla da engellenir.
- *
- * Gövdesi `capacity.mjs` içinde: aynı ifadeyi zamanlanmış ödeme süresi işi de
- * çağırıyor ve o iş düz düğüm betiği olarak da çalıştığı için TypeScript
- * modülünü yükleyemez. Buradan yeniden dışa aktarılıyor ki çağrı yerleri
- * "kapasite işleri slots.ts'te" beklentisini bozmasın.
- */
-export { releaseCapacity } from './capacity.mjs';

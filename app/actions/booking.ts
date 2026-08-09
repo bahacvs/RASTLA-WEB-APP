@@ -3,7 +3,7 @@
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { cancelBooking, createBooking, getBookingByCode } from '@/lib/db/bookings';
-import { notifyCancellation } from '@/lib/notify';
+import { notifyCancellation } from '@/lib/notify.mjs';
 import { findOrCreateUser, getUser, normalizePhone } from '@/lib/db/users';
 import {
   gateBooking,
