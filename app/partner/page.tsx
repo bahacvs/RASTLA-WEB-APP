@@ -166,9 +166,23 @@ export default function PartnerPage() {
           </p>
           <ul className="flex list-disc flex-col gap-1 pl-5 text-body-md text-on-surface-variant">
             <li>Muhasebe programı değil; komisyon faturası ayrıca düzenlenir.</li>
-            <li>Hava durumuna göre otomatik iptal ve yeniden planlama yok.</li>
-            <li>Otel ve acente entegrasyonu (API) yok; rezervasyonlar elle girilir.</li>
-            <li>Çoklu şube yönetimi yok.</li>
+            <li>
+              Hava durumuna göre <strong>otomatik iptal yok</strong> — ve olmayacak. Panel
+              elverişsiz günleri işaretler, iptal ya da saat değiştirme kararını siz verirsiniz.
+              Yanlış bir tahminin bedeli bir uyarı olmalı, iptal edilmiş bir gün değil.
+            </li>
+            <li>
+              Otel ve acenteler için <strong>makine API&apos;si yok</strong>; portaldan giriş
+              yapıp misafir adına yer tutuyorlar.
+            </li>
+            <li>
+              Şube kırılımı operasyon içindir; <strong>hak ediş ve IBAN işletme düzeyinde</strong>{' '}
+              kalır. Ayrı banka hesabı gereken lokasyon ayrı bir işletme olarak açılmalı.
+            </li>
+            <li>
+              Müşteri bildirimleri SMS aboneliği tanımlanana kadar yalnızca sunucu günlüğüne
+              düşer.
+            </li>
           </ul>
         </section>
 

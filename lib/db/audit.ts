@@ -45,6 +45,11 @@ export const AUDIT_ACTIONS = [
   'operator_user.password_reset',
   'operator_user.phone_set',
   'operator_user.suspended',
+  // Çoklu işletme erişimi. "Kim kime hangi işletmede yetki verdi" sorusu
+  // uyuşmazlıkta doğrudan buradan cevaplanıyor.
+  'operator_user.membership_granted',
+  'operator_user.membership_revoked',
+  'operator_user.switched',
   'operator_user.reactivated',
 
   // Bilet — geri alınamaz işlemler
@@ -56,6 +61,10 @@ export const AUDIT_ACTIONS = [
   'booking.redeem_failed',
   'booking.cancelled',
   'booking.day_cancelled',
+  // Saati değiştirildi. Rezervasyon satırı yalnızca YENİ saati taşıyor;
+  // "eskiden neydi" sorusunun cevabı buradaki meta'da ve uyuşmazlıkta
+  // sorulan da tam olarak bu.
+  'booking.rescheduled',
   'booking.expired',
 
   // Ödeme. KART VERİSİ hiçbir zaman yazılmaz; yalnızca tutar ve sağlayıcı
@@ -96,6 +105,14 @@ export const AUDIT_ACTIONS = [
   // yaptı" sorusu bu satırlarda cevaplanıyor.
   'platform.login',
   'platform.login_failed',
+
+  // Acente portalı. Acente rezervasyonu `booking.created` altında kaydediliyor
+  // ve meta'da `source: 'agency'` taşıyor; ayrı bir eylem açmak aynı olayı iki
+  // isimle aramaya yol açardı.
+  'agency.login',
+  'agency.created',
+  'agency.suspended',
+  'agency.resumed',
   'operator.verification_changed',
   'operator.commission_changed',
   'operator.payouts_suspended',

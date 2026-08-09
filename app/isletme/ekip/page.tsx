@@ -3,7 +3,9 @@ import { OperatorNav } from '@/components/OperatorNav';
 import { ROLE_LABELS } from '@/lib/permissions';
 import { requireOperatorPage } from '@/lib/auth';
 import { listOperatorUsers } from '@/lib/db/operators';
+import { listGuestAccess } from '@/lib/db/memberships';
 import { AddMemberForm, ChangeOwnPasswordForm, MemberControls } from './TeamControls';
+import { GrantAccessForm, RevokeAccessButton } from './GuestAccess';
 
 export const metadata: Metadata = {
   title: 'Ekip',
@@ -14,6 +16,7 @@ export default async function TeamPage() {
   const session = await requireOperatorPage('ekip.yonet');
 
   const members = await listOperatorUsers(session.operator.id);
+  const guests = await listGuestAccess(session.operator.id);
 
   return (
     <div className="min-h-screen">
@@ -81,6 +84,37 @@ export default async function TeamPage() {
         <section className="mb-lg">
           <h2 className="mb-sm text-headline-sm text-on-background">Ekibe kişi ekle</h2>
           <AddMemberForm />
+        </section>
+
+        <section className="mb-lg">
+          <h2 className="mb-xs text-headline-sm text-on-background">Başka işletmeden erişim</h2>
+          <p className="mb-sm text-body-md text-on-surface-variant">
+            Zaten RASTLA hesabı olan birine bu işletmeye giriş hakkı verir. Yeni hesap açmaz,
+            parola üretmez — kişi kendi parolasıyla girip üst çubuktan bu işletmeye geçer. Rolü
+            burada ayrıca seçiyorsunuz: kendi işletmesinde sahip olması, burada da sahip olacağı
+            anlamına gelmez.
+          </p>
+
+          {guests.length > 0 && (
+            <ul className="mb-md flex flex-col gap-sm">
+              {guests.map((guest) => (
+                <li
+                  key={guest.operatorUserId}
+                  className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-outline-variant p-3"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate text-body-md text-on-surface">{guest.name}</p>
+                    <p className="truncate text-label-sm text-on-surface-variant">
+                      {guest.email} · {ROLE_LABELS[guest.role]}
+                    </p>
+                  </div>
+                  <RevokeAccessButton operatorUserId={guest.operatorUserId} name={guest.name} />
+                </li>
+              ))}
+            </ul>
+          )}
+
+          <GrantAccessForm />
         </section>
 
         <section>

@@ -1,5 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import { db } from './index.mjs';
+// Saat hesabı istemci formunun da kullandığı saf modülde; iki kopya tutmak
+// önizlemeyle gerçeğin ayrışmasına yol açmıştı (bkz. lib/schedule-times.ts).
+import { timesForRule } from '../schedule-times.mjs';
+
+export { timesForRule };
 
 /**
  * Müsaitlik motoru.
@@ -116,17 +121,6 @@ function toSlot(row: SlotRow): Slot {
 
 // ---------------------------------------------------------------- yardımcılar
 
-function toMinutes(time: string): number {
-  const [h, m] = time.split(':').map(Number);
-  return h * 60 + m;
-}
-
-function toTime(minutes: number): string {
-  const h = Math.floor(minutes / 60);
-  const m = minutes % 60;
-  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
-}
-
 function toIsoDate(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(
     date.getDate()
@@ -139,24 +133,31 @@ function weekdayIndex(date: Date): number {
 }
 
 /**
- * Kuralın bir gün için ürettiği saatler.
- * start_time dahil, end_time hariç: 08:00–18:00 / 15 dk => 40 saat (08:00 … 17:45).
+ * Bir kuralın ürettiği saatler — hazırlık payı dahil.
+ *
+ * **Üretim ve eşitleme bu tek fonksiyondan geçmek zorunda.** Önce ikisi ayrı
+ * hesaplıyordu: `generateSlots` hazırlık payını katıyor, `syncSlots` katmıyordu.
+ * Sonuç, hazırlık payı tanımlı bir aktivitede üretilen slotların eşitleme
+ * tarafından "hiçbir kuralın kapsamadığı" sayılıp ANINDA KAPATILMASIYDI —
+ * 15 dakika aralık + 5 dakika hazırlıkta üretilen 6 slotun 4'ü kapanıyordu.
+ * İşletme hazırlık payını girdiği anda müsaitliğinin çoğunu kaybediyordu.
+ *
+ * Hata, aynı sorunun iki yerde ayrı ayrı cevaplanmasından çıktı; bu yüzden
+ * düzeltme "iki yeri de düzelt" değil, **soruyu tek yere indirmek.**
+ *
+ * Hazırlık süresi kuralda değil aktivitede duruyor: kaç dakikada
+ * hazırlandığı aktivitenin fiziksel gerçeği, takvimin tercihi değil.
  */
-export function timesForRule(
-  rule: Pick<ScheduleRule, 'startTime' | 'endTime' | 'intervalMinutes'>,
-  prepMinutes = 0
-): string[] {
-  const start = toMinutes(rule.startTime);
-  const end = toMinutes(rule.endTime);
-  const times: string[] = [];
+async function ruleTimes(
+  rule: Pick<ScheduleRule, 'activityId' | 'startTime' | 'endTime' | 'intervalMinutes'>
+): Promise<string[]> {
+  const activity = await (
+    await db()
+  ).get<{ prep_minutes: number }>('SELECT prep_minutes FROM activities WHERE id = ?', [
+    rule.activityId,
+  ]);
 
-  // Hazırlık süresi aralığa EKLENİR, aralıktan düşülmez: 15 dakikalık tur +
-  // 5 dakika hazırlık = 20 dakikada bir kalkış. Düşülseydi seanslar üst üste
-  // biner ve ekip iki grubu aynı anda karşılamak zorunda kalırdı.
-  const step = rule.intervalMinutes + Math.max(0, prepMinutes);
-
-  for (let m = start; m < end; m += step) times.push(toTime(m));
-  return times;
+  return timesForRule(rule, activity?.prep_minutes ?? 0);
 }
 
 /**
@@ -270,17 +271,9 @@ export async function setRuleActive(ruleId: string, active: boolean) {
 export async function generateSlots(rule: ScheduleRule, horizonDays = 90): Promise<number> {
   if (!rule.active) return 0;
 
-  // Hazırlık süresi ve ekipman sınırı aktiviteden gelir; kuralın kendisinde
-  // durmuyor çünkü ikisi de aktivitenin fiziksel gerçeği (kaç araç var, kaç
-  // dakikada hazırlanıyor), takvimin tercihi değil.
-  const activity = await (
-    await db()
-  ).get<{ prep_minutes: number }>('SELECT prep_minutes FROM activities WHERE id = ?', [
-    rule.activityId,
-  ]);
   const pool = await getEquipmentPool(rule.activityId);
 
-  const times = timesForRule(rule, activity?.prep_minutes ?? 0);
+  const times = await ruleTimes(rule);
   if (times.length === 0) return 0;
 
   const client = await db();
@@ -348,7 +341,9 @@ export async function syncSlots(
   today.setHours(0, 0, 0, 0);
 
   for (const rule of rules) {
-    const times = timesForRule(rule);
+    // Üretimle AYNI kaynak: bkz. ruleTimes. Burada prep'siz hesaplamak,
+    // az önce üretilmiş slotları kapsam dışı sayıp kapatmak demekti.
+    const times = await ruleTimes(rule);
     const horizonEnd = new Date(today);
     horizonEnd.setDate(horizonEnd.getDate() + horizonDays);
 
@@ -428,62 +423,18 @@ export async function setSlotStatus(slotId: string, status: 'open' | 'closed') {
 }
 
 // ------------------------------------------------------------ kapasite
+//
+// Tutma ve bırakma `capacity.mjs` içinde: aynı sayacın iki yönü ve ayrı
+// dosyalarda yaşarlarsa biri değişip diğeri unutulabilir. Ayrıca ödeme süresi
+// işi ve yeniden planlama düz düğüm betiği olarak da çalışıyor ve TypeScript
+// modülü yükleyemiyor. Buradan yeniden dışa aktarılıyorlar ki çağrı yerleri
+// "kapasite işleri slots.ts'te" beklentisini bozmasın.
 
 export type ReserveResult =
-  | { ok: true; slot: Slot }
+  | { ok: true }
   | { ok: false; reason: 'not_found' | 'closed' | 'full' | 'no_equipment' };
 
-/**
- * Slottan kapasite düşer. Aşırı rezervasyona kapalıdır.
- *
- * Garanti tek bir koşullu UPDATE'e dayanır — bilet onayındaki desenin aynısı:
- *
- *   UPDATE slots SET booked = booked + :units, units_booked = units_booked + :eq
- *    WHERE id = :id AND status = 'open'
- *      AND booked + :units <= capacity
- *      AND (unit_capacity IS NULL OR units_booked + :eq <= unit_capacity)
- *
- * Bu ifade atomiktir. Son yeri iki kişi aynı anda almaya çalıştığında
- * güncellemeler sıraya girer; ilki kapasiteyi tüketir, ikincisinin WHERE
- * koşulu artık tutmaz ve 0 satır etkiler. Hiçbir yerde "önce say, uygun mu
- * bak, sonra ekle" yapılmaz — o yaklaşım yarış durumuna açıktır.
- *
- * EKİPMAN SINIRI AYNI İFADEYE EKLENDİ, ayrı bir sorgu olarak değil. İki ayrı
- * UPDATE olsaydı arada başka bir işlem araya girebilir ve kişi kapasitesi
- * tutulmuşken ekipman tutulamayabilirdi — geri alınması gereken yarım bir
- * durum. Tek ifadede ya ikisi birden olur ya hiçbiri.
- *
- * @param units       kişi/rezervasyon sayacından düşecek miktar
- * @param equipment   ekipman sayacından düşecek araç sayısı (havuz yoksa 0)
- */
-export async function reserveCapacity(
-  slotId: string,
-  units: number,
-  equipment = 0
-): Promise<ReserveResult> {
-  const result = await (
-    await db()
-  ).run(
-    `UPDATE slots
-        SET booked = booked + ?, units_booked = units_booked + ?
-      WHERE id = ? AND status = 'open'
-        AND booked + ? <= capacity
-        AND (unit_capacity IS NULL OR units_booked + ? <= unit_capacity)`,
-    [units, equipment, slotId, units, equipment]
-  );
-
-  if (result.changes === 1) return { ok: true, slot: (await getSlot(slotId))! };
-
-  const slot = await getSlot(slotId);
-  if (!slot) return { ok: false, reason: 'not_found' };
-  if (slot.status === 'closed') return { ok: false, reason: 'closed' };
-  // Kişi yeri varken ekipman bitmiş olabilir; kullanıcıya "dolu" demek yerine
-  // hangi sınıra takıldığı söylenebilsin diye ayrıldı.
-  if (slot.unitCapacity !== null && slot.unitsBooked + equipment > slot.unitCapacity) {
-    return { ok: false, reason: 'no_equipment' };
-  }
-  return { ok: false, reason: 'full' };
-}
+export { releaseCapacity, reserveCapacity } from './capacity.mjs';
 
 /**
  * Bir rezervasyonun kaç araç tuttuğunu hesaplar.
@@ -552,12 +503,3 @@ export async function gateBooking(
   };
 }
 
-/**
- * İptalde kapasiteyi geri verir. Negatife düşmesi şema kısıtıyla da engellenir.
- *
- * Gövdesi `capacity.mjs` içinde: aynı ifadeyi zamanlanmış ödeme süresi işi de
- * çağırıyor ve o iş düz düğüm betiği olarak da çalıştığı için TypeScript
- * modülünü yükleyemez. Buradan yeniden dışa aktarılıyor ki çağrı yerleri
- * "kapasite işleri slots.ts'te" beklentisini bozmasın.
- */
-export { releaseCapacity } from './capacity.mjs';

@@ -1,5 +1,7 @@
 import Link from 'next/link';
 import { operatorLogoutAction } from '@/app/actions/operator';
+import { listMemberships } from '@/lib/db/memberships';
+import { OperatorSwitcher } from '@/components/OperatorSwitcher';
 import { roleCan, ROLE_LABELS, type Capability } from '@/lib/permissions';
 import type { OperatorSession } from '@/lib/auth';
 
@@ -20,15 +22,23 @@ const LINKS: { href: string; label: string; needs: Capability }[] = [
   { href: '/isletme/tara', label: 'Bilet Okut', needs: 'checkin.yap' },
   { href: '/isletme/rezervasyonlar', label: 'Rezervasyonlar', needs: 'rezervasyon.goruntule' },
   { href: '/isletme/aktiviteler', label: 'Aktiviteler', needs: 'aktivite.yonet' },
+  { href: '/isletme/subeler', label: 'Şubeler', needs: 'takvim.yonet' },
   { href: '/isletme/finans', label: 'Hak Ediş', needs: 'finans.goruntule' },
   { href: '/isletme/odeme-ayarlari', label: 'Ödeme', needs: 'odeme.yonet' },
   { href: '/isletme/ekip', label: 'Ekip', needs: 'ekip.yonet' },
   { href: '/isletme/gunluk', label: 'İşlem Günlüğü', needs: 'gunluk.goruntule' },
 ];
 
-/** İşletme panelinin ortak üst çubuğu. */
-export function OperatorNav({ session }: { session: OperatorSession }) {
+/**
+ * İşletme panelinin ortak üst çubuğu.
+ *
+ * Sunucu bileşeni olduğu için erişilebilir işletmeleri kendisi sorabiliyor;
+ * her sayfanın bu listeyi ayrıca çekip aşağı geçirmesi gerekmiyor. Tek
+ * işletmesi olan kullanıcıda seçici hiç çizilmiyor (bkz. OperatorSwitcher).
+ */
+export async function OperatorNav({ session }: { session: OperatorSession }) {
   const links = LINKS.filter(({ needs }) => roleCan(session.user.role, needs));
+  const memberships = await listMemberships(session.user.id);
 
   return (
     <header className="border-b border-surface-variant bg-surface">
@@ -39,13 +49,33 @@ export function OperatorNav({ session }: { session: OperatorSession }) {
           </p>
           <p className="truncate text-label-sm text-on-surface-variant">
             {session.user.name} · {ROLE_LABELS[session.user.role]}
+            {/*
+              Başkasının işletmesindeyken bu AÇIKÇA yazılıyor. Panel her
+              işletmede birebir aynı göründüğü için, yanlış işletmede işlem
+              yapmak fark edilmesi en zor hatalardan biri olurdu.
+            */}
+            {session.operator.id !== session.primaryOperatorId && ' · konuk erişimi'}
           </p>
         </div>
-        <form action={operatorLogoutAction}>
-          <button type="submit" className="text-label-bold text-on-surface-variant hover:underline">
-            Çıkış
-          </button>
-        </form>
+        <div className="flex items-center gap-3">
+          <OperatorSwitcher
+            options={memberships.map((m) => ({
+              operatorId: m.operatorId,
+              operatorName: m.operatorName,
+              role: m.role,
+              primary: m.primary,
+            }))}
+            activeId={session.operator.id}
+          />
+          <form action={operatorLogoutAction}>
+            <button
+              type="submit"
+              className="text-label-bold text-on-surface-variant hover:underline"
+            >
+              Çıkış
+            </button>
+          </form>
+        </div>
       </div>
 
       <nav className="scrollbar-hide mx-auto flex w-full max-w-7xl gap-sm overflow-x-auto px-container-margin pb-sm">

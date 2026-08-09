@@ -1,6 +1,7 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 import { db } from './index.mjs';
-import { releaseCapacity } from './slots';
+import { releaseCapacity } from './capacity.mjs';
+import { rescheduleBooking as moveBooking } from './reschedule.mjs';
 
 /**
  * `pending_payment` ve `expired` ödeme fazıyla eklendi.
@@ -47,6 +48,8 @@ export type Booking = {
   paymentMode: PaymentMode;
   /** Manuel kaydı açan işletme personeli; RASTLA rezervasyonlarında null. */
   createdBy: string | null;
+  /** Rezervasyonu açan acente; acente değilse null. */
+  agencyId: string | null;
   /** Check-in'de kaç kişi geldi; okutulmadıysa null. */
   attended: number | null;
   noShowAt: string | null;
@@ -66,6 +69,8 @@ export type Booking = {
   redeemedAt: string | null;
   /** Bileti onaylayan işletme personelinin hesap kimliği (operator_users.id). */
   redeemedBy: string | null;
+  /** Saati değiştirildiyse ne zaman. Nereden nereye taşındığı işlem günlüğünde. */
+  rescheduledAt: string | null;
   cancelledAt: string | null;
   cancelReason: CancelReason | null;
 };
@@ -82,6 +87,7 @@ type Row = {
   source: BookingSource;
   payment_mode: PaymentMode;
   created_by: string | null;
+  agency_id: string | null;
   attended: number | null;
   no_show_at: string | null;
   booking_date: string;
@@ -96,6 +102,7 @@ type Row = {
   expired_at: string | null;
   redeemed_at: string | null;
   redeemed_by: string | null;
+  rescheduled_at: string | null;
   cancelled_at: string | null;
   cancel_reason: CancelReason | null;
 };
@@ -113,6 +120,7 @@ function toBooking(row: Row): Booking {
     source: row.source ?? 'rastla',
     paymentMode: row.payment_mode ?? 'online',
     createdBy: row.created_by ?? null,
+    agencyId: row.agency_id ?? null,
     attended: row.attended ?? null,
     noShowAt: row.no_show_at ?? null,
     bookingDate: row.booking_date,
@@ -127,6 +135,7 @@ function toBooking(row: Row): Booking {
     expiredAt: row.expired_at,
     redeemedAt: row.redeemed_at,
     redeemedBy: row.redeemed_by,
+    rescheduledAt: row.rescheduled_at ?? null,
     cancelledAt: row.cancelled_at,
     cancelReason: row.cancel_reason,
   };
@@ -162,6 +171,8 @@ export async function createBooking(input: {
   paymentMode?: PaymentMode;
   /** Manuel kaydı açan işletme personeli; RASTLA rezervasyonlarında null. */
   createdBy?: string | null;
+  /** Rezervasyonu açan acente; acente değilse null. */
+  agencyId?: string | null;
   bookingDate: string;
   bookingTime: string;
   adults: number;
@@ -200,6 +211,7 @@ export async function createBooking(input: {
     source: input.source ?? 'rastla',
     payment_mode: input.paymentMode ?? 'online',
     created_by: input.createdBy ?? null,
+    agency_id: input.agencyId ?? null,
     attended: null,
     no_show_at: null,
     booking_date: input.bookingDate,
@@ -215,6 +227,7 @@ export async function createBooking(input: {
     expired_at: null,
     redeemed_at: null,
     redeemed_by: null,
+    rescheduled_at: null,
     cancelled_at: null,
     cancel_reason: null,
   };
@@ -224,12 +237,12 @@ export async function createBooking(input: {
   ).run(
     `INSERT INTO bookings
        (id, code, user_id, activity_slug, operator_id, slot_id, units, equipment_units,
-        source, payment_mode, created_by, attended, no_show_at, booking_date,
+        source, payment_mode, created_by, agency_id, attended, no_show_at, booking_date,
         booking_time, adults, children, total_try, status, created_at, terms_accepted_at,
         confirmed_at, expired_at, redeemed_at, redeemed_by, cancelled_at, cancel_reason)
      VALUES
        (@id, @code, @user_id, @activity_slug, @operator_id, @slot_id, @units, @equipment_units,
-        @source, @payment_mode, @created_by, @attended, @no_show_at, @booking_date,
+        @source, @payment_mode, @created_by, @agency_id, @attended, @no_show_at, @booking_date,
         @booking_time, @adults, @children, @total_try, @status, @created_at, @terms_accepted_at,
         @confirmed_at, @expired_at, @redeemed_at, @redeemed_by, @cancelled_at, @cancel_reason)`,
     row
@@ -330,13 +343,38 @@ export async function redeemBooking(
 }
 
 /** İşletmenin belirli bir gündeki rezervasyonları. */
+/**
+ * İşletmenin belirli bir gündeki rezervasyonları.
+ *
+ * `branchId` verilirse yalnızca o şubenin ilanlarına ait kayıtlar döner.
+ * Süzgeç SQL'de, çağıran tarafta değil: iki ekran da aynı süzmeyi yapıyor ve
+ * JavaScript tarafında filtrelemek, sayfa sayaçlarının süzülmemiş listeden
+ * hesaplanması gibi sessiz tutarsızlıklara kapı açardı.
+ *
+ * Şube kimliğinin bu işletmeye ait olduğu ÇAĞIRAN TARAFTA doğrulanmış olmalı
+ * (`validBranchFilter`); burada doğrulanmıyor çünkü katılım zaten
+ * `operator_id` ile sınırlı — başka bir işletmenin şubesi süzgece verilse bile
+ * sonuç boş döner, sızıntı olmaz.
+ */
 export async function listBookingsForOperator(
   operatorId: string,
-  date: string
+  date: string,
+  branchId?: string | null
 ): Promise<Booking[]> {
-  const rows = await (
-    await db()
-  ).all<Row>(
+  const client = await db();
+
+  if (branchId) {
+    const rows = await client.all<Row>(
+      `SELECT b.* FROM bookings b
+         JOIN activities a ON a.slug = b.activity_slug
+        WHERE b.operator_id = ? AND b.booking_date = ? AND a.branch_id = ?
+        ORDER BY b.booking_time, b.created_at`,
+      [operatorId, date, branchId]
+    );
+    return rows.map(toBooking);
+  }
+
+  const rows = await client.all<Row>(
     `SELECT * FROM bookings
       WHERE operator_id = ? AND booking_date = ?
       ORDER BY booking_time, created_at`,
@@ -417,6 +455,62 @@ export async function cancelDay(
   return { cancelled, skipped };
 }
 
+
+/**
+ * Bir acentenin açtığı rezervasyonlar.
+ *
+ * Acente **yalnızca kendi** kayıtlarını görüyor: süzgeç `agency_id` üzerinde
+ * ve kimlik oturumdan geliyor, adresten değil. Başka bir acentenin kimliğini
+ * göndermek diye bir yol yok.
+ */
+export async function listBookingsForAgency(agencyId: string): Promise<Booking[]> {
+  const rows = await (
+    await db()
+  ).all<Row>(
+    `SELECT * FROM bookings
+      WHERE agency_id = ?
+      ORDER BY booking_date DESC, booking_time DESC`,
+    [agencyId]
+  );
+  return rows.map(toBooking);
+}
+
+export type RescheduleResult =
+  | { ok: true; booking: Booking; from: { date: string; time: string } }
+  | {
+      ok: false;
+      reason:
+        | 'not_found'
+        | 'not_confirmed'
+        | 'same_slot'
+        | 'slot_not_found'
+        | 'other_activity'
+        | 'closed'
+        | 'full'
+        | 'no_equipment'
+        | 'moved';
+    };
+
+/**
+ * Rezervasyonu başka bir slota taşır.
+ *
+ * Gövdesi `reschedule.mjs` içinde ve orada durmasının sebebi `capacity.mjs`
+ * ile aynı: doğrulama betiği bu işlevi AYRI DÜĞÜM SÜREÇLERİ olarak çağırıyor
+ * (on iki eşzamanlı taşıma denemesi ancak öyle sınanabilir) ve düğüm,
+ * TypeScript modülünü doğrudan yükleyemiyor. Sıranın neden bu sıra olduğu ve
+ * yarışın nasıl kesildiği o dosyada yazılı.
+ *
+ * Buradaki sarmalayıcı yalnızca satırı `Booking`e çeviriyor: çağıran taraf
+ * sütun adlarıyla değil, uygulamanın geri kalanıyla aynı biçimle çalışsın.
+ */
+export async function rescheduleBooking(
+  code: string,
+  newSlotId: string
+): Promise<RescheduleResult> {
+  const result = await moveBooking(code, newSlotId);
+  if (!result.ok) return { ok: false, reason: result.reason };
+  return { ok: true, booking: toBooking(result.booking as Row), from: result.from };
+}
 
 export type NoShowResult = { ok: true } | { ok: false; reason: 'not_found' | 'not_pending' };
 

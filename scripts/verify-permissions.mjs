@@ -59,12 +59,17 @@ const MENU = {
     'Bilet Okut',
     'Rezervasyonlar',
     'Aktiviteler',
+    'Şubeler',
     'Hak Ediş',
     'Ödeme',
     'Ekip',
     'İşlem Günlüğü',
   ],
-  manager: ['Bugün', 'Bilet Okut', 'Rezervasyonlar', 'Aktiviteler', 'İşlem Günlüğü'],
+  // Yönetici şube tanımlayabiliyor: şube bir operasyon kavramı (hangi
+  // iskelede çalışıyoruz), ticari bir karar değil. Sahibe özel tutmak, iki
+  // lokasyonlu bir işletmede yöneticinin gününü sahibi aramadan
+  // düzenleyememesi demekti.
+  manager: ['Bugün', 'Bilet Okut', 'Rezervasyonlar', 'Aktiviteler', 'Şubeler', 'İşlem Günlüğü'],
   staff: ['Bugün', 'Bilet Okut', 'Rezervasyonlar'],
 };
 

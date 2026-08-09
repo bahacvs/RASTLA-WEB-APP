@@ -348,6 +348,19 @@ export async function getOperatorUser(id: string): Promise<OperatorUser | null> 
   return row ? toUser(row) : null;
 }
 
+/**
+ * E-postayla hesap arar.
+ *
+ * Erişim veren kişi karşı tarafın iç kimliğini bilmez, e-postasını bilir.
+ * E-posta zaten `UNIQUE` ve küçük harfe indirgenmiş kayıtlarla saklanıyor.
+ */
+export async function getOperatorUserByEmail(email: string): Promise<OperatorUser | null> {
+  const row = await (
+    await db()
+  ).get<UserRow>('SELECT * FROM operator_users WHERE email = ?', [normalizeEmail(email)]);
+  return row ? toUser(row) : null;
+}
+
 export async function countOperatorUsers(): Promise<number> {
   const row = await (
     await db()

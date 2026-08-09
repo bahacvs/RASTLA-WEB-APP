@@ -74,6 +74,34 @@ export async function getOperatorUserId(): Promise<string | null> {
 
 export async function clearOperatorSession() {
   (await cookies()).delete(OPERATOR_COOKIE);
+  (await cookies()).delete(ACTIVE_OPERATOR_COOKIE);
+}
+
+/**
+ * Birden çok işletmeye erişebilen kişinin ŞU AN hangisinde çalıştığı.
+ *
+ * Çerez yalnızca **tercih** taşıyor, yetki taşımıyor. İçindeki kimliğe üyelik
+ * yoksa ana işletmeye düşülür (bkz. lib/auth.ts). Ayrım önemli: çerez imzalı
+ * olsa bile üyelik dünden bugüne kaldırılmış olabilir ve imza bunu bilemez.
+ * Yetki her istekte veritabanından doğrulanıyor — askıya alınan hesabın
+ * oturumunun anında düşmesiyle aynı güvence.
+ *
+ * Oturum çerezinden AYRI tutuluyor: çıkış yapmadan işletme değiştirmek
+ * kimliği yeniden doğrulamayı gerektirmemeli, ama seçim çıkışta silinmeli —
+ * ortak bir cihazda bir sonraki kişi başkasının seçimiyle karşılaşmasın.
+ */
+const ACTIVE_OPERATOR_COOKIE = 'rastla_operator_aktif';
+
+export async function setActiveOperator(operatorId: string) {
+  (await cookies()).set(ACTIVE_OPERATOR_COOKIE, pack(operatorId), COOKIE_OPTIONS);
+}
+
+export async function getActiveOperator(): Promise<string | null> {
+  return unpack((await cookies()).get(ACTIVE_OPERATOR_COOKIE)?.value);
+}
+
+export async function clearActiveOperator() {
+  (await cookies()).delete(ACTIVE_OPERATOR_COOKIE);
 }
 
 /**
@@ -97,6 +125,29 @@ export async function getPlatformUserId(): Promise<string | null> {
 
 export async function clearPlatformSession() {
   (await cookies()).delete(PLATFORM_COOKIE);
+}
+
+/**
+ * Acente portalının oturumu — üçüncü ve son ayrı çerez.
+ *
+ * İşletme ve platform çerezleriyle aynı gerekçe: acente oturumunun `/isletme`
+ * ve `/yonetim` için hiçbir şey ifade etmemesi bir kontrol meselesi değil,
+ * yapısal olmalı. Tek çerezde taşınsalardı fark yalnızca bir veritabanı
+ * sorgusuna kalırdı ve o sorgunun bir yerde atlanması, otel resepsiyonundaki
+ * birinin işletme paneline girmesi demek olurdu.
+ */
+const AGENCY_COOKIE = 'rastla_agency';
+
+export async function setAgencySession(agencyUserId: string) {
+  (await cookies()).set(AGENCY_COOKIE, pack(agencyUserId), COOKIE_OPTIONS);
+}
+
+export async function getAgencyUserId(): Promise<string | null> {
+  return unpack((await cookies()).get(AGENCY_COOKIE)?.value);
+}
+
+export async function clearAgencySession() {
+  (await cookies()).delete(AGENCY_COOKIE);
 }
 
 /**

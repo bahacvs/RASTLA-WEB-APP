@@ -6,6 +6,10 @@ import { listActivitiesForOperator } from '@/lib/db/activities';
 import { listSlots } from '@/lib/db/slots';
 import { displayContact, getUser } from '@/lib/db/users';
 import { formatPrice } from '@/lib/format';
+import { forecastsForOperator } from '@/lib/db/weather.mjs';
+import { listBranches, validBranchFilter } from '@/lib/db/branches';
+import { BranchFilter } from '@/components/BranchFilter';
+import { WeatherStrip } from '@/components/WeatherStrip';
 import { ManualBookingForm } from './ManualBookingForm';
 import { BookingRowActions } from './BookingRowActions';
 
@@ -29,12 +33,26 @@ function isoDate(date: Date): string {
  * panosu değil. Bu yüzden üstte günün sayıları, altında saat sırasına dizilmiş
  * operasyon akışı var; her satırda o an gereken işlemler elin altında.
  */
-export default async function TodayPage() {
+export default async function TodayPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ sube?: string }>;
+}) {
   const session = await requireOperatorPage('bugun.goruntule');
   const today = isoDate(new Date());
 
-  const bookings = await listBookingsForOperator(session.operator.id, today);
-  const activities = await listActivitiesForOperator(session.operator.id);
+  // Süzgeç DOĞRULANIYOR: adres çubuğundan gelen kimlik başka bir işletmenin
+  // şubesi olabilir. Geçersizse sessizce süzgeçsiz görünüme düşülüyor —
+  // hata sayfası, elle adres değiştiren birine "böyle bir şube var ama sizin
+  // değil" demek olurdu.
+  const branches = await listBranches(session.operator.id);
+  const branchId = await validBranchFilter((await searchParams).sube, session.operator.id);
+
+  const bookings = await listBookingsForOperator(session.operator.id, today, branchId);
+  const allActivities = await listActivitiesForOperator(session.operator.id);
+  const activities = branchId
+    ? allActivities.filter((a) => a.branchId === branchId)
+    : allActivities;
   const bySlug = new Map(activities.map((a) => [a.slug, a]));
 
   // İptal ve süresi dolmuş kayıtlar günün akışında yer tutmamalı; onları
@@ -69,6 +87,14 @@ export default async function TodayPage() {
 
   const mayAddManual = can(session, 'rezervasyon.manuel');
 
+  // Hava şeridi yalnızca söyleyecek bir şey varsa çizilir: `uygun` günler ve
+  // tahmini olmayan aktiviteler elenir. Her sabah "hava uygun" yazan bir kutu
+  // bir süre sonra hiç okunmaz ve gerçekten uyardığı gün de okunmazdı.
+  const forecasts = await forecastsForOperator(session.operator.id, today);
+  const warnings = activities
+    .map((a) => ({ activity: a, forecast: forecasts.get(a.id) ?? null }))
+    .filter((row) => row.forecast !== null && row.forecast.verdict !== 'uygun');
+
   return (
     <div className="min-h-screen">
       <OperatorNav session={session} />
@@ -85,6 +111,12 @@ export default async function TodayPage() {
           </p>
         </div>
 
+        <BranchFilter
+          branches={branches}
+          activeId={branchId}
+          basePath="/isletme/bugun"
+        />
+
         {/* Günün sayıları */}
         <section className="grid grid-cols-2 gap-sm sm:grid-cols-3 lg:grid-cols-5">
           <Tile label="Rezervasyon" value={String(live.length)} />
@@ -97,6 +129,14 @@ export default async function TodayPage() {
             tone={awaitingPayment > 0 ? 'warn' : undefined}
           />
         </section>
+
+        {warnings.length > 0 && (
+          <section className="flex flex-col gap-sm">
+            {warnings.map(({ activity, forecast }) => (
+              <WeatherStrip key={activity.id} forecast={forecast} activityTitle={activity.title} />
+            ))}
+          </section>
+        )}
 
         {/* Operasyon akışı */}
         <section className="rounded-xl border border-outline-variant bg-surface-container-lowest p-md shadow-card">

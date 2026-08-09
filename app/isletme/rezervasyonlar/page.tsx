@@ -8,7 +8,14 @@ import { listBookingsForOperator, type BookingStatus } from '@/lib/db/bookings';
 import { displayContact, getUser } from '@/lib/db/users';
 import { getActivityBySlug } from '@/lib/db/activities';
 import { formatPrice } from '@/lib/format';
+import { listSlots } from '@/lib/db/slots';
+import { forecastsForOperator } from '@/lib/db/weather.mjs';
+import { listBranches, validBranchFilter } from '@/lib/db/branches';
+import { getAgency } from '@/lib/db/agencies';
+import { BranchFilter } from '@/components/BranchFilter';
+import { WeatherStrip } from '@/components/WeatherStrip';
 import { CancelBookingButton, CancelDayButton } from './CancelControls';
+import { RescheduleControl, type SlotOption } from './RescheduleControl';
 
 export const metadata: Metadata = {
   title: 'Rezervasyonlar',
@@ -40,16 +47,19 @@ function isoDate(date: Date): string {
 export default async function OperatorBookingsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ gun?: string }>;
+  searchParams: Promise<{ gun?: string; sube?: string }>;
 }) {
   const session = await currentOperator();
   if (!session) redirect('/isletme');
   const operatorId = session.operator.id;
 
-  const { gun } = await searchParams;
+  const { gun, sube } = await searchParams;
   const day = gun && /^\d{4}-\d{2}-\d{2}$/.test(gun) ? gun : isoDate(new Date());
 
-  const bookings = await listBookingsForOperator(operatorId, day);
+  const branches = await listBranches(operatorId);
+  const branchId = await validBranchFilter(sube, operatorId);
+
+  const bookings = await listBookingsForOperator(operatorId, day, branchId);
 
   // Bileti onaylayan personelin adı. Kimliği ekranda göstermenin anlamı yok;
   // asıl mesele o kimliğin KAYITLI olması.
@@ -84,6 +94,47 @@ export default async function OperatorBookingsPage({
   const activeCount = bookings.filter((b) => b.status === 'confirmed').length;
   const pendingCount = bookings.filter((b) => b.status === 'pending_payment').length;
 
+  // Taşıma seçenekleri: aynı aktivitenin seçili gün ve sonraki iki gündeki
+  // AÇIK ve yer kalan slotları. Ufuk kasten dar — bir rezervasyonu bir hafta
+  // sonraya taşımak taşıma değil, yeni bir plandır ve müşteriyle konuşulması
+  // gerekir. Liste hazırlandıktan sonra yer başkasına gidebilir; son söz
+  // `rescheduleBooking` içindeki koşullu UPDATE'te.
+  const RESCHEDULE_HORIZON_DAYS = 3;
+  const optionDays = Array.from({ length: RESCHEDULE_HORIZON_DAYS }, (_, offset) => {
+    const d = new Date(`${day}T00:00:00`);
+    d.setDate(d.getDate() + offset);
+    return isoDate(d);
+  });
+
+  const slotOptions = new Map<string, SlotOption[]>();
+  for (const [slug, activity] of activities) {
+    if (!activity) continue;
+    const options: SlotOption[] = [];
+    for (const date of optionDays) {
+      for (const slot of await listSlots(activity.id, date)) {
+        if (slot.status !== 'open' || slot.remaining <= 0) continue;
+        options.push({ id: slot.id, date, time: slot.time, remaining: slot.remaining });
+      }
+    }
+    slotOptions.set(slug, options);
+  }
+
+  // "Hangi acente gönderdi" sorusu işletmenin en sık sorduğu şeylerden biri;
+  // `source='agency'` etiketi yalnızca "acenteden" der, hangisinden demez.
+  const agencies = new Map(
+    await Promise.all(
+      [...new Set(bookings.map((b) => b.agencyId).filter((id): id is string => id !== null))].map(
+        async (id) => [id, await getAgency(id)] as const
+      )
+    )
+  );
+
+  const forecasts = await forecastsForOperator(operatorId, day);
+  const warnings = [...activities.values()]
+    .filter((a) => a !== null)
+    .map((a) => ({ activity: a, forecast: forecasts.get(a.id) ?? null }))
+    .filter((row) => row.forecast !== null && row.forecast.verdict !== 'uygun');
+
   return (
     <div className="min-h-screen">
       <OperatorNav session={session} />
@@ -92,6 +143,9 @@ export default async function OperatorBookingsPage({
         <div className="mb-lg flex flex-wrap items-center justify-between gap-sm">
           <h1 className="text-headline-md text-on-background">Rezervasyonlar</h1>
           <form className="flex items-center gap-2">
+            {/* Gün değişirken şube süzgeci KORUNUYOR; aksi hâlde tarihi
+                değiştiren kişi süzgecini sessizce kaybederdi. */}
+            {branchId && <input type="hidden" name="sube" value={branchId} />}
             <input
               name="gun"
               type="date"
@@ -107,6 +161,15 @@ export default async function OperatorBookingsPage({
           </form>
         </div>
 
+        <div className="mb-lg">
+          <BranchFilter
+            branches={branches}
+            activeId={branchId}
+            basePath="/isletme/rezervasyonlar"
+            extraParams={{ gun: day }}
+          />
+        </div>
+
         <div className="mb-lg grid grid-cols-3 gap-sm">
           <Stat label="Rezervasyon" value={String(bookings.length)} />
           <Stat label="Misafir" value={String(guests)} />
@@ -119,6 +182,14 @@ export default async function OperatorBookingsPage({
             Yerleri tutuluyor ama biletleri henüz geçerli değil. Ödeme tamamlanmazsa kısa süre
             içinde düşer ve yerler tekrar satışa açılır.
           </p>
+        )}
+
+        {warnings.length > 0 && (
+          <div className="mb-lg flex flex-col gap-sm">
+            {warnings.map(({ activity, forecast }) => (
+              <WeatherStrip key={activity.id} forecast={forecast} activityTitle={activity.title} />
+            ))}
+          </div>
         )}
 
         {activeCount > 0 && (
@@ -152,6 +223,11 @@ export default async function OperatorBookingsPage({
                       <p className="text-body-md text-on-surface-variant">
                         {guest.name} · {guest.phone}
                       </p>
+                      {booking.agencyId && (
+                        <p className="text-label-sm text-on-surface-variant">
+                          Acente: {agencies.get(booking.agencyId)?.name ?? 'bilinmiyor'}
+                        </p>
+                      )}
                     </div>
                     <span
                       className={`shrink-0 rounded-full px-2 py-1 text-label-bold ${status.className}`}
@@ -176,9 +252,26 @@ export default async function OperatorBookingsPage({
                   </div>
 
                   {booking.status === 'confirmed' && (
-                    <div className="mt-sm flex justify-end">
+                    <div className="mt-sm flex flex-wrap items-center justify-end gap-md">
+                      {/*
+                        Taşıma iptalin SOLUNDA: hava bozduğunda ilk denenmesi
+                        gereken bu ve düğmelerin sırası hangisinin önce akla
+                        geleceğini belirliyor.
+                      */}
+                      <RescheduleControl
+                        code={booking.code}
+                        options={(slotOptions.get(booking.activitySlug) ?? []).filter(
+                          (option) => option.id !== booking.slotId
+                        )}
+                      />
                       <CancelBookingButton code={booking.code} />
                     </div>
+                  )}
+
+                  {booking.rescheduledAt && (
+                    <p className="mt-sm text-label-sm text-on-surface-variant">
+                      Bu rezervasyonun saati değiştirildi
+                    </p>
                   )}
 
                   {booking.status === 'redeemed' && (

@@ -14,7 +14,9 @@
     "retention": "node scripts/gorev.mjs saklama",
     "gorev": "node scripts/gorev.mjs",
     "prebuild": "node scripts/copy-maplibre-worker.mjs",
-    "platform:create": "node scripts/platform-account.mjs"
+    "platform:create": "node scripts/platform-account.mjs",
+    "agency:create": "node scripts/agency-account.mjs",
+    "demo:gun": "node scripts/demo-gun.mjs"
   },
   "dependencies": {
     "@fontsource/inter": "^5.3.0",

@@ -20,6 +20,51 @@ CREATE TABLE IF NOT EXISTS users (
   deleted_at  TEXT
 );
 
+-- Otel, tur şirketi, konsiyerj — RASTLA'ya misafir yönlendiren aracılar.
+--
+-- Otellerin çoğunda teknik ekip yok; makine API'si bu turun kapsamı dışında.
+-- Onun yerine bir portal: resepsiyon görevlisi giriyor, müsaitliği görüyor,
+-- misafir adına yer tutuyor.
+--
+-- **Acente rezervasyonu KOMİSYON DOĞURMUYOR** (bu turun ticari kararı) ama
+-- kapasiteyi normal bir rezervasyon gibi tüketiyor. Sebep komisyon değil,
+-- MÜSAİTLİĞİN DOĞRU OLMASI: otelden alınan yer sisteme girmezse RASTLA
+-- müşterisine boş görünen saat aslında doludur ve iki grup aynı anda
+-- iskeleye gelir. `source='agency'` bugünden kaydediliyor, böylece ticari
+-- model netleştiğinde geçmiş veri kaybolmuş olmuyor.
+CREATE TABLE IF NOT EXISTS agencies (
+  id            TEXT PRIMARY KEY,
+  name          TEXT NOT NULL,
+  contact_email TEXT,
+  phone         TEXT,
+
+  status        TEXT NOT NULL DEFAULT 'active'
+                CHECK (status IN ('active', 'suspended')),
+
+  created_at    TEXT NOT NULL
+);
+
+-- Acente personelinin hesabı. `platform_users` deseninin birebir eşi.
+--
+-- Aynı e-posta hem işletme, hem platform, hem acente hesabı olabilir; üçü ayrı
+-- oturum çerezi taşır ve hiçbiri diğerinin yetkisini vermez.
+CREATE TABLE IF NOT EXISTS agency_users (
+  id             TEXT PRIMARY KEY,
+  agency_id      TEXT NOT NULL REFERENCES agencies(id) ON DELETE CASCADE,
+
+  email          TEXT NOT NULL UNIQUE,   -- küçük harfe indirgenmiş
+  name           TEXT NOT NULL,
+  password_hash  TEXT NOT NULL,
+
+  status         TEXT NOT NULL DEFAULT 'active'
+                 CHECK (status IN ('active', 'suspended')),
+
+  created_at     TEXT NOT NULL,
+  last_login_at  TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_agency_users_agency ON agency_users(agency_id, status);
+
 -- Hizmeti veren işletme. Önceden lib/operators.ts içinde sabit bir diziydi.
 CREATE TABLE IF NOT EXISTS operators (
   id          TEXT PRIMARY KEY,
@@ -122,6 +167,62 @@ CREATE TABLE IF NOT EXISTS operator_users (
 
 CREATE INDEX IF NOT EXISTS idx_operator_users_operator ON operator_users(operator_id, status);
 
+-- Bir hesabın EK işletmelere erişimi.
+--
+-- `operator_users.operator_id` kişinin ANA işletmesini taşımaya devam ediyor
+-- ve kimliğin (e-posta + parola) sahibi orası. Bu tablo yalnızca ek erişim
+-- veriyor. Ana işletmeyi buraya taşımak, var olan her sorguyu değiştirmek
+-- demekti; erişimi genişletmenin bedeli mevcut davranışın bozulması olmamalı.
+--
+-- ROL İŞLETME BAŞINA. Kendi işletmesinde sahip olan biri, ortağının
+-- işletmesinde yalnızca saha personeli olabilir — yetki devri tek yönlü
+-- olmak zorunda değil ve tek bir rol sütunu bunu ifade edemezdi.
+--
+-- Erişim her istekte BURADAN doğrulanıyor; seçili işletme çerezde taşınsa da
+-- çerez yalnızca "hangisi" diyor, "girebilir mi" demiyor. Üyelik silindiği
+-- anda elindeki çerez işe yaramaz hâle gelir — askıya alınan hesabın
+-- oturumunun anında düşmesiyle aynı güvence (bkz. lib/auth.ts).
+CREATE TABLE IF NOT EXISTS operator_memberships (
+  id               TEXT PRIMARY KEY,
+  operator_user_id TEXT NOT NULL REFERENCES operator_users(id) ON DELETE CASCADE,
+  operator_id      TEXT NOT NULL REFERENCES operators(id) ON DELETE CASCADE,
+
+  role             TEXT NOT NULL CHECK (role IN ('owner', 'manager', 'staff')),
+
+  created_at       TEXT NOT NULL,
+  -- Üyeliği kim verdi. Uyuşmazlıkta sorulan ilk soru bu.
+  granted_by       TEXT,
+
+  UNIQUE (operator_user_id, operator_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_memberships_user ON operator_memberships(operator_user_id);
+CREATE INDEX IF NOT EXISTS idx_memberships_operator ON operator_memberships(operator_id);
+
+-- İşletmenin lokasyonu.
+--
+-- Aynı tüzel kişiliğin iki koyu, iki iskelesi olabiliyor ve "bugün ne var"
+-- sorusunun cevabı lokasyona göre değişiyor: Büyükçekmece'deki personelin
+-- Silivri'nin rezervasyonlarını görmesi işe yaramıyor.
+--
+-- HAK EDİŞ VE IBAN ŞUBE DÜZEYİNE İNMİYOR. Şube kırılımı raporlama içindir;
+-- ayrı IBAN gereken bir şube aslında ayrı bir işletmedir ve üyelikle
+-- erişilmelidir. Parayı ikiye bölmek, hak ediş defterinin dayandığı
+-- "bir rezervasyon = bir işletme" varsayımını kırardı.
+CREATE TABLE IF NOT EXISTS branches (
+  id          TEXT PRIMARY KEY,
+  operator_id TEXT NOT NULL REFERENCES operators(id) ON DELETE CASCADE,
+
+  name        TEXT NOT NULL,
+  address     TEXT,
+  lat         REAL,
+  lng         REAL,
+
+  created_at  TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_branches_operator ON branches(operator_id);
+
 -- RASTLA operasyon ekibi.
 --
 -- Ayrı tablo, çünkü bu kişiler bir işletmeye bağlı değil. `operator_users`
@@ -166,6 +267,12 @@ CREATE TABLE IF NOT EXISTS activities (
   lat               REAL,
   lng               REAL,
 
+  -- Hangi şubede yapılıyor. NULL olabilir ve olmalı: şube tanımlamamış
+  -- işletmelerin mevcut ilanları hiçbir şey yapmadan çalışmaya devam etsin.
+  -- Şube silinirse ilan kalır, yalnızca şubesiz olur — ilanı silmek,
+  -- rezervasyonlarını da götürürdü.
+  branch_id         TEXT REFERENCES branches(id) ON DELETE SET NULL,
+
   -- Kapasitenin neyi saydığı aktiviteye göre değişir; hangi araca kaç kişi
   -- güvenli sığar, bunu işletme bilir.
   --   per_person  -> katılımcı sayısı kadar yer düşer (grup turu, SUP)
@@ -184,6 +291,20 @@ CREATE TABLE IF NOT EXISTS activities (
   -- İki seans arasındaki hazırlık payı. Seans aralığına EKLENİR: 15 dakikalık
   -- jet ski turu + 5 dakika hazırlık = 20 dakikada bir kalkış.
   prep_minutes      INTEGER NOT NULL DEFAULT 0 CHECK (prep_minutes >= 0),
+
+  -- ---- Hava eşikleri ----
+  --
+  -- Hepsi NULL olabilir ve NULL **kontrol yok** demektir. Varsayılan olarak
+  -- bir sınır koymak, hiç düşünmemiş bir işletmenin gününü uydurma bir eşik
+  -- yüzünden riskli göstermek olurdu. Sihirbaz kategoriye göre değer ÖNERİR;
+  -- karar işletmenin.
+  --
+  -- Eşik aşıldığında hiçbir şey otomatik iptal EDİLMEZ: gün "riskli" ya da
+  -- "elverişsiz" işaretlenir ve iptal düğmesi işletmenin önüne konur. Yanlış
+  -- bir tahminin bedeli bir uyarı olmalı, iptal edilmiş bir gün değil.
+  wind_limit_kmh    REAL CHECK (wind_limit_kmh IS NULL OR wind_limit_kmh > 0),
+  gust_limit_kmh    REAL CHECK (gust_limit_kmh IS NULL OR gust_limit_kmh > 0),
+  wave_limit_m      REAL CHECK (wave_limit_m IS NULL OR wave_limit_m > 0),
 
   image             TEXT,
   image_alt         TEXT,
@@ -367,6 +488,14 @@ CREATE TABLE IF NOT EXISTS bookings (
   -- NULL. "Kim ekledi" sorusu uyuşmazlıkta soruluyor.
   created_by     TEXT,
 
+  -- Rezervasyonu açan acente. NULL = acente yok.
+  --
+  -- `source='agency'` etiketiyle birlikte çalışıyor ama onun yerine geçmiyor:
+  -- etiket "nereden geldi" der, bu sütun "hangi acenteden" der. Acente kendi
+  -- rezervasyonlarını bu alanla listeliyor ve işletme "hangi otel gönderdi"
+  -- sorusunu buradan görüyor.
+  agency_id      TEXT,
+
   booking_date   TEXT NOT NULL,   -- YYYY-MM-DD
   booking_time   TEXT NOT NULL,   -- HH:MM
   adults         INTEGER NOT NULL,
@@ -404,6 +533,11 @@ CREATE TABLE IF NOT EXISTS bookings (
   expired_at     TEXT,
   redeemed_at    TEXT,
   redeemed_by    TEXT,
+
+  -- Saati değiştirildiyse ne zaman. Kaç kez taşındığı ve nereden nereye
+  -- taşındığı işlem günlüğünde; burada yalnızca "bu rezervasyon taşındı"
+  -- bilgisi var ve listede rozet göstermeye yetiyor.
+  rescheduled_at TEXT,
 
   -- İptalin kim/ne tarafından yapıldığı. Hava kaynaklı iptal ayrı tutulur:
   -- müşteri kusurlu olmadığı için iade ve yeniden planlama politikası farklı
@@ -686,6 +820,44 @@ CREATE INDEX IF NOT EXISTS idx_phone_verifications_expiry
 --   2. "Önce bak, sonra yaz" yarışı hiç doğmuyor. İki süpürme aynı anda
 --      çalışsa bile ikinci ekleme veritabanı tarafından sessizce düşürülür.
 --      Kontrol kodda olsaydı ikisi de "yok" görüp ikisi de yazabilirdi.
+-- Hava tahmini — aktivite ve gün başına tek satır.
+--
+-- Tahmin sağlayıcıdan geliyor ama **saklanıyor**, çünkü panel her açıldığında
+-- dış servise gitmek hem yavaş hem de o servisin ayakta olmasına bağımlı
+-- olurdu. Sabah çalışan iş tahmini bir kez çeker, ekranlar bu tablodan okur.
+--
+-- `verdict` ölçümden değil KARŞILAŞTIRMADAN çıkıyor: aynı rüzgâr bir tekne
+-- turu için sorunsuz, bir SUP dersi için elverişsiz olabilir. Bu yüzden
+-- karşılaştırma aktivitenin kendi eşikleriyle yapılıyor ve sonuç aktivite
+-- başına saklanıyor.
+--
+-- **`bilinmiyor` gerçek bir durum, hata değil.** Sağlayıcıya ulaşılamadığında
+-- bu yazılır ve hiçbir şey işaretlenmez. Eksik veriden "riskli" sonucu
+-- çıkarmak, tahminin kendisinden daha kötü bir yanlış olurdu.
+CREATE TABLE IF NOT EXISTS weather_forecasts (
+  id             TEXT PRIMARY KEY,
+  activity_id    TEXT NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
+  forecast_date  TEXT NOT NULL,   -- YYYY-MM-DD
+
+  wind_kmh       REAL,
+  gust_kmh       REAL,
+  wave_m         REAL,
+  precipitation_mm REAL,
+
+  verdict        TEXT NOT NULL
+                 CHECK (verdict IN ('uygun', 'riskli', 'elverissiz', 'bilinmiyor')),
+  -- Hangi eşiğin aşıldığı: arayüzde gerekçe olarak gösteriliyor.
+  reason         TEXT,
+
+  fetched_at     TEXT NOT NULL,
+
+  -- Aynı gün için ikinci satır olmamalı: iş günde birden çok kez koşturulsa
+  -- da tahmin güncellenir, çoğalmaz.
+  UNIQUE (activity_id, forecast_date)
+);
+
+CREATE INDEX IF NOT EXISTS idx_weather_date ON weather_forecasts(forecast_date);
+
 CREATE TABLE IF NOT EXISTS alerts (
   id           TEXT PRIMARY KEY,
   at           TEXT NOT NULL,
