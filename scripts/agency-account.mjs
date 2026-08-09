@@ -12,17 +12,24 @@
  *   node scripts/agency-account.mjs status <e-posta> <active|suspended>
  *
  * Üretilen parolalar YALNIZCA burada yazdırılır; veritabanında özet saklanır.
+ *
+ * 5432 kapalı ortamlarda (bazı CI kutuları, kısıtlı ağlar) sağlayıcının HTTPS
+ * ucu kullanılır — `demo-gun.mjs` ile aynı kaçış yolu:
+ *
+ *   NEON_HTTP=1 DATABASE_URL=… node scripts/agency-account.mjs list
  */
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { generatePassword, hashPassword } from '../lib/password.mjs';
 import { db as connect } from '../lib/db/index.mjs';
+import { neonHttpClient } from './lib/neon-http.mjs';
 
-const db = await connect();
+const db =
+  process.env.NEON_HTTP === '1' ? neonHttpClient(process.env.DATABASE_URL) : await connect();
 
 const USAGE = readFileSync(new URL(import.meta.url), 'utf8')
   .split('\n')
-  .slice(1, 14)
+  .slice(1, 20)
   .map((l) => l.replace(/^ \* ?/, '').replace(/^ \*\/?$/, ''))
   .join('\n');
 
