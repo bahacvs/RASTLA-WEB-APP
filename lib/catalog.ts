@@ -44,6 +44,8 @@ export type Activity = {
   location: string;
   lat: number | null;
   lng: number | null;
+  /** Hangi şubede yapılıyor. NULL = şube tanımlanmamış. */
+  branchId: string | null;
   capacityMode: CapacityMode;
   /** Seans açılması için gereken en az katılımcı. */
   minParticipants: number;

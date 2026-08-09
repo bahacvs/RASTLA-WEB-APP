@@ -45,6 +45,11 @@ export const AUDIT_ACTIONS = [
   'operator_user.password_reset',
   'operator_user.phone_set',
   'operator_user.suspended',
+  // Çoklu işletme erişimi. "Kim kime hangi işletmede yetki verdi" sorusu
+  // uyuşmazlıkta doğrudan buradan cevaplanıyor.
+  'operator_user.membership_granted',
+  'operator_user.membership_revoked',
+  'operator_user.switched',
   'operator_user.reactivated',
 
   // Bilet — geri alınamaz işlemler

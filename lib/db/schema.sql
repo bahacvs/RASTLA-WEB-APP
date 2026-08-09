@@ -122,6 +122,62 @@ CREATE TABLE IF NOT EXISTS operator_users (
 
 CREATE INDEX IF NOT EXISTS idx_operator_users_operator ON operator_users(operator_id, status);
 
+-- Bir hesabın EK işletmelere erişimi.
+--
+-- `operator_users.operator_id` kişinin ANA işletmesini taşımaya devam ediyor
+-- ve kimliğin (e-posta + parola) sahibi orası. Bu tablo yalnızca ek erişim
+-- veriyor. Ana işletmeyi buraya taşımak, var olan her sorguyu değiştirmek
+-- demekti; erişimi genişletmenin bedeli mevcut davranışın bozulması olmamalı.
+--
+-- ROL İŞLETME BAŞINA. Kendi işletmesinde sahip olan biri, ortağının
+-- işletmesinde yalnızca saha personeli olabilir — yetki devri tek yönlü
+-- olmak zorunda değil ve tek bir rol sütunu bunu ifade edemezdi.
+--
+-- Erişim her istekte BURADAN doğrulanıyor; seçili işletme çerezde taşınsa da
+-- çerez yalnızca "hangisi" diyor, "girebilir mi" demiyor. Üyelik silindiği
+-- anda elindeki çerez işe yaramaz hâle gelir — askıya alınan hesabın
+-- oturumunun anında düşmesiyle aynı güvence (bkz. lib/auth.ts).
+CREATE TABLE IF NOT EXISTS operator_memberships (
+  id               TEXT PRIMARY KEY,
+  operator_user_id TEXT NOT NULL REFERENCES operator_users(id) ON DELETE CASCADE,
+  operator_id      TEXT NOT NULL REFERENCES operators(id) ON DELETE CASCADE,
+
+  role             TEXT NOT NULL CHECK (role IN ('owner', 'manager', 'staff')),
+
+  created_at       TEXT NOT NULL,
+  -- Üyeliği kim verdi. Uyuşmazlıkta sorulan ilk soru bu.
+  granted_by       TEXT,
+
+  UNIQUE (operator_user_id, operator_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_memberships_user ON operator_memberships(operator_user_id);
+CREATE INDEX IF NOT EXISTS idx_memberships_operator ON operator_memberships(operator_id);
+
+-- İşletmenin lokasyonu.
+--
+-- Aynı tüzel kişiliğin iki koyu, iki iskelesi olabiliyor ve "bugün ne var"
+-- sorusunun cevabı lokasyona göre değişiyor: Büyükçekmece'deki personelin
+-- Silivri'nin rezervasyonlarını görmesi işe yaramıyor.
+--
+-- HAK EDİŞ VE IBAN ŞUBE DÜZEYİNE İNMİYOR. Şube kırılımı raporlama içindir;
+-- ayrı IBAN gereken bir şube aslında ayrı bir işletmedir ve üyelikle
+-- erişilmelidir. Parayı ikiye bölmek, hak ediş defterinin dayandığı
+-- "bir rezervasyon = bir işletme" varsayımını kırardı.
+CREATE TABLE IF NOT EXISTS branches (
+  id          TEXT PRIMARY KEY,
+  operator_id TEXT NOT NULL REFERENCES operators(id) ON DELETE CASCADE,
+
+  name        TEXT NOT NULL,
+  address     TEXT,
+  lat         REAL,
+  lng         REAL,
+
+  created_at  TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_branches_operator ON branches(operator_id);
+
 -- RASTLA operasyon ekibi.
 --
 -- Ayrı tablo, çünkü bu kişiler bir işletmeye bağlı değil. `operator_users`
@@ -165,6 +221,12 @@ CREATE TABLE IF NOT EXISTS activities (
   location_name     TEXT NOT NULL,
   lat               REAL,
   lng               REAL,
+
+  -- Hangi şubede yapılıyor. NULL olabilir ve olmalı: şube tanımlamamış
+  -- işletmelerin mevcut ilanları hiçbir şey yapmadan çalışmaya devam etsin.
+  -- Şube silinirse ilan kalır, yalnızca şubesiz olur — ilanı silmek,
+  -- rezervasyonlarını da götürürdü.
+  branch_id         TEXT REFERENCES branches(id) ON DELETE SET NULL,
 
   -- Kapasitenin neyi saydığı aktiviteye göre değişir; hangi araca kaç kişi
   -- güvenli sığar, bunu işletme bilir.

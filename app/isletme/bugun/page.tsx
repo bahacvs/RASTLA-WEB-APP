@@ -7,6 +7,8 @@ import { listSlots } from '@/lib/db/slots';
 import { displayContact, getUser } from '@/lib/db/users';
 import { formatPrice } from '@/lib/format';
 import { forecastsForOperator } from '@/lib/db/weather.mjs';
+import { listBranches, validBranchFilter } from '@/lib/db/branches';
+import { BranchFilter } from '@/components/BranchFilter';
 import { WeatherStrip } from '@/components/WeatherStrip';
 import { ManualBookingForm } from './ManualBookingForm';
 import { BookingRowActions } from './BookingRowActions';
@@ -31,12 +33,26 @@ function isoDate(date: Date): string {
  * panosu değil. Bu yüzden üstte günün sayıları, altında saat sırasına dizilmiş
  * operasyon akışı var; her satırda o an gereken işlemler elin altında.
  */
-export default async function TodayPage() {
+export default async function TodayPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ sube?: string }>;
+}) {
   const session = await requireOperatorPage('bugun.goruntule');
   const today = isoDate(new Date());
 
-  const bookings = await listBookingsForOperator(session.operator.id, today);
-  const activities = await listActivitiesForOperator(session.operator.id);
+  // Süzgeç DOĞRULANIYOR: adres çubuğundan gelen kimlik başka bir işletmenin
+  // şubesi olabilir. Geçersizse sessizce süzgeçsiz görünüme düşülüyor —
+  // hata sayfası, elle adres değiştiren birine "böyle bir şube var ama sizin
+  // değil" demek olurdu.
+  const branches = await listBranches(session.operator.id);
+  const branchId = await validBranchFilter((await searchParams).sube, session.operator.id);
+
+  const bookings = await listBookingsForOperator(session.operator.id, today, branchId);
+  const allActivities = await listActivitiesForOperator(session.operator.id);
+  const activities = branchId
+    ? allActivities.filter((a) => a.branchId === branchId)
+    : allActivities;
   const bySlug = new Map(activities.map((a) => [a.slug, a]));
 
   // İptal ve süresi dolmuş kayıtlar günün akışında yer tutmamalı; onları
@@ -94,6 +110,12 @@ export default async function TodayPage() {
             })}
           </p>
         </div>
+
+        <BranchFilter
+          branches={branches}
+          activeId={branchId}
+          basePath="/isletme/bugun"
+        />
 
         {/* Günün sayıları */}
         <section className="grid grid-cols-2 gap-sm sm:grid-cols-3 lg:grid-cols-5">

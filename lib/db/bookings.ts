@@ -336,13 +336,38 @@ export async function redeemBooking(
 }
 
 /** İşletmenin belirli bir gündeki rezervasyonları. */
+/**
+ * İşletmenin belirli bir gündeki rezervasyonları.
+ *
+ * `branchId` verilirse yalnızca o şubenin ilanlarına ait kayıtlar döner.
+ * Süzgeç SQL'de, çağıran tarafta değil: iki ekran da aynı süzmeyi yapıyor ve
+ * JavaScript tarafında filtrelemek, sayfa sayaçlarının süzülmemiş listeden
+ * hesaplanması gibi sessiz tutarsızlıklara kapı açardı.
+ *
+ * Şube kimliğinin bu işletmeye ait olduğu ÇAĞIRAN TARAFTA doğrulanmış olmalı
+ * (`validBranchFilter`); burada doğrulanmıyor çünkü katılım zaten
+ * `operator_id` ile sınırlı — başka bir işletmenin şubesi süzgece verilse bile
+ * sonuç boş döner, sızıntı olmaz.
+ */
 export async function listBookingsForOperator(
   operatorId: string,
-  date: string
+  date: string,
+  branchId?: string | null
 ): Promise<Booking[]> {
-  const rows = await (
-    await db()
-  ).all<Row>(
+  const client = await db();
+
+  if (branchId) {
+    const rows = await client.all<Row>(
+      `SELECT b.* FROM bookings b
+         JOIN activities a ON a.slug = b.activity_slug
+        WHERE b.operator_id = ? AND b.booking_date = ? AND a.branch_id = ?
+        ORDER BY b.booking_time, b.created_at`,
+      [operatorId, date, branchId]
+    );
+    return rows.map(toBooking);
+  }
+
+  const rows = await client.all<Row>(
     `SELECT * FROM bookings
       WHERE operator_id = ? AND booking_date = ?
       ORDER BY booking_time, created_at`,

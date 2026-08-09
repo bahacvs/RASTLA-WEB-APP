@@ -28,6 +28,7 @@ type Row = {
   location_name: string;
   lat: number | null;
   lng: number | null;
+  branch_id: string | null;
   capacity_mode: CapacityMode;
   min_participants: number;
   booking_cutoff_minutes: number;
@@ -95,6 +96,7 @@ function toActivity(row: Row): Activity {
     location: row.location_name,
     lat: row.lat,
     lng: row.lng,
+    branchId: row.branch_id ?? null,
     capacityMode: row.capacity_mode,
     minParticipants: row.min_participants ?? 1,
     bookingCutoffMinutes: row.booking_cutoff_minutes ?? 0,
@@ -176,6 +178,7 @@ export type ActivityInput = {
   location: string;
   lat?: number | null;
   lng?: number | null;
+  branchId?: string | null;
   capacityMode: CapacityMode;
   minParticipants?: number;
   bookingCutoffMinutes?: number;
@@ -209,6 +212,7 @@ function toParams(input: ActivityInput) {
     location_name: input.location,
     lat: input.lat ?? null,
     lng: input.lng ?? null,
+    branch_id: input.branchId ?? null,
     capacity_mode: input.capacityMode,
     min_participants: input.minParticipants ?? 1,
     booking_cutoff_minutes: input.bookingCutoffMinutes ?? 0,
@@ -239,14 +243,14 @@ export async function createActivity(input: ActivityInput): Promise<Activity> {
   ).run(
     `INSERT INTO activities
          (id, operator_id, slug, title, category, description, price_try, duration_minutes,
-          location_name, lat, lng, capacity_mode, min_participants, booking_cutoff_minutes,
+          location_name, lat, lng, branch_id, capacity_mode, min_participants, booking_cutoff_minutes,
           prep_minutes, wind_limit_kmh, gust_limit_kmh, wave_limit_m,
           image, image_alt, included, safety,
           gallery, meeting_point, reviews, capacity_label, instant_confirm, rating, review_count,
           status, created_at)
        VALUES
          (@id, @operator_id, @slug, @title, @category, @description, @price_try, @duration_minutes,
-          @location_name, @lat, @lng, @capacity_mode, @min_participants, @booking_cutoff_minutes,
+          @location_name, @lat, @lng, @branch_id, @capacity_mode, @min_participants, @booking_cutoff_minutes,
           @prep_minutes, @wind_limit_kmh, @gust_limit_kmh, @wave_limit_m,
           @image, @image_alt, @included, @safety,
           @gallery, @meeting_point, @reviews, @capacity_label, @instant_confirm, @rating, @review_count,
@@ -282,6 +286,7 @@ const PATCHABLE = {
   location: 'location_name',
   lat: 'lat',
   lng: 'lng',
+  branchId: 'branch_id',
   capacityMode: 'capacity_mode',
   minParticipants: 'min_participants',
   bookingCutoffMinutes: 'booking_cutoff_minutes',

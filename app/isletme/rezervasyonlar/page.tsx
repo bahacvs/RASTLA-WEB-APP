@@ -10,6 +10,8 @@ import { getActivityBySlug } from '@/lib/db/activities';
 import { formatPrice } from '@/lib/format';
 import { listSlots } from '@/lib/db/slots';
 import { forecastsForOperator } from '@/lib/db/weather.mjs';
+import { listBranches, validBranchFilter } from '@/lib/db/branches';
+import { BranchFilter } from '@/components/BranchFilter';
 import { WeatherStrip } from '@/components/WeatherStrip';
 import { CancelBookingButton, CancelDayButton } from './CancelControls';
 import { RescheduleControl, type SlotOption } from './RescheduleControl';
@@ -44,16 +46,19 @@ function isoDate(date: Date): string {
 export default async function OperatorBookingsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ gun?: string }>;
+  searchParams: Promise<{ gun?: string; sube?: string }>;
 }) {
   const session = await currentOperator();
   if (!session) redirect('/isletme');
   const operatorId = session.operator.id;
 
-  const { gun } = await searchParams;
+  const { gun, sube } = await searchParams;
   const day = gun && /^\d{4}-\d{2}-\d{2}$/.test(gun) ? gun : isoDate(new Date());
 
-  const bookings = await listBookingsForOperator(operatorId, day);
+  const branches = await listBranches(operatorId);
+  const branchId = await validBranchFilter(sube, operatorId);
+
+  const bookings = await listBookingsForOperator(operatorId, day, branchId);
 
   // Bileti onaylayan personelin adı. Kimliği ekranda göstermenin anlamı yok;
   // asıl mesele o kimliğin KAYITLI olması.
@@ -127,6 +132,9 @@ export default async function OperatorBookingsPage({
         <div className="mb-lg flex flex-wrap items-center justify-between gap-sm">
           <h1 className="text-headline-md text-on-background">Rezervasyonlar</h1>
           <form className="flex items-center gap-2">
+            {/* Gün değişirken şube süzgeci KORUNUYOR; aksi hâlde tarihi
+                değiştiren kişi süzgecini sessizce kaybederdi. */}
+            {branchId && <input type="hidden" name="sube" value={branchId} />}
             <input
               name="gun"
               type="date"
@@ -140,6 +148,15 @@ export default async function OperatorBookingsPage({
               Göster
             </button>
           </form>
+        </div>
+
+        <div className="mb-lg">
+          <BranchFilter
+            branches={branches}
+            activeId={branchId}
+            basePath="/isletme/rezervasyonlar"
+            extraParams={{ gun: day }}
+          />
         </div>
 
         <div className="mb-lg grid grid-cols-3 gap-sm">

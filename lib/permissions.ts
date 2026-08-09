@@ -95,6 +95,11 @@ export const ROLE_LABELS: Record<OperatorRole, string> = {
   staff: 'Saha personeli',
 };
 
+/** Dışarıdan gelen dizginin gerçekten bir rol olup olmadığı. */
+export function isOperatorRole(value: string): value is OperatorRole {
+  return (OPERATOR_ROLES as string[]).includes(value);
+}
+
 export function roleCan(role: OperatorRole, capability: Capability): boolean {
   return BY_ROLE[role].includes(capability);
 }

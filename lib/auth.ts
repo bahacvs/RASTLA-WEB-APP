@@ -1,8 +1,9 @@
 import { redirect } from 'next/navigation';
-import { getOperatorUserId, getUserId } from './session';
+import { getActiveOperator, getOperatorUserId, getUserId } from './session';
 import { getOperator, getOperatorUser, type Operator, type OperatorUser } from './db/operators';
 import { getUser } from './db/users';
-import { roleCan, type Capability } from './permissions';
+import { roleAt } from './db/memberships';
+import { roleCan, type Capability, type OperatorRole } from './permissions';
 
 /**
  * Oturumdaki misafirin kimliği — silinmiş hesaplar hariç.
@@ -29,7 +30,22 @@ export async function currentUserId(): Promise<string | null> {
  * yitirsin. Çereze gömülü olsaydı 90 gün boyunca geçerli kalırdı.
  */
 
-export type OperatorSession = { user: OperatorUser; operator: Operator };
+/**
+ * `user.role` SEÇİLİ İŞLETMEDEKİ roldür, hesabın ana rolü değil.
+ *
+ * Kendi işletmesinde sahip olan biri ortağının işletmesinde saha personeli
+ * olabiliyor (bkz. lib/db/memberships.ts). Rolü hesaptan okumaya devam
+ * etseydik, ortağın panelinde kendi işletmesindeki yetkiyle dolaşırdı — ve
+ * bunu fark etmenin tek yolu para ekranını açıp görmek olurdu.
+ *
+ * `primaryOperatorId` ayrıca taşınıyor: arayüz "burası sizin işletmeniz değil"
+ * uyarısını buna bakarak gösteriyor.
+ */
+export type OperatorSession = {
+  user: OperatorUser;
+  operator: Operator;
+  primaryOperatorId: string;
+};
 
 export async function currentOperator(): Promise<OperatorSession | null> {
   const userId = await getOperatorUserId();
@@ -38,10 +54,24 @@ export async function currentOperator(): Promise<OperatorSession | null> {
   const user = await getOperatorUser(userId);
   if (!user || user.status !== 'active') return null;
 
-  const operator = await getOperator(user.operatorId);
+  // Çerez yalnızca TERCİH taşıyor. Üyelik her istekte veritabanından
+  // doğrulanıyor: erişim dün verilip bugün geri alınmış olabilir ve imzalı bir
+  // çerez bunu bilemez. Doğrulanamayan seçim sessizce ana işletmeye düşer —
+  // hata sayfası göstermek, erişimi kaldırılan kişiyi panelin dışında
+  // bırakmak olurdu; oysa kendi işletmesi hâlâ orada.
+  const selected = await getActiveOperator();
+  const role: OperatorRole | null =
+    selected && selected !== user.operatorId ? await roleAt(user.id, selected) : null;
+
+  const operatorId = role ? selected! : user.operatorId;
+  const operator = await getOperator(operatorId);
   if (!operator) return null;
 
-  return { user, operator };
+  return {
+    user: role ? { ...user, operatorId, role } : user,
+    operator,
+    primaryOperatorId: user.operatorId,
+  };
 }
 
 /** Yalnızca işletme kimliği gerektiğinde. */

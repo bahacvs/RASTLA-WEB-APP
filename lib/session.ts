@@ -74,6 +74,34 @@ export async function getOperatorUserId(): Promise<string | null> {
 
 export async function clearOperatorSession() {
   (await cookies()).delete(OPERATOR_COOKIE);
+  (await cookies()).delete(ACTIVE_OPERATOR_COOKIE);
+}
+
+/**
+ * Birden çok işletmeye erişebilen kişinin ŞU AN hangisinde çalıştığı.
+ *
+ * Çerez yalnızca **tercih** taşıyor, yetki taşımıyor. İçindeki kimliğe üyelik
+ * yoksa ana işletmeye düşülür (bkz. lib/auth.ts). Ayrım önemli: çerez imzalı
+ * olsa bile üyelik dünden bugüne kaldırılmış olabilir ve imza bunu bilemez.
+ * Yetki her istekte veritabanından doğrulanıyor — askıya alınan hesabın
+ * oturumunun anında düşmesiyle aynı güvence.
+ *
+ * Oturum çerezinden AYRI tutuluyor: çıkış yapmadan işletme değiştirmek
+ * kimliği yeniden doğrulamayı gerektirmemeli, ama seçim çıkışta silinmeli —
+ * ortak bir cihazda bir sonraki kişi başkasının seçimiyle karşılaşmasın.
+ */
+const ACTIVE_OPERATOR_COOKIE = 'rastla_operator_aktif';
+
+export async function setActiveOperator(operatorId: string) {
+  (await cookies()).set(ACTIVE_OPERATOR_COOKIE, pack(operatorId), COOKIE_OPTIONS);
+}
+
+export async function getActiveOperator(): Promise<string | null> {
+  return unpack((await cookies()).get(ACTIVE_OPERATOR_COOKIE)?.value);
+}
+
+export async function clearActiveOperator() {
+  (await cookies()).delete(ACTIVE_OPERATOR_COOKIE);
 }
 
 /**
