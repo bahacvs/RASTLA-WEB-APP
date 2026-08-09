@@ -330,7 +330,36 @@ Parola **yalnızca bir kez** yazdırılır. İki rol var:
 | Rol | Yapabildikleri |
 | --- | --- |
 | `reviewer` | İşletme doğrulama, ilan inceleme. Komisyona ve hak edişe dokunamaz. |
-| `admin` | Hepsi: komisyon oranı belirleme, hak ediş durdurma. |
+| `admin` | Hepsi: komisyon oranı belirleme, hak ediş durdurma, acente açma ve askıya alma. |
+
+### Acente hesabı (otel, tur şirketi)
+
+`/acente` altındaki portal da **tamamen ayrıdır**: ayrı tablolar (`agencies`,
+`agency_users`), ayrı oturum çerezi (`rastla_agency`). İşletme ya da yönetim
+hesabıyla bu portala girilemez; acente hesabı da `/isletme` ve `/yonetim`
+ekranlarına giremez.
+
+İlk hesap sunucuda açılır, sonrası `/yonetim/acenteler` ekranından:
+
+```bash
+npm run agency:create -- add-agency "Marina Otel" info@marinaotel.com
+npm run agency:create -- add <acente-kimliği> resepsiyon@marinaotel.com "Ad Soyad"
+```
+
+**Acente rezervasyonu komisyon DOĞURMAZ** (bu turun ticari kararı) ama
+kapasiteyi normal bir rezervasyon gibi tüketir ve ücret tesiste tahsil edilir.
+Ticari model değişirse `source='agency'` bugünden kaydedildiği için geçmiş
+veri kaybolmuş olmaz.
+
+### Hava kontrolü
+
+Kutudan çıktığı gibi çalışır: Open-Meteo anahtar istemiyor. Yapılacak tek şey
+her aktivite için eşik girmek — takvim ekranındaki **Hava sınırları** bölümü
+ya da sihirbazın takvim adımı. Eşik girilmeyen ölçüm hiç kontrol edilmez.
+
+**Hiçbir rezervasyon otomatik iptal edilmez.** İş yalnızca günü işaretler ve
+rezervasyonu olan elverişsiz günler için işletmeye e-posta atar; iptal ya da
+saat değiştirme kararı işletmenindir.
 
 Panelde yapılan her işlem işlem günlüğüne düşer ve "kim yaptı" kayda geçer.
 
@@ -397,6 +426,8 @@ proje ayarlarından girilir.
 | `RASTLA_KEEP_COMMISSION` | Hayır | `1` verilirse komisyon göçü atlanır: eski varsayılandaki (%10) işletmeler %18'e taşınmaz. Yürürlükteki sözleşmesi eski oranı yazan kurulumlar için. |
 | `ALERT_EMAIL_TO` | **Evet** | Otomatik ihlal uyarılarının gideceği adres. **Tanımsızsa uyarılar kaydedilir ama kimseye ulaşmaz** ve iş `ok: false` döner. |
 | `DEMO_MODE` | Hayır | **Varsayılan: tanıtım kipi AÇIK** — site tamamen `noindex` ve her sayfada uyarı şeridi. Gerçek kullanıma geçerken `0` verin; öncesinde bu belgedeki listenin tamamlanmış olması gerekir. |
+| `WEATHER_PROVIDER` | Hayır | **Varsayılan `open-meteo`** ve anahtar istemiyor — hava kontrolü kutudan çıktığı gibi çalışır. `none` verilirse tamamen kapanır: hiçbir tahmin çekilmez, hiçbir gün işaretlenmez. |
+| `DATABASE_SSL` | Hayır | `off` ile TLS kapatılır (yerel Postgres), `strict` ile sertifika doğrulanır. Varsayılan: TLS açık ama zincir doğrulanmıyor — barındırılan hizmetlerin çoğu kendi zincirini sunuyor. |
 
 ---
 
@@ -426,7 +457,7 @@ demektir. `CRON_SECRET` tanımlı değilse uç kapalıdır ve iş hiç tetiklenm
 > ifade yazıldığında dağıtım *başlamadan* hata verir:
 > *"Hobby accounts are limited to daily cron jobs."*
 >
-> Bu yüzden `vercel.json` içindeki üç iş de **günlük** tanımlı. Demo için
+> Bu yüzden `vercel.json` içindeki dört iş de **günlük** tanımlı. Demo için
 > sorun değil (ödeme kapalı, süpürülecek bir şey yok) ama **gerçek ödeme
 > alınmaya başlandığında yeterli değildir**: ödemesi yarım kalan bir
 > rezervasyon 24 saate kadar slotu kilitli tutabilir.
