@@ -83,8 +83,8 @@ export function CancelDayButton({ date, count }: { date: string; count: number }
           <input type="hidden" name="date" value={date} />
           <p className="text-body-md text-on-surface">
             Bu günün <strong>{count}</strong> aktif rezervasyonu hava koşulu nedeniyle iptal
-            edilecek ve slot kapasiteleri geri verilecek. Misafirleri ayrıca bilgilendirmeniz
-            gerekir.
+            edilecek, slot kapasiteleri geri verilecek ve misafirlere bilgi mesajı gönderilecek.
+            Ulaşılamayan misafir olursa aşağıda sayısı yazacak.
           </p>
           <div className="flex gap-sm">
             <button

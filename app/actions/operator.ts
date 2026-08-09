@@ -7,8 +7,10 @@ import {
   cancelDay,
   getBookingByCode,
   redeemBooking,
+  rescheduleBooking,
   type Booking,
 } from '@/lib/db/bookings';
+import { notifyCancellation, notifyCancellations, notifyReschedule } from '@/lib/notify';
 import { displayContact, getUser } from '@/lib/db/users';
 import {
   authenticateOperatorUser,
@@ -463,11 +465,18 @@ export async function operatorCancelAction(
     context,
   });
 
+  // Müşteriye haber verilir. Gönderim BAŞARISIZ OLSA DA iptal geçerlidir:
+  // iptal veritabanında olmuştur, kapasite iade edilmiştir ve SMS sağlayıcısı
+  // erişilemediği için bunları geri almak tutarsızlık üretirdi. Personele
+  // doğrusu söylenir, "misafirleri bilgilendirmeyi unutmayın" cümlesinin
+  // yerini artık bu alıyor.
+  const notice = await notifyCancellation(result.booking, reason === 'weather');
+
   revalidatePath('/isletme/rezervasyonlar');
   return {
     message: `Rezervasyon iptal edildi ve slot kapasitesi geri verildi.${
       refund.ok ? ' Müşteriye tam iade başlatıldı.' : ''
-    }`,
+    }${notice.sent ? ' Misafire bilgi mesajı gönderildi.' : ' MİSAFİRE MESAJ GİTMEDİ, kendiniz arayın.'}`,
   };
 }
 
@@ -517,6 +526,11 @@ export async function cancelDayAction(
     if (refund.ok) refunded++;
   }
 
+  // Bildirimler tek tek gider ve biri başarısız olsa da diğerleri denenir;
+  // ilk hatada durmak, listenin sonundaki misafirleri sebepsiz habersiz
+  // bırakırdı.
+  const notices = await notifyCancellations(cancelled, true);
+
   revalidatePath('/isletme/rezervasyonlar');
   return {
     message:
@@ -524,6 +538,85 @@ export async function cancelDayAction(
         ? 'İptal edilecek aktif rezervasyon yoktu.'
         : `${cancelled.length} rezervasyon iptal edildi${
             skipped > 0 ? `, ${skipped} tanesi atlandı` : ''
-          }${refunded > 0 ? `, ${refunded} ödeme iade edildi` : ''}. Misafirleri bilgilendirmeyi unutmayın.`,
+          }${refunded > 0 ? `, ${refunded} ödeme iade edildi` : ''}, ${notices.sent} misafire bilgi mesajı gönderildi.${
+            notices.failed > 0 ? ` ${notices.failed} MESAJ GİTMEDİ, onları kendiniz arayın.` : ''
+          }`,
+  };
+}
+
+export type RescheduleState = { error?: string; message?: string };
+
+/**
+ * Rezervasyonu başka bir saate taşır.
+ *
+ * Hava kötüleştiğinde iptal tek seçenek olmamalı: müşteri parasını değil
+ * aktiviteyi istiyor. Taşıma iadeyi ve hak edişi hiç açmadığı için hem
+ * müşteri hem işletme için iptalden iyi bir sonuç.
+ *
+ * Kesit kuralı (`booking_cutoff_minutes`) BURADA UYGULANMIYOR ve bu bilinçli:
+ * o kural müşterinin son dakika rezervasyon açmasını engellemek için var.
+ * İşletme, başlamak üzere olan bir seansı yarım saat ilerisine taşıyabilmeli;
+ * kuralı burada da işletmek, taşımayı tam ihtiyaç duyulduğu anda kilitlerdi.
+ * Kapasite ve ekipman sınırları ise `rescheduleBooking` içindeki koşullu
+ * UPDATE'te aynen geçerli.
+ */
+export async function rescheduleAction(
+  _prev: RescheduleState,
+  formData: FormData
+): Promise<RescheduleState> {
+  const session = await currentOperator();
+  if (!session) return { error: 'Oturum sona ermiş.' };
+  const operatorId = session.operator.id;
+
+  const code = String(formData.get('code') ?? '').trim();
+  const slotId = String(formData.get('slotId') ?? '').trim();
+  if (!code || !slotId) return { error: 'Rezervasyon ya da yeni saat seçilmedi.' };
+
+  const booking = await getBookingByCode(code);
+  if (!booking || booking.operatorId !== operatorId) {
+    return { error: 'Bu rezervasyona erişim yetkiniz yok.' };
+  }
+
+  const result = await rescheduleBooking(code, slotId);
+  if (!result.ok) {
+    const messages: Record<string, string> = {
+      not_found: 'Rezervasyon bulunamadı.',
+      not_confirmed: 'Yalnızca onaylanmış rezervasyonlar taşınabilir.',
+      same_slot: 'Rezervasyon zaten bu saatte.',
+      slot_not_found: 'Seçilen saat bulunamadı.',
+      other_activity: 'Rezervasyon yalnızca aynı aktivitenin başka bir saatine taşınabilir.',
+      closed: 'Seçilen saat kapalı.',
+      full: 'Seçilen saatte yeterli yer yok.',
+      no_equipment: 'Seçilen saatte yeterli ekipman yok.',
+      moved: 'Rezervasyon bu sırada değişti; sayfayı yenileyip tekrar deneyin.',
+    };
+    return { error: messages[result.reason] ?? 'Rezervasyon taşınamadı.' };
+  }
+
+  await record({
+    action: 'booking.rescheduled',
+    actorType: 'operator',
+    actorId: session.user.id,
+    operatorId,
+    targetType: 'booking',
+    targetId: booking.id,
+    ...(await requestContext()),
+    // Nereden nereye taşındığı YALNIZCA burada duruyor: rezervasyon satırı
+    // yalnızca yeni saati taşıyor ve "eskiden neydi" sorusu uyuşmazlıkta
+    // soruluyor.
+    meta: {
+      from: `${result.from.date} ${result.from.time}`,
+      to: `${result.booking.bookingDate} ${result.booking.bookingTime}`,
+    },
+  });
+
+  const notice = await notifyReschedule(result.booking, result.from);
+
+  revalidatePath('/isletme/rezervasyonlar');
+  revalidatePath('/isletme');
+  return {
+    message: `Rezervasyon ${result.booking.bookingDate} ${result.booking.bookingTime} saatine taşındı.${
+      notice.sent ? ' Misafire bilgi mesajı gönderildi.' : ' MİSAFİRE MESAJ GİTMEDİ, kendiniz arayın.'
+    }`,
   };
 }

@@ -32,6 +32,9 @@ type Row = {
   min_participants: number;
   booking_cutoff_minutes: number;
   prep_minutes: number;
+  wind_limit_kmh: number | null;
+  gust_limit_kmh: number | null;
+  wave_limit_m: number | null;
   image: string | null;
   image_alt: string | null;
   included: string | null;
@@ -67,6 +70,17 @@ export function durationLabel(minutes: number): string {
   return Number.isInteger(hours) ? `${hours} Saat` : `${minutes} Dk`;
 }
 
+/**
+ * Postgres REAL sütununu sürücü DİZGİ olarak verebiliyor. Açık dönüştürme
+ * yapılmazsa eşik `"35"` olarak gelir ve `value >= limit` karşılaştırması
+ * sayı-dizgi karışımına düşerdi.
+ */
+function limit(value: number | string | null): number | null {
+  if (value === null || value === undefined) return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
 function toActivity(row: Row): Activity {
   return {
     id: row.id,
@@ -85,6 +99,9 @@ function toActivity(row: Row): Activity {
     minParticipants: row.min_participants ?? 1,
     bookingCutoffMinutes: row.booking_cutoff_minutes ?? 0,
     prepMinutes: row.prep_minutes ?? 0,
+    windLimitKmh: limit(row.wind_limit_kmh),
+    gustLimitKmh: limit(row.gust_limit_kmh),
+    waveLimitM: limit(row.wave_limit_m),
     image: row.image ?? '',
     imageAlt: row.image_alt ?? '',
     included: parseJson<string[]>(row.included),
@@ -163,6 +180,9 @@ export type ActivityInput = {
   minParticipants?: number;
   bookingCutoffMinutes?: number;
   prepMinutes?: number;
+  windLimitKmh?: number | null;
+  gustLimitKmh?: number | null;
+  waveLimitM?: number | null;
   capacityLabel?: string;
   instantConfirm?: boolean;
   image?: string;
@@ -193,6 +213,9 @@ function toParams(input: ActivityInput) {
     min_participants: input.minParticipants ?? 1,
     booking_cutoff_minutes: input.bookingCutoffMinutes ?? 0,
     prep_minutes: input.prepMinutes ?? 0,
+    wind_limit_kmh: input.windLimitKmh ?? null,
+    gust_limit_kmh: input.gustLimitKmh ?? null,
+    wave_limit_m: input.waveLimitM ?? null,
     image: input.image ?? null,
     image_alt: input.imageAlt ?? null,
     included: input.included ? JSON.stringify(input.included) : null,
@@ -217,13 +240,15 @@ export async function createActivity(input: ActivityInput): Promise<Activity> {
     `INSERT INTO activities
          (id, operator_id, slug, title, category, description, price_try, duration_minutes,
           location_name, lat, lng, capacity_mode, min_participants, booking_cutoff_minutes,
-          prep_minutes, image, image_alt, included, safety,
+          prep_minutes, wind_limit_kmh, gust_limit_kmh, wave_limit_m,
+          image, image_alt, included, safety,
           gallery, meeting_point, reviews, capacity_label, instant_confirm, rating, review_count,
           status, created_at)
        VALUES
          (@id, @operator_id, @slug, @title, @category, @description, @price_try, @duration_minutes,
           @location_name, @lat, @lng, @capacity_mode, @min_participants, @booking_cutoff_minutes,
-          @prep_minutes, @image, @image_alt, @included, @safety,
+          @prep_minutes, @wind_limit_kmh, @gust_limit_kmh, @wave_limit_m,
+          @image, @image_alt, @included, @safety,
           @gallery, @meeting_point, @reviews, @capacity_label, @instant_confirm, @rating, @review_count,
           @status, @created_at)`,
     { id, ...toParams(input), created_at: new Date().toISOString() }
@@ -232,40 +257,17 @@ export async function createActivity(input: ActivityInput): Promise<Activity> {
   return (await getActivityById(id))!;
 }
 
-export async function updateActivity(
-  id: string,
-  input: ActivityInput
-): Promise<Activity | null> {
-  await (
-    await db()
-  ).run(
-    `UPDATE activities SET
-         slug = @slug, title = @title, category = @category, description = @description,
-         price_try = @price_try, duration_minutes = @duration_minutes,
-         location_name = @location_name, lat = @lat, lng = @lng,
-         capacity_mode = @capacity_mode, min_participants = @min_participants,
-         booking_cutoff_minutes = @booking_cutoff_minutes, prep_minutes = @prep_minutes,
-         image = @image, image_alt = @image_alt,
-         included = @included, safety = @safety, gallery = @gallery,
-         meeting_point = @meeting_point, reviews = @reviews, capacity_label = @capacity_label,
-         instant_confirm = @instant_confirm, rating = @rating, review_count = @review_count,
-         status = @status
-     WHERE id = @id`,
-    { id, ...toParams(input) }
-  );
-
-  return getActivityById(id);
-}
-
 /**
- * Yalnızca verilen alanları günceller.
+ * Yalnızca verilen alanları günceller. **Aktiviteyi güncellemenin tek yolu.**
  *
- * `updateActivity` tam satır yazıyor ve bu, çağıranı **dokunmadığı alanları
- * geri yazmaya** zorluyor (`app/actions/activity.ts` bunu elle yapıyor: görsel,
- * galeri, puan, durum hepsi mevcut değerden okunup yeniden veriliyor). Tek
- * ekranlı formda katlanılabilir; sihirbazda değil — orada her adım aktivitenin
- * yalnızca bir bölümünü biliyor ve bilmediği alanı geri yazmaya kalkarsa
- * (örneğin yayın durumunu) sessizce bozar.
+ * Eskiden bir de tam satır yazan `updateActivity` vardı ve çağıranı
+ * dokunmadığı alanları geri yazmaya zorluyordu: görsel, galeri, puan, durum
+ * tek tek okunup yeniden veriliyordu. Elle korunması unutulan alanlar sessizce
+ * varsayılana dönüyordu — düzenleme formundan başlık değiştirmek, takvim
+ * ekranında girilmiş minimum katılımcıyı, rezervasyon kesitini ve hazırlık
+ * payını sıfırlıyordu (ölçüldü: 3 → 1, 60 → 0, 5 → 0 dk). Unutulan alanları
+ * eklemek hatanın örneğini düzeltirdi, kendisini değil: eklenen her yeni sütun
+ * aynı tuzağı yeniden kurardı. Bu yüzden tam satır yazan işlev kaldırıldı.
  *
  * Alan adları **beyaz listeden** geçiyor: anahtar doğrudan SQL'e gömülüyor ve
  * çağıran taraf `Partial<ActivityInput>` versе de, listede olmayan bir ad
@@ -284,6 +286,9 @@ const PATCHABLE = {
   minParticipants: 'min_participants',
   bookingCutoffMinutes: 'booking_cutoff_minutes',
   prepMinutes: 'prep_minutes',
+  windLimitKmh: 'wind_limit_kmh',
+  gustLimitKmh: 'gust_limit_kmh',
+  waveLimitM: 'wave_limit_m',
   capacityLabel: 'capacity_label',
   instantConfirm: 'instant_confirm',
   included: 'included',

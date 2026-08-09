@@ -6,6 +6,8 @@ import { listActivitiesForOperator } from '@/lib/db/activities';
 import { listSlots } from '@/lib/db/slots';
 import { displayContact, getUser } from '@/lib/db/users';
 import { formatPrice } from '@/lib/format';
+import { forecastsForOperator } from '@/lib/db/weather.mjs';
+import { WeatherStrip } from '@/components/WeatherStrip';
 import { ManualBookingForm } from './ManualBookingForm';
 import { BookingRowActions } from './BookingRowActions';
 
@@ -69,6 +71,14 @@ export default async function TodayPage() {
 
   const mayAddManual = can(session, 'rezervasyon.manuel');
 
+  // Hava şeridi yalnızca söyleyecek bir şey varsa çizilir: `uygun` günler ve
+  // tahmini olmayan aktiviteler elenir. Her sabah "hava uygun" yazan bir kutu
+  // bir süre sonra hiç okunmaz ve gerçekten uyardığı gün de okunmazdı.
+  const forecasts = await forecastsForOperator(session.operator.id, today);
+  const warnings = activities
+    .map((a) => ({ activity: a, forecast: forecasts.get(a.id) ?? null }))
+    .filter((row) => row.forecast !== null && row.forecast.verdict !== 'uygun');
+
   return (
     <div className="min-h-screen">
       <OperatorNav session={session} />
@@ -97,6 +107,14 @@ export default async function TodayPage() {
             tone={awaitingPayment > 0 ? 'warn' : undefined}
           />
         </section>
+
+        {warnings.length > 0 && (
+          <section className="flex flex-col gap-sm">
+            {warnings.map(({ activity, forecast }) => (
+              <WeatherStrip key={activity.id} forecast={forecast} activityTitle={activity.title} />
+            ))}
+          </section>
+        )}
 
         {/* Operasyon akışı */}
         <section className="rounded-xl border border-outline-variant bg-surface-container-lowest p-md shadow-card">

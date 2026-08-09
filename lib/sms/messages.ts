@@ -23,6 +23,44 @@ export function operatorCodeMessage(code: string): string {
 }
 
 /**
+ * Rezervasyon iptal edildi.
+ *
+ * İŞLEM BİLDİRİMİ, ticari ileti değil: müşterinin kendi başlattığı bir
+ * sözleşmenin sona erdiğini haber veriyor. "Başka aktivitelere de bakın" gibi
+ * tek bir cümle eklenirse mesaj 6563 anlamında ticari ileti hâline gelir ve
+ * onaysız gönderim cezaya tabi olur (bkz. dosya başındaki not).
+ *
+ * İadenin ne zaman görüneceği yazılmıyor: süre bankaya göre değişiyor ve
+ * tutturulamayacak bir söz vermek, hiç söz vermemekten kötü.
+ */
+export function bookingCancelledMessage(input: {
+  code: string;
+  date: string;
+  time: string;
+  weather: boolean;
+}): string {
+  const why = input.weather ? 'hava kosullari nedeniyle ' : '';
+  return (
+    `${BRAND}: ${input.date} ${input.time} rezervasyonunuz (${input.code}) ${why}iptal edildi. ` +
+    `Odemeniz varsa tamami iade edilecektir.`
+  );
+}
+
+/** Rezervasyon başka bir saate taşındı. */
+export function bookingRescheduledMessage(input: {
+  code: string;
+  fromDate: string;
+  fromTime: string;
+  toDate: string;
+  toTime: string;
+}): string {
+  return (
+    `${BRAND}: ${input.fromDate} ${input.fromTime} rezervasyonunuz (${input.code}) ` +
+    `${input.toDate} ${input.toTime} saatine alindi. Biletiniz ayni kod ile gecerli.`
+  );
+}
+
+/**
  * Mesajlar bilinçli olarak Türkçe karaktersiz.
  *
  * GSM 03.38 alfabesinde ş, ğ, ı, İ yok; bu harfler mesajı UCS-2'ye düşürür ve

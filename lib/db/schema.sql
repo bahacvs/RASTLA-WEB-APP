@@ -185,6 +185,20 @@ CREATE TABLE IF NOT EXISTS activities (
   -- jet ski turu + 5 dakika hazırlık = 20 dakikada bir kalkış.
   prep_minutes      INTEGER NOT NULL DEFAULT 0 CHECK (prep_minutes >= 0),
 
+  -- ---- Hava eşikleri ----
+  --
+  -- Hepsi NULL olabilir ve NULL **kontrol yok** demektir. Varsayılan olarak
+  -- bir sınır koymak, hiç düşünmemiş bir işletmenin gününü uydurma bir eşik
+  -- yüzünden riskli göstermek olurdu. Sihirbaz kategoriye göre değer ÖNERİR;
+  -- karar işletmenin.
+  --
+  -- Eşik aşıldığında hiçbir şey otomatik iptal EDİLMEZ: gün "riskli" ya da
+  -- "elverişsiz" işaretlenir ve iptal düğmesi işletmenin önüne konur. Yanlış
+  -- bir tahminin bedeli bir uyarı olmalı, iptal edilmiş bir gün değil.
+  wind_limit_kmh    REAL CHECK (wind_limit_kmh IS NULL OR wind_limit_kmh > 0),
+  gust_limit_kmh    REAL CHECK (gust_limit_kmh IS NULL OR gust_limit_kmh > 0),
+  wave_limit_m      REAL CHECK (wave_limit_m IS NULL OR wave_limit_m > 0),
+
   image             TEXT,
   image_alt         TEXT,
 
@@ -404,6 +418,11 @@ CREATE TABLE IF NOT EXISTS bookings (
   expired_at     TEXT,
   redeemed_at    TEXT,
   redeemed_by    TEXT,
+
+  -- Saati değiştirildiyse ne zaman. Kaç kez taşındığı ve nereden nereye
+  -- taşındığı işlem günlüğünde; burada yalnızca "bu rezervasyon taşındı"
+  -- bilgisi var ve listede rozet göstermeye yetiyor.
+  rescheduled_at TEXT,
 
   -- İptalin kim/ne tarafından yapıldığı. Hava kaynaklı iptal ayrı tutulur:
   -- müşteri kusurlu olmadığı için iade ve yeniden planlama politikası farklı
@@ -686,6 +705,44 @@ CREATE INDEX IF NOT EXISTS idx_phone_verifications_expiry
 --   2. "Önce bak, sonra yaz" yarışı hiç doğmuyor. İki süpürme aynı anda
 --      çalışsa bile ikinci ekleme veritabanı tarafından sessizce düşürülür.
 --      Kontrol kodda olsaydı ikisi de "yok" görüp ikisi de yazabilirdi.
+-- Hava tahmini — aktivite ve gün başına tek satır.
+--
+-- Tahmin sağlayıcıdan geliyor ama **saklanıyor**, çünkü panel her açıldığında
+-- dış servise gitmek hem yavaş hem de o servisin ayakta olmasına bağımlı
+-- olurdu. Sabah çalışan iş tahmini bir kez çeker, ekranlar bu tablodan okur.
+--
+-- `verdict` ölçümden değil KARŞILAŞTIRMADAN çıkıyor: aynı rüzgâr bir tekne
+-- turu için sorunsuz, bir SUP dersi için elverişsiz olabilir. Bu yüzden
+-- karşılaştırma aktivitenin kendi eşikleriyle yapılıyor ve sonuç aktivite
+-- başına saklanıyor.
+--
+-- **`bilinmiyor` gerçek bir durum, hata değil.** Sağlayıcıya ulaşılamadığında
+-- bu yazılır ve hiçbir şey işaretlenmez. Eksik veriden "riskli" sonucu
+-- çıkarmak, tahminin kendisinden daha kötü bir yanlış olurdu.
+CREATE TABLE IF NOT EXISTS weather_forecasts (
+  id             TEXT PRIMARY KEY,
+  activity_id    TEXT NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
+  forecast_date  TEXT NOT NULL,   -- YYYY-MM-DD
+
+  wind_kmh       REAL,
+  gust_kmh       REAL,
+  wave_m         REAL,
+  precipitation_mm REAL,
+
+  verdict        TEXT NOT NULL
+                 CHECK (verdict IN ('uygun', 'riskli', 'elverissiz', 'bilinmiyor')),
+  -- Hangi eşiğin aşıldığı: arayüzde gerekçe olarak gösteriliyor.
+  reason         TEXT,
+
+  fetched_at     TEXT NOT NULL,
+
+  -- Aynı gün için ikinci satır olmamalı: iş günde birden çok kez koşturulsa
+  -- da tahmin güncellenir, çoğalmaz.
+  UNIQUE (activity_id, forecast_date)
+);
+
+CREATE INDEX IF NOT EXISTS idx_weather_date ON weather_forecasts(forecast_date);
+
 CREATE TABLE IF NOT EXISTS alerts (
   id           TEXT PRIMARY KEY,
   at           TEXT NOT NULL,

@@ -3,6 +3,7 @@
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { cancelBooking, createBooking, getBookingByCode } from '@/lib/db/bookings';
+import { notifyCancellation } from '@/lib/notify';
 import { findOrCreateUser, getUser, normalizePhone } from '@/lib/db/users';
 import {
   gateBooking,
@@ -342,6 +343,12 @@ export async function cancelBookingAction(
   } else if (booking.totalTRY > 0) {
     refundNote = ` Aktiviteye ${FREE_CANCELLATION_HOURS} saatten az kaldığı için ücret iadesi yapılmadı.`;
   }
+
+  // Müşteri iptali kendisi yaptı ve sonucu ekranda görüyor; mesaj yine de
+  // gidiyor çünkü uyuşmazlıkta "iptal ettim" iddiasının müşterinin elindeki
+  // tek yazılı karşılığı bu. Gönderim başarısız olursa iptal yine geçerli —
+  // ekrandaki cümle değişmiyor, kullanıcıya olmayan bir sorun anlatılmıyor.
+  await notifyCancellation(result.booking, false);
 
   revalidatePath('/rezervasyonlarim');
   revalidatePath(`/bilet/${code}`);

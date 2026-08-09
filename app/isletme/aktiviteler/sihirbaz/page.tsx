@@ -165,7 +165,7 @@ export default async function WizardPage({
                 Bir kural yazın, seanslar kendiliğinden üretilsin. Sonradan takvim ekranından
                 değiştirebilirsiniz.
               </p>
-              <ScheduleStep activityId={activity.id} />
+              <ScheduleStep activityId={activity.id} category={activity.category} />
             </>
           )}
 

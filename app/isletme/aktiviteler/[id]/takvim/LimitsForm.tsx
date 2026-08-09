@@ -20,12 +20,18 @@ export function LimitsForm({
   minParticipants,
   bookingCutoffMinutes,
   prepMinutes,
+  windLimitKmh,
+  gustLimitKmh,
+  waveLimitM,
   pool,
 }: {
   activityId: string;
   minParticipants: number;
   bookingCutoffMinutes: number;
   prepMinutes: number;
+  windLimitKmh: number | null;
+  gustLimitKmh: number | null;
+  waveLimitM: number | null;
   pool: { name: string; unitCount: number; capacityPerUnit: number } | null;
 }) {
   const [state, action, pending] = useActionState<LimitsFormState, FormData>(saveLimitsAction, {});
@@ -83,6 +89,60 @@ export function LimitsForm({
             defaultValue={prepMinutes}
             className={FIELD}
           />
+        </div>
+      </div>
+
+      <div className="mt-md rounded-lg border border-outline-variant/60 bg-surface p-sm">
+        <p className="mb-xs text-label-bold text-on-surface">Hava sınırları</p>
+        <p className="mb-sm text-body-md text-on-surface-variant">
+          Boş bıraktığınız ölçüm hiç kontrol edilmez. Sınır aşıldığında{' '}
+          <strong>hiçbir rezervasyon otomatik iptal edilmez</strong>: gün panelde işaretlenir,
+          iptal ya da saat değiştirme kararı sizin olur.
+        </p>
+
+        <div className="grid grid-cols-1 gap-sm sm:grid-cols-3">
+          <div>
+            <label htmlFor="windLimitKmh" className={LABEL}>
+              Rüzgâr (km/s)
+            </label>
+            <input
+              id="windLimitKmh"
+              name="windLimitKmh"
+              type="number"
+              min={1}
+              step={1}
+              defaultValue={windLimitKmh ?? ''}
+              className={FIELD}
+            />
+          </div>
+          <div>
+            <label htmlFor="gustLimitKmh" className={LABEL}>
+              Rüzgâr darbesi (km/s)
+            </label>
+            <input
+              id="gustLimitKmh"
+              name="gustLimitKmh"
+              type="number"
+              min={1}
+              step={1}
+              defaultValue={gustLimitKmh ?? ''}
+              className={FIELD}
+            />
+          </div>
+          <div>
+            <label htmlFor="waveLimitM" className={LABEL}>
+              Dalga (m)
+            </label>
+            <input
+              id="waveLimitM"
+              name="waveLimitM"
+              type="number"
+              min={0.1}
+              step={0.1}
+              defaultValue={waveLimitM ?? ''}
+              className={FIELD}
+            />
+          </div>
         </div>
       </div>
 

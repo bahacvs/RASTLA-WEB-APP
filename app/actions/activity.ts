@@ -8,7 +8,7 @@ import {
   setActivityStatus,
   publishTargetFor,
   uniqueSlug,
-  updateActivity,
+  updateActivityFields,
   type ActivityInput,
 } from '@/lib/db/activities';
 import {
@@ -147,18 +147,37 @@ export async function updateActivityAction(
   const input = readForm(formData, owned.operatorId);
   if (typeof input === 'string') return { error: input };
 
-  // Slug korunur: yayındaki bir adresin değişmesi bağlantıları kırar.
-  await updateActivity(id, {
-    ...input,
-    slug: owned.activity.slug,
-    image: owned.activity.image || undefined,
-    imageAlt: owned.activity.imageAlt || undefined,
-    gallery: owned.activity.gallery,
-    meetingPoint: owned.activity.meetingPoint,
-    reviews: owned.activity.reviews,
-    rating: owned.activity.rating,
-    reviewCount: owned.activity.reviewCount,
-    status: owned.activity.status,
+  // YALNIZCA bu formun sahip olduğu alanlar yazılıyor.
+  //
+  // Önce tam satır UPDATE'i (`updateActivity`) kullanılıyordu ve çağıran taraf
+  // dokunmadığı alanları elle geri yazmak zorundaydı: görsel, galeri, puan,
+  // durum hepsi tek tek korunuyordu. Korunmayan üç alan vardı — minimum
+  // katılımcı, rezervasyon kesiti ve hazırlık payı — çünkü onlar başka bir
+  // ekranda (takvim) giriliyor ve bu formda hiç görünmüyorlar. Sonuç: bir
+  // aktivitenin BAŞLIĞINI değiştirmek, takvim ekranında girilmiş operasyon
+  // sınırlarını sessizce varsayılana döndürüyordu (ölçüldü: min 3 → 1,
+  // kesit 60 → 0, hazırlık 5 → 0 dk — ve hazırlık payının değişmesi slot
+  // saatlerini de kaydırır).
+  //
+  // Alanları tek tek korumaya devam etmek hatanın kendisini değil o günkü
+  // örneğini düzeltirdi: eklenen HER yeni sütun aynı tuzağı yeniden kurardı.
+  // Bu yüzden form artık yalnızca kendi alanlarını yamalıyor; bilmediği hiçbir
+  // sütuna dokunmuyor. Slug da kasten dışarıda: yayındaki bir adresin
+  // değişmesi bağlantıları kırar.
+  await updateActivityFields(id, {
+    title: input.title,
+    category: input.category,
+    description: input.description,
+    priceTRY: input.priceTRY,
+    durationMinutes: input.durationMinutes,
+    location: input.location,
+    lat: input.lat,
+    lng: input.lng,
+    capacityMode: input.capacityMode,
+    capacityLabel: input.capacityLabel,
+    instantConfirm: input.instantConfirm,
+    included: input.included,
+    safety: input.safety,
   });
 
   await log(owned.session, 'activity.updated', 'activity', id, {
@@ -318,6 +337,20 @@ export async function toggleSlotAction(formData: FormData) {
   revalidatePath(`/isletme/aktiviteler/${activityId}/takvim`);
 }
 
+/**
+ * Boş bırakılabilen sayısal eşik.
+ *
+ * Üç ayrı sonuç ve üçü de farklı: boşsa `null` (kontrol yok), pozitif bir
+ * sayıysa değeri, aksi hâlde `'invalid'`.
+ */
+function optionalLimit(raw: FormDataEntryValue | null): number | null | 'invalid' {
+  const text = String(raw ?? '').trim();
+  if (!text) return null;
+  const value = Number(text);
+  if (!Number.isFinite(value) || value <= 0) return 'invalid';
+  return value;
+}
+
 export type LimitsFormState = { error?: string; message?: string };
 
 /**
@@ -351,6 +384,15 @@ export async function saveLimitsAction(
   if (!Number.isInteger(cutoff) || cutoff < 0) return { error: 'Kesit negatif olamaz.' };
   if (!Number.isInteger(prep) || prep < 0) return { error: 'Hazırlık süresi negatif olamaz.' };
 
+  // Hava eşikleri boş bırakılabilir; boş = KONTROL YOK. Geçersiz bir girdiyi
+  // sessizce boşa çevirmek en kötüsü olurdu — işletme sınır koyduğunu sanırdı.
+  const wind = optionalLimit(formData.get('windLimitKmh'));
+  const gust = optionalLimit(formData.get('gustLimitKmh'));
+  const wave = optionalLimit(formData.get('waveLimitM'));
+  if (wind === 'invalid' || gust === 'invalid' || wave === 'invalid') {
+    return { error: 'Hava sınırları boş bırakılabilir ama girilirse sıfırdan büyük olmalı.' };
+  }
+
   const poolName = String(formData.get('poolName') ?? '').trim();
   const unitCount = Number(formData.get('unitCount'));
   const capacityPerUnit = Number(formData.get('capacityPerUnit'));
@@ -367,13 +409,13 @@ export async function saveLimitsAction(
     }
   }
 
-  await updateActivity(activityId, {
-    ...owned.activity,
-    operatorId: owned.operatorId,
-    location: owned.activity.location,
+  await updateActivityFields(activityId, {
     minParticipants,
     bookingCutoffMinutes: cutoff,
     prepMinutes: prep,
+    windLimitKmh: wind,
+    gustLimitKmh: gust,
+    waveLimitM: wave,
   });
 
   await setEquipmentPool(

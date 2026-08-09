@@ -8,7 +8,11 @@ import { listBookingsForOperator, type BookingStatus } from '@/lib/db/bookings';
 import { displayContact, getUser } from '@/lib/db/users';
 import { getActivityBySlug } from '@/lib/db/activities';
 import { formatPrice } from '@/lib/format';
+import { listSlots } from '@/lib/db/slots';
+import { forecastsForOperator } from '@/lib/db/weather.mjs';
+import { WeatherStrip } from '@/components/WeatherStrip';
 import { CancelBookingButton, CancelDayButton } from './CancelControls';
+import { RescheduleControl, type SlotOption } from './RescheduleControl';
 
 export const metadata: Metadata = {
   title: 'Rezervasyonlar',
@@ -84,6 +88,37 @@ export default async function OperatorBookingsPage({
   const activeCount = bookings.filter((b) => b.status === 'confirmed').length;
   const pendingCount = bookings.filter((b) => b.status === 'pending_payment').length;
 
+  // Taşıma seçenekleri: aynı aktivitenin seçili gün ve sonraki iki gündeki
+  // AÇIK ve yer kalan slotları. Ufuk kasten dar — bir rezervasyonu bir hafta
+  // sonraya taşımak taşıma değil, yeni bir plandır ve müşteriyle konuşulması
+  // gerekir. Liste hazırlandıktan sonra yer başkasına gidebilir; son söz
+  // `rescheduleBooking` içindeki koşullu UPDATE'te.
+  const RESCHEDULE_HORIZON_DAYS = 3;
+  const optionDays = Array.from({ length: RESCHEDULE_HORIZON_DAYS }, (_, offset) => {
+    const d = new Date(`${day}T00:00:00`);
+    d.setDate(d.getDate() + offset);
+    return isoDate(d);
+  });
+
+  const slotOptions = new Map<string, SlotOption[]>();
+  for (const [slug, activity] of activities) {
+    if (!activity) continue;
+    const options: SlotOption[] = [];
+    for (const date of optionDays) {
+      for (const slot of await listSlots(activity.id, date)) {
+        if (slot.status !== 'open' || slot.remaining <= 0) continue;
+        options.push({ id: slot.id, date, time: slot.time, remaining: slot.remaining });
+      }
+    }
+    slotOptions.set(slug, options);
+  }
+
+  const forecasts = await forecastsForOperator(operatorId, day);
+  const warnings = [...activities.values()]
+    .filter((a) => a !== null)
+    .map((a) => ({ activity: a, forecast: forecasts.get(a.id) ?? null }))
+    .filter((row) => row.forecast !== null && row.forecast.verdict !== 'uygun');
+
   return (
     <div className="min-h-screen">
       <OperatorNav session={session} />
@@ -119,6 +154,14 @@ export default async function OperatorBookingsPage({
             Yerleri tutuluyor ama biletleri henüz geçerli değil. Ödeme tamamlanmazsa kısa süre
             içinde düşer ve yerler tekrar satışa açılır.
           </p>
+        )}
+
+        {warnings.length > 0 && (
+          <div className="mb-lg flex flex-col gap-sm">
+            {warnings.map(({ activity, forecast }) => (
+              <WeatherStrip key={activity.id} forecast={forecast} activityTitle={activity.title} />
+            ))}
+          </div>
         )}
 
         {activeCount > 0 && (
@@ -176,9 +219,26 @@ export default async function OperatorBookingsPage({
                   </div>
 
                   {booking.status === 'confirmed' && (
-                    <div className="mt-sm flex justify-end">
+                    <div className="mt-sm flex flex-wrap items-center justify-end gap-md">
+                      {/*
+                        Taşıma iptalin SOLUNDA: hava bozduğunda ilk denenmesi
+                        gereken bu ve düğmelerin sırası hangisinin önce akla
+                        geleceğini belirliyor.
+                      */}
+                      <RescheduleControl
+                        code={booking.code}
+                        options={(slotOptions.get(booking.activitySlug) ?? []).filter(
+                          (option) => option.id !== booking.slotId
+                        )}
+                      />
                       <CancelBookingButton code={booking.code} />
                     </div>
+                  )}
+
+                  {booking.rescheduledAt && (
+                    <p className="mt-sm text-label-sm text-on-surface-variant">
+                      Bu rezervasyonun saati değiştirildi
+                    </p>
                   )}
 
                   {booking.status === 'redeemed' && (

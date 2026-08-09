@@ -56,6 +56,10 @@ export const AUDIT_ACTIONS = [
   'booking.redeem_failed',
   'booking.cancelled',
   'booking.day_cancelled',
+  // Saati değiştirildi. Rezervasyon satırı yalnızca YENİ saati taşıyor;
+  // "eskiden neydi" sorusunun cevabı buradaki meta'da ve uyuşmazlıkta
+  // sorulan da tam olarak bu.
+  'booking.rescheduled',
   'booking.expired',
 
   // Ödeme. KART VERİSİ hiçbir zaman yazılmaz; yalnızca tutar ve sağlayıcı

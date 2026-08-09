@@ -10,6 +10,7 @@ import {
 } from '@/app/actions/activity-wizard';
 import { CATEGORIES, type ActivityCategory } from '@/lib/catalog';
 import { timesForRule } from '@/lib/schedule-times.mjs';
+import { SUGGESTED_LIMITS } from '@/lib/weather/limits.mjs';
 import { FIELD, LABEL, PRIMARY_BUTTON, TEXTAREA } from '@/components/form';
 
 /**
@@ -282,8 +283,19 @@ export function LocationStep({
 
 const WEEKDAYS = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz'];
 
-export function ScheduleStep({ activityId }: { activityId: string }) {
+export function ScheduleStep({
+  activityId,
+  category,
+}: {
+  activityId: string;
+  category: string;
+}) {
   const [state, action, pending] = useActionState<WizardState, FormData>(wizardScheduleAction, {});
+
+  // Kategoriye göre ÖNERİ. Boş bırakılırsa o ölçüm hiç kontrol edilmez;
+  // varsayılan olarak bir sınır doldurmak, hiç düşünmemiş bir işletmenin
+  // gününü uydurma bir eşik yüzünden riskli göstermek olurdu.
+  const suggested = SUGGESTED_LIMITS[category] ?? null;
 
   const [start, setStart] = useState('09:00');
   const [end, setEnd] = useState('18:00');
@@ -441,6 +453,60 @@ export function ScheduleStep({ activityId }: { activityId: string }) {
             placeholder="Araç başına kişi"
             className={FIELD}
           />
+        </div>
+      </div>
+
+      <div className="mt-md rounded-lg border border-outline-variant p-3">
+        <p className={LABEL}>Hava sınırları (isteğe bağlı)</p>
+        <p className="mb-sm text-body-md text-on-surface-variant">
+          Aşağıdaki değerler <strong>öneridir</strong>, taahhüt değil: güvenli sınırı ekipmanınız,
+          eğitmeniniz ve koyunuz belirler. Boş bıraktığınız ölçüm hiç kontrol edilmez. Sınır
+          aşıldığında <strong>hiçbir şey otomatik iptal edilmez</strong> — gün panelde işaretlenir
+          ve karar sizin olur.
+        </p>
+        <div className="grid grid-cols-1 gap-sm sm:grid-cols-3">
+          <div>
+            <label htmlFor="windLimitKmh" className={LABEL}>
+              Rüzgâr (km/s)
+            </label>
+            <input
+              id="windLimitKmh"
+              name="windLimitKmh"
+              type="number"
+              min={1}
+              step={1}
+              defaultValue={suggested?.wind ?? ''}
+              className={FIELD}
+            />
+          </div>
+          <div>
+            <label htmlFor="gustLimitKmh" className={LABEL}>
+              Rüzgâr darbesi (km/s)
+            </label>
+            <input
+              id="gustLimitKmh"
+              name="gustLimitKmh"
+              type="number"
+              min={1}
+              step={1}
+              defaultValue={suggested?.gust ?? ''}
+              className={FIELD}
+            />
+          </div>
+          <div>
+            <label htmlFor="waveLimitM" className={LABEL}>
+              Dalga (m)
+            </label>
+            <input
+              id="waveLimitM"
+              name="waveLimitM"
+              type="number"
+              min={0.1}
+              step={0.1}
+              defaultValue={suggested?.wave ?? ''}
+              className={FIELD}
+            />
+          </div>
         </div>
       </div>
 

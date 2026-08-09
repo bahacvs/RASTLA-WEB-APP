@@ -65,6 +65,21 @@ async function ownStep(activityId: string) {
   return { session, activity };
 }
 
+/**
+ * Boş bırakılabilen sayısal eşik.
+ *
+ * Üç ayrı sonuç var ve üçü de farklı: boşsa `null` (kontrol yok), geçerli bir
+ * pozitif sayıysa değeri, aksi hâlde `'invalid'`. Geçersiz girdiyi sessizce
+ * `null`'a çevirmek en kötüsü olurdu — işletme sınır koyduğunu sanırdı.
+ */
+function optionalLimit(raw: FormDataEntryValue | null): number | null | 'invalid' {
+  const text = String(raw ?? '').trim();
+  if (!text) return null;
+  const value = Number(text);
+  if (!Number.isFinite(value) || value <= 0) return 'invalid';
+  return value;
+}
+
 function step(activityId: string, adim: string): string {
   return `/isletme/aktiviteler/sihirbaz?aktivite=${activityId}&adim=${adim}`;
 }
@@ -230,7 +245,25 @@ export async function wizardScheduleAction(
     }
   }
 
-  await updateActivityFields(id, { minParticipants, bookingCutoffMinutes, prepMinutes });
+  // Hava eşikleri. Boş bırakılan alan **null** olur ve null "kontrol yok"
+  // demektir; 0 yazmak "sıfır rüzgârda bile elverişsiz" anlamına gelirdi, bu
+  // yüzden pozitif olmayan değer kabul edilmiyor.
+  const windLimitKmh = optionalLimit(formData.get('windLimitKmh'));
+  const gustLimitKmh = optionalLimit(formData.get('gustLimitKmh'));
+  const waveLimitM = optionalLimit(formData.get('waveLimitM'));
+
+  if (windLimitKmh === 'invalid' || gustLimitKmh === 'invalid' || waveLimitM === 'invalid') {
+    return { error: 'Hava sınırları boş bırakılabilir ama girilirse sıfırdan büyük olmalı.' };
+  }
+
+  await updateActivityFields(id, {
+    minParticipants,
+    bookingCutoffMinutes,
+    prepMinutes,
+    windLimitKmh,
+    gustLimitKmh,
+    waveLimitM,
+  });
   await setEquipmentPool(id, poolName ? { name: poolName, unitCount, capacityPerUnit } : null);
 
   let weekdays = 0;

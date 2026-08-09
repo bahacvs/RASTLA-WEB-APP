@@ -78,6 +78,9 @@ export default async function SchedulePage({
             minParticipants={activity.minParticipants}
             bookingCutoffMinutes={activity.bookingCutoffMinutes}
             prepMinutes={activity.prepMinutes}
+            windLimitKmh={activity.windLimitKmh}
+            gustLimitKmh={activity.gustLimitKmh}
+            waveLimitM={activity.waveLimitM}
             pool={pool}
           />
         </div>

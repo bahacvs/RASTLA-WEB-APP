@@ -51,6 +51,14 @@ export type Activity = {
   bookingCutoffMinutes: number;
   /** Seanslar arası hazırlık payı; slot üretiminde aralığa eklenir. */
   prepMinutes: number;
+  /**
+   * Hava eşikleri. **null = kontrol yok** — varsayılan bir sınır koymak,
+   * hiç düşünmemiş bir işletmenin gününü uydurma bir eşik yüzünden riskli
+   * göstermek olurdu.
+   */
+  windLimitKmh: number | null;
+  gustLimitKmh: number | null;
+  waveLimitM: number | null;
   capacityLabel?: string;
   image: string;
   imageAlt: string;
