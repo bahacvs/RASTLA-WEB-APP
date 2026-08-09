@@ -348,6 +348,48 @@ CREATE TABLE IF NOT EXISTS activities (
 CREATE INDEX IF NOT EXISTS idx_activities_operator ON activities(operator_id);
 CREATE INDEX IF NOT EXISTS idx_activities_status ON activities(status);
 
+-- İşletmenin kendi kanalları için paylaşılabilir rezervasyon linki.
+--
+-- Ürünün asıl vaadi "bütün kanallarınız tek takvimde" ama işletmenin kendi
+-- kanalından (Instagram bio, tabeladaki QR, WhatsApp yanıtı) gelen müşteriyi
+-- sisteme sokacak bir yol yoktu: elle kayıt açmak gerekiyordu ve kimse her
+-- telefon için panel açmıyor. Bu link o boşluğu kapatıyor.
+--
+-- KANAL BAŞINA AYRI LİNK açılabiliyor. "Hangi kanal işe yarıyor" sorusunun
+-- cevabı ancak böyle çıkar; tek link olsaydı bütün kanallar tek bir sayıya
+-- karışırdı.
+--
+-- `code` adres çubuğunda görünüyor ve TAHMİN EDİLEMEZ olmalı: tahmin
+-- edilebilir olsaydı biri başka bir işletmenin linkini bulup rezervasyonlarını
+-- kendi kanalına yazdırabilirdi. Bilet kodundaki alfabenin aynısı kullanılıyor
+-- (I/L/O/U yok — telefonda söylerken karışmıyor).
+CREATE TABLE IF NOT EXISTS booking_links (
+  id           TEXT PRIMARY KEY,
+  code         TEXT NOT NULL UNIQUE,
+
+  activity_id  TEXT NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
+  operator_id  TEXT NOT NULL REFERENCES operators(id) ON DELETE CASCADE,
+
+  -- İşletmenin kendi verdiği ad: "Instagram bio", "İskele tabelası".
+  label        TEXT NOT NULL,
+
+  -- Bu linkten gelen rezervasyonun kaynağı. bookings.source ile aynı liste.
+  source       TEXT NOT NULL DEFAULT 'link'
+               CHECK (source IN ('link', 'instagram', 'whatsapp', 'phone', 'hotel')),
+
+  -- Bu linkten kaç rezervasyon geldi. Tıklama değil REZERVASYON sayılıyor:
+  -- işletmenin sorduğu soru "kaç kişi baktı" değil, "kaç satış geldi".
+  bookings     INTEGER NOT NULL DEFAULT 0,
+
+  created_at   TEXT NOT NULL,
+  -- Kapatılan link çalışmaz ama SİLİNMEZ: geçmiş rezervasyonların hangi
+  -- kanaldan geldiği bilgisi silinmemeli.
+  disabled_at  TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_booking_links_activity ON booking_links(activity_id);
+
+
 -- Tekrarlayan müsaitlik tanımı: "08:00'dan 18:00'e, 15 dakikada bir, 4 kişi".
 -- Slotların tek gerçek kaynağıdır; slotlar buradan üretilir.
 CREATE TABLE IF NOT EXISTS schedule_rules (

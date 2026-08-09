@@ -27,8 +27,17 @@ export async function generateMetadata({
   return activity ? { title: `${activity.title} — Rezervasyon` } : {};
 }
 
-export default async function BookingPage({ params }: { params: Promise<{ slug: string }> }) {
+export default async function BookingPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ slug: string }>;
+  searchParams: Promise<{ k?: string }>;
+}) {
   const { slug } = await params;
+  // Paylaşım linkinin kodu. Yalnızca forma taşınıyor; kaynak etiketi sunucu
+  // eyleminde veritabanından yeniden çözülüyor (bkz. lib/db/booking-links.ts).
+  const { k: linkCode } = await searchParams;
   const activity = await getActivityBySlug(slug);
   if (!activity) notFound();
 
@@ -58,6 +67,7 @@ export default async function BookingPage({ params }: { params: Promise<{ slug: 
       initialDate={initialDate}
       initialSlots={initialSlots}
       payOnline={payment.available && activity.priceTRY > 0}
+      linkCode={linkCode ?? null}
     />
   );
 }

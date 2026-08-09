@@ -107,7 +107,23 @@ export async function book(page, options) {
     logPath = process.env.SERVER_LOG,
     slotLabel = false,
     stopAtPayment = false,
+    /** Rezervasyon sayfasına eklenecek sorgu dizesi (paylaşım linki kodu gibi). */
+    query = '',
+    /**
+     * Her GÖNDERİMDEN ÖNCE çağrılır — formu kurcalamak için.
+     *
+     * Her seferinde çağrılıyor çünkü doğrulama kodu ekranı formu yeniden
+     * çiziyor ve ilk gönderimden önce eklenen alanlar kayboluyor. Bir kez
+     * çağrılsaydı test, kurcalanmamış bir formu gönderip "sunucu reddetti"
+     * sanırdı — yani doğru sonucu yanlış sebeple verirdi.
+     */
+    beforeSubmit = null,
   } = options;
+
+  const submit = async () => {
+    if (beforeSubmit) await beforeSubmit(page);
+    await page.getByRole('button', { name: SUBMIT }).first().click();
+  };
 
   // Ödeme adımına giden ilk istek yakalanıp DURDURULUR. Desen sayfanın da geri
   // çağrının da önüne geçecek kadar geniş: sağlayıcı hangi sırayla giderse
@@ -135,7 +151,9 @@ export async function book(page, options) {
     throw new Error('ödeme yönlendirmesi yakalanamadı');
   }
 
-  await page.goto(`${baseUrl}/rezervasyon/${slug}`, { waitUntil: 'networkidle' });
+  await page.goto(`${baseUrl}/rezervasyon/${slug}${query ? `?${query}` : ''}`, {
+    waitUntil: 'networkidle',
+  });
   await page.waitForTimeout(400);
 
   const first = page
@@ -153,7 +171,7 @@ export async function book(page, options) {
   await acceptTerms(page);
   // Butonun metni işletme online ödemeye açıksa değişiyor. Test hangi
   // kurulumda koştuğunu bilmek zorunda kalmasın diye ikisi de kabul edilir.
-  await page.getByRole('button', { name: SUBMIT }).first().click();
+  await submit();
 
   // Doğrulama istendi mi? Oturumu doğrulanmış bir cihazda istenmez.
   try {
@@ -175,7 +193,7 @@ export async function book(page, options) {
   if (!code) return { error: 'doğrulama kodu günlükten okunamadı (SERVER_LOG?)', slotLabel: label };
 
   await page.fill('#code', code);
-  await page.getByRole('button', { name: SUBMIT }).first().click();
+  await submit();
 
   try {
     return { ...(await arrive(15000)), slotLabel: label };

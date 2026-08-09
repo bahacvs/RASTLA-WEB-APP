@@ -6,7 +6,16 @@ import QRCode from 'qrcode';
  * SVG doğrudan sayfaya gömülür: dış servise istek gitmez, istemciye ek
  * JavaScript inmez ve yazdırıldığında da net kalır.
  */
-export async function TicketQr({ value, size = 220 }: { value: string; size?: number }) {
+export async function TicketQr({
+  value,
+  size = 220,
+  label = 'Bilet QR kodu',
+}: {
+  value: string;
+  size?: number;
+  /** Ekran okuyucuya söylenen ad. Bilet dışında da kullanılıyor (paylaşım linki). */
+  label?: string;
+}) {
   const svg = await QRCode.toString(value, {
     type: 'svg',
     errorCorrectionLevel: 'M',
@@ -16,7 +25,7 @@ export async function TicketQr({ value, size = 220 }: { value: string; size?: nu
 
   return (
     <div
-      aria-label="Bilet QR kodu"
+      aria-label={label}
       role="img"
       style={{ width: size, height: size }}
       dangerouslySetInnerHTML={{ __html: svg.replace('<svg', '<svg width="100%" height="100%"') }}

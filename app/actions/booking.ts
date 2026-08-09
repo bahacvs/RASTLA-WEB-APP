@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { cancelBooking, createBooking, getBookingByCode } from '@/lib/db/bookings';
 import { notifyCancellation } from '@/lib/notify.mjs';
+import { countLinkBooking, resolveLink } from '@/lib/db/booking-links';
 import { findOrCreateUser, getUser, normalizePhone } from '@/lib/db/users';
 import {
   gateBooking,
@@ -204,6 +205,16 @@ export async function createBookingAction(
     termsAcceptedAt = new Date().toISOString();
   }
 
+  // Kaynak etiketi VERİTABANINDAN çözülüyor, formdaki değerden değil: form
+  // yalnızca link KODUNU taşıyor. `source` doğrudan forma yazılsaydı, onu
+  // değiştiren biri rezervasyonunu istediği kanala yazdırabilirdi — bugün
+  // yalnızca işletmenin istatistiğini bozardı, kanal bazlı komisyon
+  // geldiğinde parayı. Link başka bir ilana aitse yok sayılıyor.
+  const link = await resolveLink(
+    String(formData.get('linkKodu') ?? '').trim() || undefined,
+    activity.id
+  );
+
   try {
     const user = await findOrCreateUser(name, phone);
     if ((await getUserId()) !== user.id) await setUserSession(user.id);
@@ -214,6 +225,7 @@ export async function createBookingAction(
       operatorId: activity.operatorId,
       slotId: slot.id,
       units,
+      source: link?.source ?? 'rastla',
       bookingDate: slot.date,
       bookingTime: slot.time,
       adults,
@@ -225,6 +237,11 @@ export async function createBookingAction(
       status: payOnline ? 'pending_payment' : 'confirmed',
       termsAcceptedAt,
     });
+
+    // Sayaç rezervasyon YAZILDIKTAN sonra artıyor: önce artırılsaydı,
+    // kapasite alınamayıp düşen bir denemede de artar ve işletme olmayan bir
+    // satışı kanalın hanesine yazardı.
+    if (link) await countLinkBooking(link.id);
 
     // Misafirin adı ve telefonu günlüğe KOPYALANMAZ; kayıt zaten hangi
     // rezervasyonu işaret ettiğini biliyor.

@@ -40,6 +40,7 @@ export function BookingView({
   initialDate,
   initialSlots,
   payOnline,
+  linkCode,
 }: {
   activity: Activity;
   /** Boş yeri olan günler; takvimde yalnızca bunlar seçilebilir. */
@@ -48,6 +49,15 @@ export function BookingView({
   initialSlots: Slot[];
   /** Bu rezervasyon ödeme adımına gidecek mi. Sunucuda belirlenir. */
   payOnline: boolean;
+  /**
+   * Müşterinin geldiği paylaşım linkinin kodu.
+   *
+   * Yalnızca TAŞINIYOR; kaynak etiketi buradan okunmuyor. Etiket sunucuda,
+   * kodu veritabanındaki link satırıyla eşleştirerek belirleniyor — forma
+   * `source` yazılsaydı onu değiştiren biri rezervasyonunu istediği kanala
+   * yazdırabilirdi.
+   */
+  linkCode: string | null;
 }) {
   const router = useRouter();
   const available = useMemo(() => new Set(availableDates), [availableDates]);
@@ -140,6 +150,7 @@ export function BookingView({
       <form action={formAction}>
         {/* Seçimler gizli alanlarla taşınır; tutar ve kapasite sunucuda doğrulanır. */}
         <input type="hidden" name="slug" value={activity.slug} />
+        {linkCode && <input type="hidden" name="linkKodu" value={linkCode} />}
         <input type="hidden" name="slotId" value={slotId} />
         <input type="hidden" name="adults" value={adults} />
         <input type="hidden" name="children" value={children} />
