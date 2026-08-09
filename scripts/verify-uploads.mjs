@@ -129,8 +129,16 @@ async function upload(page, activityId, { name, mimeType, buffer, alt = '', forc
   await page.locator('form button[type="submit"]').last().click();
   await page.waitForTimeout(3000);
 
-  const alert = page.locator('[role="alert"]').first();
-  if ((await alert.count()) > 0) return { error: (await alert.innerText()).trim() };
+  // Next.js'in KENDİ yönlendirme duyurucusu da `role="alert"` taşıyor
+  // (`#__next-route-announcer__`) ve istemci tarafı gezinmeden sonra sayfa
+  // başlığını içeriyor. Dışlanmazsa başarılı bir yükleme, "hata" olarak
+  // okunuyor ve hatanın metni sayfa başlığı oluyordu — testin BAŞARIYI
+  // BAŞARISIZLIK sandığı bir durum. Uygulamanın kendi uyarısı aranıyor.
+  const alert = page.locator('[role="alert"]:not(#__next-route-announcer__)').first();
+  if ((await alert.count()) > 0) {
+    const text = (await alert.innerText()).trim();
+    if (text) return { error: text };
+  }
 
   const status = page.locator('[role="status"]').first();
   return { message: (await status.count()) > 0 ? (await status.innerText()).trim() : '' };
