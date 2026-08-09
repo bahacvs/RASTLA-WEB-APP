@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { requireCapability } from '@/lib/auth';
-import { getActivityById } from '@/lib/db/activities';
+import { getActivityById, updateActivityFields } from '@/lib/db/activities';
 import {
   createPriceRule,
   deleteGroupDiscount,
@@ -161,6 +161,52 @@ export async function saveGroupDiscountAction(
   revalidatePath(`/isletme/aktiviteler/${activity.id}/fiyat`);
   revalidatePath(`/rezervasyon/${activity.slug}`);
   return { message: 'Grup indirimi kaydedildi.' };
+}
+
+/**
+ * Kapora oranı.
+ *
+ * Fiyatlandırma ekranında duruyor çünkü sorduğu soru fiyatın devamı: "bu
+ * tutarın ne kadarı peşin?" Takvim ekranındaki operasyon sınırlarının yanına
+ * konsaydı, ticari bir kararı fiziksel kısıtların arasında aramak gerekirdi.
+ *
+ * **Geçmiş rezervasyonlar etkilenmez.** Kapora tutarı rezervasyon anında
+ * hesaplanıp kayda yazılıyor; buradaki değişiklik yalnızca BUNDAN SONRAKİ
+ * rezervasyonlar için geçerli. Aksi hâlde oranı düşüren bir işletme, dün
+ * tahsil edilmiş bir kaporanın bir kısmını borçlu duruma düşerdi.
+ */
+export async function saveDepositAction(
+  _prev: PricingState,
+  formData: FormData
+): Promise<PricingState> {
+  const activityId = String(formData.get('activityId') ?? '');
+  const activity = await ownedActivity(activityId);
+  if (!activity) return { error: 'Bu ilana erişim yetkiniz yok.' };
+
+  const raw = String(formData.get('depositPercent') ?? '').trim();
+
+  // Boş = kapora yok. "0 yazarsan kapalı" demek, sıfırın hem "kapalı" hem
+  // "sıfır lira kapora" okunabildiği bir alan üretirdi.
+  if (!raw) {
+    await updateActivityFields(activity.id, { depositPercent: null });
+    revalidatePath(`/isletme/aktiviteler/${activity.id}/fiyat`);
+    revalidatePath(`/rezervasyon/${activity.slug}`);
+    return { message: 'Kapora kapatıldı; tutarın tamamı tahsil edilecek.' };
+  }
+
+  const percent = Number(raw);
+  // Alt sınır 5: daha küçüğü caydırıcı değil, yalnızca ödeme adımı ekliyor.
+  // Üst sınır 80: tamamı isteniyorsa kapora değil peşin ödeme söz konusu ve
+  // o zaten varsayılan davranış — "%100 kapora" iki adı olan tek şey olurdu.
+  if (!Number.isInteger(percent) || percent < 5 || percent > 80) {
+    return { error: 'Kapora oranı %5 ile %80 arasında olmalı. Boş bırakırsanız kapora alınmaz.' };
+  }
+
+  await updateActivityFields(activity.id, { depositPercent: percent });
+
+  revalidatePath(`/isletme/aktiviteler/${activity.id}/fiyat`);
+  revalidatePath(`/rezervasyon/${activity.slug}`);
+  return { message: `Kapora oranı %${percent} olarak kaydedildi.` };
 }
 
 export async function deleteGroupDiscountAction(

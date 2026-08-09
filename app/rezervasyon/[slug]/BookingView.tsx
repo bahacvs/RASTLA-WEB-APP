@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { Icon } from '@/components/Icon';
 import { formatPrice } from '@/lib/format';
 import { createBookingAction, slotsForDate, type BookingFormState } from '@/app/actions/booking';
-import { quote, type GroupDiscount, type PriceRule } from '@/lib/pricing.mjs';
+import { depositFor, quote, type GroupDiscount, type PriceRule } from '@/lib/pricing.mjs';
 import type { Activity } from '@/lib/catalog';
 import type { Slot } from '@/lib/db/slots';
 
@@ -131,6 +131,12 @@ export function BookingView({
     people: party,
   });
   const total = priced.total;
+
+  // Kapora yalnızca online ödeme devredeyken anlamlı: tesiste ödenen bir
+  // rezervasyonda peşin alınacak bir şey yok ve "kapora" yazmak müşteriye
+  // olmayan bir tahsilat vaat etmek olurdu. Sunucu aynı koşulu bağımsız
+  // olarak yeniden uyguluyor (app/actions/booking.ts).
+  const deposit = payOnline ? depositFor(total, activity.depositPercent) : 0;
   const ready = Boolean(selectedDate && selectedSlot && selectedSlot.remaining >= units);
 
   const [state, formAction, pending] = useActionState<BookingFormState, FormData>(
@@ -378,6 +384,28 @@ export function BookingView({
               <span className="text-body-lg font-semibold text-on-surface">Toplam</span>
               <span className="text-title-price text-primary">{formatPrice(total)}</span>
             </div>
+
+            {/*
+              Kapora bölünmesi TOPLAMIN ALTINDA duruyor, yerine geçmiyor.
+              Müşterinin görmesi gereken iki sayı var ve ikisi de görünmeli:
+              bugün kartından çekilecek tutar ve tesiste ödeyeceği tutar.
+              Yalnızca kapora gösterilseydi, iskelede beklemediği bir rakamla
+              karşılaşırdı — güveni en hızlı kaybettiren şey.
+            */}
+            {deposit > 0 && (
+              <div className="mt-sm rounded-lg bg-surface-container p-sm text-body-md">
+                <div className="flex justify-between">
+                  <span className="text-on-surface-variant">Şimdi ödenecek kapora</span>
+                  <span className="font-semibold text-on-surface">{formatPrice(deposit)}</span>
+                </div>
+                <div className="mt-1 flex justify-between">
+                  <span className="text-on-surface-variant">Tesiste ödenecek</span>
+                  <span className="font-semibold text-on-surface">
+                    {formatPrice(total - deposit)}
+                  </span>
+                </div>
+              </div>
+            )}
           </section>
 
           {/* Adım 4 — iletişim */}

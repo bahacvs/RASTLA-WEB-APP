@@ -6,7 +6,7 @@ import { cancelBooking, createBooking, getBookingByCode } from '@/lib/db/booking
 import { notifyCancellation } from '@/lib/notify.mjs';
 import { countLinkBooking, resolveLink } from '@/lib/db/booking-links';
 import { loadPricing } from '@/lib/db/pricing';
-import { quote } from '@/lib/pricing.mjs';
+import { depositFor, quote } from '@/lib/pricing.mjs';
 import { findOrCreateUser, getUser, normalizePhone } from '@/lib/db/users';
 import {
   gateBooking,
@@ -22,6 +22,7 @@ import { sendVerificationCode, verifyCode } from '@/lib/verification';
 import { bookingCodeMessage } from '@/lib/sms/messages';
 import { maskPhone } from '@/lib/sms';
 import { getActivityBySlug } from '@/lib/db/activities';
+import type { PaymentMode } from '@/lib/booking-sources';
 import {
   customerRefundAllowed,
   FREE_CANCELLATION_HOURS,
@@ -204,6 +205,20 @@ export async function createBookingAction(
   const online = totalTRY > 0 ? await onlinePaymentFor(activity.operatorId) : null;
   const payOnline = online?.available === true;
 
+  // Kapora: peşin alınacak tutar ve kayda yazılacak ödeme kipi.
+  //
+  // Kapora yüzdesi İLANDAN okunuyor, formdan değil. Kapora tutarı da burada
+  // hesaplanıp KAYDA yazılıyor; sonradan yüzdeden yeniden türetilseydi,
+  // işletme oranı değiştirdiğinde geçmiş rezervasyonların tahsil edilmiş
+  // kaporası da değişmiş görünürdü ve iade ile hak ediş yanlış tutara
+  // dayanırdı.
+  //
+  // Ödeme sağlayıcısı devrede değilse kapora da yok: tahsil edilemeyecek bir
+  // kaporayı "alındı" diye kaydetmek, tesiste ödemeyi olduğundan az
+  // göstermek olurdu.
+  const depositTRY = payOnline ? depositFor(totalTRY, activity.depositPercent) : 0;
+  const paymentMode: PaymentMode = depositTRY > 0 ? 'deposit' : 'online';
+
   // Mesafeli satış metinleri onaylanmadan ödeme adımına geçilemez.
   //
   // Kontrol SUNUCUDA: formdaki `required` işareti istemcide kaldırılabilir ve
@@ -247,6 +262,8 @@ export async function createBookingAction(
       adults,
       children,
       totalTRY,
+      depositTRY,
+      paymentMode,
       // Ödeme alınacaksa bilet HENÜZ GEÇERLİ DEĞİL. Kapasite tutuluyor ama
       // `redeemBooking` yalnızca 'confirmed' kaydı okutur; ödemesi
       // tamamlanmamış bir QR kapıda çalışmaz.

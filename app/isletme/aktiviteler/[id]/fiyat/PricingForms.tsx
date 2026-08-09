@@ -4,6 +4,7 @@ import { useActionState } from 'react';
 import {
   deleteGroupDiscountAction,
   deletePriceRuleAction,
+  saveDepositAction,
   saveGroupDiscountAction,
   savePriceRuleAction,
   type PricingState,
@@ -212,6 +213,47 @@ export function GroupDiscountForm({ activityId }: { activityId: string }) {
           step={1}
           defaultValue={10}
           className={`${FIELD} w-32`}
+        />
+      </div>
+
+      <button type="submit" disabled={pending} className={PRIMARY_BUTTON}>
+        {pending ? 'Kaydediliyor…' : 'Kaydet'}
+      </button>
+
+      <div className="w-full">
+        <Notice state={state} />
+      </div>
+    </form>
+  );
+}
+
+export function DepositForm({
+  activityId,
+  depositPercent,
+}: {
+  activityId: string;
+  depositPercent: number | null;
+}) {
+  const [state, action, pending] = useActionState<PricingState, FormData>(saveDepositAction, {});
+
+  return (
+    <form action={action} className="flex flex-wrap items-end gap-sm">
+      <input type="hidden" name="activityId" value={activityId} />
+
+      <div>
+        <label htmlFor="depositPercent" className={LABEL}>
+          Kapora oranı (%)
+        </label>
+        <input
+          id="depositPercent"
+          name="depositPercent"
+          type="number"
+          min={5}
+          max={80}
+          step={1}
+          defaultValue={depositPercent ?? ''}
+          placeholder="Boş = kapora yok"
+          className={`${FIELD} w-48`}
         />
       </div>
 

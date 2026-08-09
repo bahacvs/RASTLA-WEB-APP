@@ -54,6 +54,11 @@ export type Activity = {
   /** Seanslar arası hazırlık payı; slot üretiminde aralığa eklenir. */
   prepMinutes: number;
   /**
+   * Peşin alınacak kapora yüzdesi. **null = kapora yok** — ödeme davranışı
+   * bugünkü hâliyle kalır (tamamı online ya da tamamı tesiste).
+   */
+  depositPercent: number | null;
+  /**
    * Hava eşikleri. **null = kontrol yok** — varsayılan bir sınır koymak,
    * hiç düşünmemiş bir işletmenin gününü uydurma bir eşik yüzünden riskli
    * göstermek olurdu.

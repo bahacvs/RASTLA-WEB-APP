@@ -305,6 +305,12 @@ async function freshPage() {
 await browser.close();
 
 // Temizlik
+// Ödeme ve hak ediş kayıtları rezervasyona bağlı; sunucu PAYMENT_PROVIDER=fake
+// ile koşuyorsa bu satırlar açılıyor ve rezervasyondan ÖNCE silinmeleri
+// gerekiyor — yoksa yabancı anahtar temizliği durduruyor.
+const bookingScope = 'SELECT id FROM bookings WHERE activity_slug IN (?, ?)';
+await store.run(`DELETE FROM payouts WHERE booking_id IN (${bookingScope})`, [actA.slug, actB.slug]);
+await store.run(`DELETE FROM payments WHERE booking_id IN (${bookingScope})`, [actA.slug, actB.slug]);
 await store.run('DELETE FROM bookings WHERE activity_slug IN (?, ?)', [actA.slug, actB.slug]);
 await store.run('DELETE FROM booking_links WHERE activity_id IN (?, ?)', [actA.id, actB.id]);
 await store.run('DELETE FROM slots WHERE activity_id IN (?, ?)', [actA.id, actB.id]);

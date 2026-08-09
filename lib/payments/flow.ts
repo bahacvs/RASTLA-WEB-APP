@@ -16,6 +16,9 @@ import {
   type RefundReason,
 } from '@/lib/db/payments';
 import { paymentProvider, splitAmount } from './index';
+// Göreli yol: doğrulama betikleri bu modülü doğrudan node ile yüklüyor ve
+// node `@/` takma adını çözemiyor (bkz. lib/db/pricing.ts).
+import { paymentSplit } from '../pricing.mjs';
 import { holdPayoutForBooking, refundAffectsPayout } from './payouts';
 
 /**
@@ -82,10 +85,15 @@ export async function startPayment(input: {
   const provider = paymentProvider();
   if (!provider) return { ok: false, error: 'Ödeme sağlayıcısı yapılandırılmamış.' };
 
-  const { commissionTRY, submerchantTRY } = splitAmount(
-    input.booking.totalTRY,
-    input.commissionBp
-  );
+  // TAHSİL EDİLEN tutar üzerinden çalışılıyor, rezervasyonun toplamı
+  // üzerinden değil. Kapora alınan bir rezervasyonda toplam 2.400 TL olsa da
+  // sağlayıcıdan 480 TL çekiliyor; toplam yazılsaydı müşteriden tamamı
+  // istenirdi ve "kapora" diye bir şey kalmazdı.
+  //
+  // Komisyon da bu tutardan hesaplanıyor: RASTLA yalnızca elinden geçen
+  // paradan pay alıyor, tesiste ödenen kısımdan almıyor.
+  const { onlineTRY } = paymentSplit(input.booking);
+  const { commissionTRY, submerchantTRY } = splitAmount(onlineTRY, input.commissionBp);
 
   // Eşleştirme kimliği rezervasyonun kimliği: dönen cevabın hangi kayda ait
   // olduğu böylece sağlayıcının verdiği bir değere değil, bizim ürettiğimiz
@@ -94,13 +102,13 @@ export async function startPayment(input: {
     bookingId: input.booking.id,
     provider: provider.name,
     conversationId: input.booking.id,
-    amountTRY: input.booking.totalTRY,
+    amountTRY: onlineTRY,
     commissionTRY,
   });
 
   const session = await provider.startCheckout({
     conversationId: payment.conversationId,
-    amountTRY: input.booking.totalTRY,
+    amountTRY: onlineTRY,
     submerchantAmountTRY: submerchantTRY,
     submerchantKey: input.submerchantKey,
     buyer: {
@@ -145,7 +153,7 @@ export async function startPayment(input: {
     ...input.context,
     // Tutar ve komisyon günlüğe girer; mutabakatta gereken bilgi bu.
     // Kart bilgisi diye bir şey yok, olamaz da: form sağlayıcıda.
-    meta: { provider: provider.name, amountTRY: input.booking.totalTRY, commissionTRY },
+    meta: { provider: provider.name, amountTRY: onlineTRY, commissionTRY },
   });
 
   return { ok: true, formUrl: session.formUrl };

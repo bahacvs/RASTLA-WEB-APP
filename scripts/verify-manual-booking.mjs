@@ -49,13 +49,17 @@ const date = tomorrow.toISOString().slice(0, 10);
 
 const slot = await client.get(
   `SELECT id, slot_time, capacity, booked FROM slots
-    WHERE activity_id = ? AND slot_date = ? AND status = 'open' AND booked < capacity
+    WHERE activity_id = ? AND slot_date = ? AND status = 'open'
+      AND booked + 2 <= capacity
     ORDER BY slot_time LIMIT 1`,
   [activity.id, date]
 );
 
+// İKİ kişilik yer aranıyor, "bir yeri var" yetmiyor: test 2 kişilik bir
+// kayıt açıyor ve 4/5 dolu bir slot seçilseydi kapasite kapısı haklı olarak
+// reddederdi — süit de bunu kendi hatası sanardı.
 if (!slot) {
-  console.log('KALDI  yarın için açık slot bulunamadı — seed çalıştırıldı mı?');
+  console.log('KALDI  yarın için 2 kişilik açık slot bulunamadı — seed çalıştırıldı mı?');
   process.exit(1);
 }
 

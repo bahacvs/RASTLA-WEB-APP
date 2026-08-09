@@ -33,6 +33,7 @@ type Row = {
   min_participants: number;
   booking_cutoff_minutes: number;
   prep_minutes: number;
+  deposit_percent: number | null;
   wind_limit_kmh: number | null;
   gust_limit_kmh: number | null;
   wave_limit_m: number | null;
@@ -101,6 +102,7 @@ function toActivity(row: Row): Activity {
     minParticipants: row.min_participants ?? 1,
     bookingCutoffMinutes: row.booking_cutoff_minutes ?? 0,
     prepMinutes: row.prep_minutes ?? 0,
+    depositPercent: row.deposit_percent ?? null,
     windLimitKmh: limit(row.wind_limit_kmh),
     gustLimitKmh: limit(row.gust_limit_kmh),
     waveLimitM: limit(row.wave_limit_m),
@@ -183,6 +185,7 @@ export type ActivityInput = {
   minParticipants?: number;
   bookingCutoffMinutes?: number;
   prepMinutes?: number;
+  depositPercent?: number | null;
   windLimitKmh?: number | null;
   gustLimitKmh?: number | null;
   waveLimitM?: number | null;
@@ -217,6 +220,7 @@ function toParams(input: ActivityInput) {
     min_participants: input.minParticipants ?? 1,
     booking_cutoff_minutes: input.bookingCutoffMinutes ?? 0,
     prep_minutes: input.prepMinutes ?? 0,
+    deposit_percent: input.depositPercent ?? null,
     wind_limit_kmh: input.windLimitKmh ?? null,
     gust_limit_kmh: input.gustLimitKmh ?? null,
     wave_limit_m: input.waveLimitM ?? null,
@@ -244,14 +248,14 @@ export async function createActivity(input: ActivityInput): Promise<Activity> {
     `INSERT INTO activities
          (id, operator_id, slug, title, category, description, price_try, duration_minutes,
           location_name, lat, lng, branch_id, capacity_mode, min_participants, booking_cutoff_minutes,
-          prep_minutes, wind_limit_kmh, gust_limit_kmh, wave_limit_m,
+          prep_minutes, deposit_percent, wind_limit_kmh, gust_limit_kmh, wave_limit_m,
           image, image_alt, included, safety,
           gallery, meeting_point, reviews, capacity_label, instant_confirm, rating, review_count,
           status, created_at)
        VALUES
          (@id, @operator_id, @slug, @title, @category, @description, @price_try, @duration_minutes,
           @location_name, @lat, @lng, @branch_id, @capacity_mode, @min_participants, @booking_cutoff_minutes,
-          @prep_minutes, @wind_limit_kmh, @gust_limit_kmh, @wave_limit_m,
+          @prep_minutes, @deposit_percent, @wind_limit_kmh, @gust_limit_kmh, @wave_limit_m,
           @image, @image_alt, @included, @safety,
           @gallery, @meeting_point, @reviews, @capacity_label, @instant_confirm, @rating, @review_count,
           @status, @created_at)`,
@@ -291,6 +295,7 @@ const PATCHABLE = {
   minParticipants: 'min_participants',
   bookingCutoffMinutes: 'booking_cutoff_minutes',
   prepMinutes: 'prep_minutes',
+  depositPercent: 'deposit_percent',
   windLimitKmh: 'wind_limit_kmh',
   gustLimitKmh: 'gust_limit_kmh',
   waveLimitM: 'wave_limit_m',

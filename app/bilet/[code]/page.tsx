@@ -10,6 +10,7 @@ import { getActivityBySlug } from '@/lib/db/activities';
 import { getOperator } from '@/lib/db/operators';
 import { getSucceededPayment } from '@/lib/db/payments';
 import { formatPrice } from '@/lib/format';
+import { paymentSplit } from '@/lib/pricing.mjs';
 import { SITE_URL } from '@/lib/site';
 
 export const metadata: Metadata = {
@@ -61,6 +62,9 @@ export default async function TicketPage({ params }: { params: Promise<{ code: s
   // Ödemenin online alınıp alınmadığı kayda bakılarak söylenir, ayarlara
   // değil: ayar sonradan değişse bile bu biletin geçmişi değişmez.
   const payment = await getSucceededPayment(booking.id);
+
+  // Ödenen / tesiste ödenecek ayrımı tek kaynaktan.
+  const split = paymentSplit(booking);
 
   return (
     <div className="min-h-screen px-container-margin py-lg">
@@ -125,6 +129,18 @@ export default async function TicketPage({ params }: { params: Promise<{ code: s
               value={`${booking.adults} yetişkin${booking.children > 0 ? `, ${booking.children} çocuk` : ''}`}
             />
             <Row label="Tutar" value={formatPrice(booking.totalTRY)} />
+            {/*
+              Kapora satırları yalnızca kapora alınmışsa çıkıyor. Bilet
+              çevrimdışı da açılabiliyor ve iskelede bakılan tek belge bu:
+              "ne kadar ödedim, ne kadar ödeyeceğim" sorusunun cevabı burada
+              olmazsa kasada tartışma çıkar.
+            */}
+            {split.onlineTRY > 0 && split.onsiteTRY > 0 && (
+              <>
+                <Row label="Ödenen kapora" value={formatPrice(split.onlineTRY)} />
+                <Row label="Tesiste ödenecek" value={formatPrice(split.onsiteTRY)} />
+              </>
+            )}
             {booking.redeemedAt && (
               <Row
                 label="Kullanım"

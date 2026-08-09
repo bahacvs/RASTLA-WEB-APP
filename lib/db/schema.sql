@@ -292,6 +292,18 @@ CREATE TABLE IF NOT EXISTS activities (
   -- jet ski turu + 5 dakika hazırlık = 20 dakikada bir kalkış.
   prep_minutes      INTEGER NOT NULL DEFAULT 0 CHECK (prep_minutes >= 0),
 
+  -- Kapora yüzdesi. NULL = kapora yok (varsayılan davranış değişmiyor).
+  --
+  -- İşletmenin asıl derdi gelmeyen müşteri: tesiste ödemeli rezervasyonda
+  -- "gelmedim" bedava, insanlar üç yere birden yazılıyor ve işletme dolu
+  -- sandığı saati boş geçiriyor. Tamamını peşin istemek dönüşü düşürüyor;
+  -- kapora ikisinin arasında.
+  --
+  -- Üst sınır 100 değil 80: tamamı istenecekse `payment_mode='online'` zaten
+  -- var ve "%100 kapora" iki farklı adı olan tek bir şey demek olurdu.
+  deposit_percent   INTEGER CHECK (deposit_percent IS NULL
+                                   OR (deposit_percent BETWEEN 5 AND 80)),
+
   -- ---- Hava eşikleri ----
   --
   -- Hepsi NULL olabilir ve NULL **kontrol yok** demektir. Varsayılan olarak
@@ -611,6 +623,15 @@ CREATE TABLE IF NOT EXISTS bookings (
   adults         INTEGER NOT NULL,
   children       INTEGER NOT NULL,
   total_try      INTEGER NOT NULL,
+
+  -- RASTLA üzerinden PEŞİN tahsil edilen tutar. Kalanı tesiste ödenir.
+  --
+  -- `payment_mode='deposit'` ile birlikte anlam kazanıyor; diğer kiplerde 0.
+  -- Yüzde değil TUTAR saklanıyor: işletme kapora oranını sonradan
+  -- değiştirebilir ve geçmiş bir rezervasyonun tahsil edilmiş kaporası o
+  -- değişiklikle birlikte değişemez — komisyon ve iade bu tutara bağlı.
+  deposit_try    INTEGER NOT NULL DEFAULT 0
+                 CHECK (deposit_try >= 0 AND deposit_try <= total_try),
 
   -- pending_payment -> kapasite tutuldu, ödeme bekleniyor. BİLET GEÇERSİZ.
   -- confirmed       -> ödeme alındı, okutulmayı bekleyen geçerli bilet

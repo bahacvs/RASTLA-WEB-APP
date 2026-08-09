@@ -59,8 +59,43 @@ export function codeFromLog(phone, logPath = process.env.SERVER_LOG) {
  * Bu yüzden seçimden sonra düğmenin açıldığı doğrulanıyor; açılmazsa sıradaki
  * slot deneniyor.
  */
+/**
+ * Açılıştaki gün yetmiyorsa takvimden SONRAKİ günleri dener.
+ *
+ * Ekran ilk müsait günü seçili getiriyor ama "müsait" demek "bir yeri var"
+ * demek; iki kişilik bir rezervasyon için yetmeyebilir. Yalnızca o güne bakan
+ * bir yardımcıyla, geliştirme veritabanının ilk günü dolduğu anda BÜTÜN
+ * süitler aynı anda ve ilgisiz bir sebeple "boş slot yok" diyerek düşüyordu.
+ * Gerçek müşteri de bu durumda takvimden başka bir gün seçerdi.
+ *
+ * Kişi sayısı bu çağrıdan ÖNCE ayarlanmış olmalı: seçilebilirlik kalan yere
+ * göre hesaplanıyor.
+ */
+async function advanceToDayWithRoom(page, maxDays = 20) {
+  const fitting = () =>
+    page.locator('button[aria-pressed]:not([disabled])').filter({ hasText: 'yer' });
+
+  if ((await fitting().count()) > 0) return;
+
+  // Takvim günleri: aria-pressed taşıyan ama saat etiketi TAŞIMAYAN düğmeler.
+  // Seçilebilir günlerde `title` yok (yalnızca dolu günlerde var), dolayısıyla
+  // ayrım metinden yapılıyor.
+  const days = page
+    .locator('button[aria-pressed]:not([disabled])')
+    .filter({ hasNotText: /yer|Dolu/ });
+
+  const count = Math.min(await days.count(), maxDays);
+  for (let i = 0; i < count; i++) {
+    await days.nth(i).click();
+    await page.waitForTimeout(500);
+    if ((await fitting().count()) > 0) return;
+  }
+}
+
 export async function pickAvailableSlot(page, attempts = 5) {
   const submit = page.getByRole('button', { name: SUBMIT }).first();
+
+  await advanceToDayWithRoom(page);
 
   for (let i = 0; i < attempts; i++) {
     const slots = page.locator('button[aria-pressed]:not([disabled])').filter({ hasText: 'yer' });
@@ -165,14 +200,6 @@ export async function book(page, options) {
   });
   await page.waitForTimeout(400);
 
-  const first = page
-    .locator('button[aria-pressed]:not([disabled])')
-    .filter({ hasText: 'yer' })
-    .first();
-  if ((await first.count()) === 0) return { error: 'boş slot yok' };
-
-  const label = slotLabel ? await first.innerText() : undefined;
-
   // Kişi sayısı slot seçiminden ÖNCE ayarlanıyor: seçilebilir slotlar kalan
   // yere göre süzülüyor ve 5 kişilik bir grup için 3 yeri kalan saat zaten
   // seçilmemeli. Sonra ayarlansaydı seçim geçersizleşir, gönder düğmesi
@@ -182,7 +209,18 @@ export async function book(page, options) {
     for (let i = 2; i < people; i++) await plus.click();
   }
 
-  if (!(await pickAvailableSlot(page))) return { error: 'slot seçilemedi', slotLabel: label };
+  // Gün ilerletmesi `pickAvailableSlot` içinde; burada yalnızca etiket için
+  // bakılıyor ve o da seçim yapıldıktan SONRA okunuyor.
+  if (!(await pickAvailableSlot(page))) return { error: 'boş slot yok' };
+
+  const label = slotLabel
+    ? await page
+        .locator('button[aria-pressed="true"]')
+        .filter({ hasText: 'yer' })
+        .first()
+        .innerText()
+        .catch(() => undefined)
+    : undefined;
 
   await page.getByLabel('Ad Soyad').fill(name);
   await page.getByLabel('Telefon').fill(phone);

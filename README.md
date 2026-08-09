@@ -125,6 +125,20 @@ Buna rağmen **sunucu her zaman yeniden hesaplar.** İstemciden gelen tutara gü
 
 Para **tam sayı** tutulur (`price_try INTEGER`); kayan noktayla hesaplanan bir kuruş, mutabakatta açıklanamayan bir fark demektir.
 
+### Kapora
+
+İşletmenin en pahalı sorunu gelmeyen müşteri: tesiste ödemeli rezervasyonda "gelmedim" bedava, insanlar üç yere birden yazılıyor ve işletme dolu sandığı saati boş geçiriyor. Tamamını peşin istemek dönüşü düşürüyor. Kapora ikisinin arasında — işletme ilan başına bir oran (%5–%80) tanımlar, müşteri o kadarını rezervasyonda öder, kalanını tesiste.
+
+Üç kural bu özelliği taşıyor:
+
+- **Kapora TUTAR olarak kaydedilir** (`bookings.deposit_try`), yüzde olarak değil. İşletme oranı sonradan değiştirebilir; tahsil edilmiş bir kapora o değişiklikle birlikte değişemez, çünkü iade ve hak ediş ona bağlı.
+- **Komisyon tahsil edilen tutardan** hesaplanır. RASTLA elinden geçmeyen paradan pay almaz; tesiste ödenen kısım işletmenin kasasına doğrudan girer.
+- **İade yalnızca tahsil edileni** geri verir. Toplam üzerinden iade eden bir kod, RASTLA'yı hiç almadığı paradan borçlu duruma düşürürdü.
+
+Bölme tek bir yerde yapılır — `paymentSplit()` (`lib/pricing.mjs`) — ve bunu soran en az beş yer var: ödeme başlatma, hak ediş, iade, bilet ekranı ve işletmenin Bugün ekranındaki "beklenen tahsilat". Her biri kendi `mode === 'deposit' ? …` üçlemesini yazsaydı biri geride kalırdı; geride kalanın bedeli, kasada beklenen rakamın gerçekten alınacaktan farklı olması olurdu.
+
+Online tahsilat açık değilse kapora **alınmaz** ve kayıt kaporalı görünmez: tahsil edilemeyecek bir kaporayı "alındı" diye yazmak, tesiste ödenecek tutarı olduğundan az göstermek olurdu.
+
 ## İptal ve kapasite iadesi
 
 Rezervasyon hem müşteri hem işletme tarafından iptal edilebilir; iptal edilen yerin kapasitesi slota **tam olarak bir kez** geri verilir. Çift tıklama ya da tekrar gönderim kapasiteyi şişirmez — güvence yine koşullu güncellemede:
@@ -389,6 +403,9 @@ SERVER_LOG=… node scripts/verify-links.mjs  # paylaşım linki: kanal formdan 
 node scripts/verify-signup.mjs        # self-servis kayıt: başvuru DOĞRULAMA değil
 SERVER_LOG=… node scripts/verify-pricing.mjs # sezon/saat tarifesi, grup indirimi, tutar sunucuda
 
+# Kapora (sunucu PAYMENT_PROVIDER=fake ile başlatılmış olmalı):
+SERVER_LOG=… node scripts/verify-deposit.mjs # kaporadan komisyon, iade, beklenen tahsilat
+
 # Otomatik uyarılar (sunucu CRON_SECRET ve ALERT_EMAIL_TO ile başlatılmış olmalı):
 SERVER_LOG=server.log node scripts/verify-alerts.mjs  # eşik, tekilleştirme, yarış, e-posta içeriği
 
@@ -418,7 +435,7 @@ Bilinen bir tuzak: `--spacing-md` gibi adlandırılmış boşluk tokenları Tail
 
 **Partner tarafı bir ilan paneli değil, operasyon sistemi.** Panel açıldığında ilk gelen soru "bugün ne var?" ve cevabı `/isletme/bugun`. Telefondan gelen rezervasyon aynı kapasiteyi tüketiyor, ekipman havuzu kişi sayısından bağımsız sınır koyuyor, katılım ve gelmeyen ayrı ayrı işaretleniyor. İkinci soru "ne kadar kazandım" ve cevabı `/isletme/finans`: ödeme alındığında işletmenin payı bloke ediliyor, hizmet verildiğinde serbest bırakılıyor — müşterinin ödemesi tek başına işletmenin kazancı değil.
 
-Bunların hepsi **gerçek bir veritabanına** yazıyor (SQLite ya da Postgres, tek bir bağlantı dizesiyle seçilir) ve doğruluk iddiaları 30 süitle, ayrı işletim sistemi süreçleriyle, iki motorda birden sınanıyor.
+Bunların hepsi **gerçek bir veritabanına** yazıyor (SQLite ya da Postgres, tek bir bağlantı dizesiyle seçilir) ve doğruluk iddiaları 31 süitle, ayrı işletim sistemi süreçleriyle, iki motorda birden sınanıyor.
 
 ### Bilinen sınır: iyzico onay akışı
 
@@ -458,7 +475,7 @@ lib/alerts/           tespit kuralları ve uyarı üretimi
 lib/jobs/             zamanlanmış işler — HTTP ucu ve komut satırı aynı kodu çağırır
 lib/sms/, lib/mail/   giden mesaj sağlayıcıları (console varsayılan)
 public/               görseller ve marka varlıkları
-scripts/              varlık üretimi ve 30 doğrulama süiti
+scripts/              varlık üretimi ve 31 doğrulama süiti
 reference/prototypes/ özgün statik Stitch ekranları (build'e dahil değil)
 legal/                KVKK ve mesafeli satış metinleri — TASLAK, hukukçu onayı bekliyor
 ```

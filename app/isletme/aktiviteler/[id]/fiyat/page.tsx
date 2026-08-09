@@ -7,10 +7,12 @@ import { CARD, weekdayMaskLabel } from '@/components/form';
 import { requireOperatorPage } from '@/lib/auth';
 import { getActivityById } from '@/lib/db/activities';
 import { loadPricing } from '@/lib/db/pricing';
+import { onlinePaymentFor } from '@/lib/payments/flow';
 import { formatPrice } from '@/lib/format';
 import {
   DeleteGroupDiscountButton,
   DeletePriceRuleButton,
+  DepositForm,
   GroupDiscountForm,
   PriceRuleForm,
 } from './PricingForms';
@@ -45,6 +47,10 @@ export default async function PricingPage({ params }: { params: Promise<{ id: st
   if (!activity || activity.operatorId !== session.operator.id) notFound();
 
   const { rules, discounts } = await loadPricing(activity.id);
+
+  // Kapora ancak online tahsilat varsa gerçekten alınabiliyor; ekran bunu
+  // saklamak yerine söylüyor.
+  const payment = await onlinePaymentFor(activity.operatorId);
 
   return (
     <div className="min-h-screen">
@@ -134,6 +140,28 @@ export default async function PricingPage({ params }: { params: Promise<{ id: st
                 </li>
               ))}
             </ul>
+          )}
+        </section>
+        <section className={CARD}>
+          <h2 className="mb-xs text-headline-sm text-on-surface">Kapora</h2>
+          <p className="mb-md text-body-md text-on-surface-variant">
+            Müşteri rezervasyon sırasında tutarın bu kadarını öder, kalanını tesiste. Gelmeyen
+            müşterinin maliyeti sizde kalmasın diye var: tesiste ödemeli rezervasyonda
+            &quot;gelmedim&quot; bedava ve insanlar üç yere birden yazılıyor.
+          </p>
+          <p className="mb-md text-body-md text-on-surface-variant">
+            Boş bırakırsanız kapora alınmaz — tutarın tamamı rezervasyonda tahsil edilir.
+            <strong> Değişiklik yalnızca bundan sonraki rezervasyonlar için geçerlidir</strong>;
+            tahsil edilmiş kaporalar olduğu gibi kalır.
+          </p>
+
+          <DepositForm activityId={activity.id} depositPercent={activity.depositPercent} />
+
+          {!payment.available && (
+            <p className="mt-md rounded-lg bg-surface-container px-3 py-2 text-body-md text-on-surface-variant">
+              Online ödeme henüz açık değil, bu yüzden kapora <strong>tahsil edilmiyor</strong>.
+              Oranı şimdiden kaydedebilirsiniz; ödeme ayarları tamamlandığında devreye girer.
+            </p>
           )}
         </section>
       </main>

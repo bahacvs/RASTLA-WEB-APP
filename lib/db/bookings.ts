@@ -58,6 +58,13 @@ export type Booking = {
   adults: number;
   children: number;
   totalTRY: number;
+  /**
+   * RASTLA üzerinden PEŞİN tahsil edilen tutar; kalanı tesiste ödenir.
+   *
+   * Yalnızca `paymentMode === 'deposit'` iken sıfırdan büyük. Bölmeyi elle
+   * yapmayın: `paymentSplit()` (lib/pricing.mjs) tek kaynak.
+   */
+  depositTRY: number;
   status: BookingStatus;
   createdAt: string;
   /** Mesafeli satış sözleşmesinin onaylandığı an. Ödemesiz rezervasyonda null. */
@@ -95,6 +102,7 @@ type Row = {
   adults: number;
   children: number;
   total_try: number;
+  deposit_try: number;
   status: BookingStatus;
   created_at: string;
   terms_accepted_at: string | null;
@@ -128,6 +136,7 @@ function toBooking(row: Row): Booking {
     adults: row.adults,
     children: row.children,
     totalTRY: row.total_try,
+    depositTRY: row.deposit_try ?? 0,
     status: row.status,
     createdAt: row.created_at,
     termsAcceptedAt: row.terms_accepted_at,
@@ -179,6 +188,13 @@ export async function createBooking(input: {
   children: number;
   totalTRY: number;
   /**
+   * Peşin tahsil edilecek kapora. Kapora yoksa 0 (varsayılan).
+   *
+   * `paymentMode: 'deposit'` ile birlikte verilmeli; tek başına verilirse
+   * hiçbir yerde kullanılmaz çünkü `paymentSplit` kipe bakıyor.
+   */
+  depositTRY?: number;
+  /**
    * Online ödeme devredeyse `pending_payment`, değilse `confirmed`.
    *
    * Varsayılan bilinçli olarak `confirmed`: ödeme sağlayıcısı yapılandırılana
@@ -219,6 +235,7 @@ export async function createBooking(input: {
     adults: input.adults,
     children: input.children,
     total_try: input.totalTRY,
+    deposit_try: input.depositTRY ?? 0,
     status,
     created_at: now,
     terms_accepted_at: input.termsAcceptedAt ?? null,
@@ -238,12 +255,12 @@ export async function createBooking(input: {
     `INSERT INTO bookings
        (id, code, user_id, activity_slug, operator_id, slot_id, units, equipment_units,
         source, payment_mode, created_by, agency_id, attended, no_show_at, booking_date,
-        booking_time, adults, children, total_try, status, created_at, terms_accepted_at,
+        booking_time, adults, children, total_try, deposit_try, status, created_at, terms_accepted_at,
         confirmed_at, expired_at, redeemed_at, redeemed_by, cancelled_at, cancel_reason)
      VALUES
        (@id, @code, @user_id, @activity_slug, @operator_id, @slot_id, @units, @equipment_units,
         @source, @payment_mode, @created_by, @agency_id, @attended, @no_show_at, @booking_date,
-        @booking_time, @adults, @children, @total_try, @status, @created_at, @terms_accepted_at,
+        @booking_time, @adults, @children, @total_try, @deposit_try, @status, @created_at, @terms_accepted_at,
         @confirmed_at, @expired_at, @redeemed_at, @redeemed_by, @cancelled_at, @cancel_reason)`,
     row
   );

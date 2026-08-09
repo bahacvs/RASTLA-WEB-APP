@@ -10,6 +10,7 @@ import { forecastsForOperator } from '@/lib/db/weather.mjs';
 import { listBranches, validBranchFilter } from '@/lib/db/branches';
 import { BranchFilter } from '@/components/BranchFilter';
 import { WeatherStrip } from '@/components/WeatherStrip';
+import { paymentSplit } from '@/lib/pricing.mjs';
 import { ManualBookingForm } from './ManualBookingForm';
 import { BookingRowActions } from './BookingRowActions';
 
@@ -61,12 +62,15 @@ export default async function TodayPage({
 
   const participants = live.reduce((sum, b) => sum + b.adults + b.children, 0);
 
-  // Beklenen tahsilat = tesiste ödenecekler. Online ödenenler zaten tahsil
-  // edildi; ikisini toplamak işletmeye bugün eline geçecek parayı yanlış
-  // gösterirdi.
-  const expected = live
-    .filter((b) => b.paymentMode !== 'online')
-    .reduce((sum, b) => sum + b.totalTRY, 0);
+  // Beklenen tahsilat = **tesiste** ödenecekler. Online ödenenler zaten
+  // tahsil edildi; ikisini toplamak işletmeye bugün eline geçecek parayı
+  // yanlış gösterirdi.
+  //
+  // Bölmeyi `paymentSplit` yapıyor, burada `mode !== 'online'` denilmiyor:
+  // kapora alınan bir rezervasyonda tesiste ödenecek olan TOPLAM DEĞİL,
+  // toplamdan kapora düşülmüş kısım. Koşul elle yazılsaydı kasada beklenen
+  // rakam gerçekte alınacaktan kaporanın tutarı kadar fazla görünürdü.
+  const expected = live.reduce((sum, b) => sum + paymentSplit(b).onsiteTRY, 0);
 
   const awaitingPayment = bookings.filter((b) => b.status === 'pending_payment').length;
 

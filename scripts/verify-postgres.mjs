@@ -660,6 +660,37 @@ check(
   'sessizce kabul edilseydi işletme listede gördüğü kuralın neden çalışmadığını bulamazdı'
 );
 
+// Kapora: tahsil edilen tutar toplamı geçemez.
+//
+// Geçebilseydi "tesiste −X TL ödenecek" diye bir kayıt üretilir ve hak ediş
+// ile iade o kayda dayanırdı. Kısıt Postgres tarafında da duruyor mu, asıl
+// üretim veritabanı orası olduğu için ayrıca sınanıyor.
+let depositOverflowRejected = false;
+try {
+  await db.run(
+    `INSERT INTO bookings
+       (id, code, user_id, activity_slug, operator_id, units,
+        booking_date, booking_time, adults, children, total_try, deposit_try,
+        status, created_at)
+     VALUES (?, ?, ?, ?, ?, 1, '2026-08-20', '10:00', 1, 0, 100, 500, 'confirmed', ?)`,
+    [
+      randomUUID(),
+      `KAPORA-TASKIN-${suffix}`.slice(0, 40),
+      userId,
+      `pg-test-${suffix}`,
+      operatorId,
+      now,
+    ]
+  );
+} catch (error) {
+  depositOverflowRejected = /check|constraint/i.test(String(error));
+}
+check(
+  'kapora toplamı AŞAMIYOR (Postgres CHECK)',
+  depositOverflowRejected,
+  'aşabilseydi tesiste eksi tutar ödenecek bir rezervasyon yazılabilirdi'
+);
+
 // --- Temizlik ---
 
 // Sıra önemli: yabancı anahtarlar yüzünden iade -> ödeme -> rezervasyon.
