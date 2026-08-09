@@ -35,12 +35,20 @@ export default async function EditActivityPage({ params }: { params: Promise<{ i
       <main className="mx-auto max-w-[48rem] px-container-margin py-lg">
         <div className="mb-lg flex items-center justify-between gap-4">
           <h1 className="text-headline-md text-on-background">{activity.title}</h1>
-          <Link
-            href={`/isletme/aktiviteler/${activity.id}/takvim`}
-            className="rounded-lg border border-primary px-4 py-2 text-label-bold text-primary"
-          >
-            Takvim
-          </Link>
+          <div className="flex shrink-0 gap-2">
+            <Link
+              href={`/isletme/aktiviteler/${activity.id}/fiyat`}
+              className="rounded-lg border border-outline-variant px-4 py-2 text-label-bold text-on-surface-variant"
+            >
+              Fiyatlandırma
+            </Link>
+            <Link
+              href={`/isletme/aktiviteler/${activity.id}/takvim`}
+              className="rounded-lg border border-primary px-4 py-2 text-label-bold text-primary"
+            >
+              Takvim
+            </Link>
+          </div>
         </div>
         <ActivityForm activity={activity} />
 

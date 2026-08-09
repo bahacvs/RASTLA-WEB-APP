@@ -4,6 +4,7 @@ import { BookingView } from './BookingView';
 import { getActivityBySlug } from '@/lib/db/activities';
 import { datesWithAvailability, listSlots } from '@/lib/db/slots';
 import { onlinePaymentFor } from '@/lib/payments/flow';
+import { loadPricing } from '@/lib/db/pricing';
 
 // Slotlar ve doluluk sürekli değiştiği için bu sayfa önceden üretilmez.
 export const dynamic = 'force-dynamic';
@@ -60,6 +61,11 @@ export default async function BookingPage({
   // alt notu değiştiriyor; kararın kendisi sunucu eyleminde yeniden veriliyor.
   const payment = await onlinePaymentFor(activity.operatorId);
 
+  // Fiyat kuralları istemciye taşınıyor ki müşteri saat seçtiğinde tutarı
+  // anında görsün. Taşınan şey bir GÖSTERİM; rezervasyon eylemi aynı kuralları
+  // veritabanından yeniden okuyup tutarı baştan hesaplıyor.
+  const pricing = await loadPricing(activity.id);
+
   return (
     <BookingView
       activity={activity}
@@ -68,6 +74,8 @@ export default async function BookingPage({
       initialSlots={initialSlots}
       payOnline={payment.available && activity.priceTRY > 0}
       linkCode={linkCode ?? null}
+      priceRules={pricing.rules}
+      groupDiscounts={pricing.discounts}
     />
   );
 }

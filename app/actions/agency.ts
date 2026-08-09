@@ -16,6 +16,8 @@ import { findOrCreateUser, normalizePhone } from '@/lib/db/users';
 import { notifyCancellation } from '@/lib/notify.mjs';
 import { record } from '@/lib/db/audit';
 import { requestContext } from '@/lib/request-context';
+import { loadPricing } from '@/lib/db/pricing';
+import { quote } from '@/lib/pricing.mjs';
 import {
   bucketKey,
   consume,
@@ -151,6 +153,18 @@ export async function createAgencyBookingAction(
 
   const user = await findOrCreateUser(name, phone);
 
+  // Acente de aynı tarifeyi görüyor: grup indirimi burada özellikle anlamlı,
+  // acente rezervasyonlarının çoğu kalabalık geliyor.
+  const pricing = await loadPricing(activity.id);
+  const priced = quote({
+    basePrice: activity.priceTRY,
+    rules: pricing.rules,
+    discounts: pricing.discounts,
+    date: slot.date,
+    time: slot.time,
+    people,
+  });
+
   let booking;
   try {
     booking = await createBooking({
@@ -168,7 +182,7 @@ export async function createAgencyBookingAction(
       bookingTime: slot.time,
       adults: people,
       children: 0,
-      totalTRY: people * activity.priceTRY,
+      totalTRY: priced.total,
       // Ödeme akışı yok: rezervasyon doğrudan geçerli bir bilete dönüşüyor.
       status: 'confirmed',
     });

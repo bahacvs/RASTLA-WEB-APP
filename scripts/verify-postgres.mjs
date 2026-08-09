@@ -616,11 +616,57 @@ try {
 }
 check('aynı e-postayla ikinci acente hesabı açılamıyor (Postgres UNIQUE)', agencyDuplicateRejected);
 
+// Fiyatlandırma: grup indiriminin ON CONFLICT'i ve kuralın CHECK'i.
+//
+// `upsertGroupDiscount` tek ifadede yazıp güncelliyor; bu davranış SQLite'ta
+// sınandı ama asıl üretim veritabanı Postgres ve iki motorun ON CONFLICT
+// yorumu aynı olmak zorunda — ayrılsaydı işletme aynı eşiği ikinci kez
+// girdiğinde üretimde hata görür, geliştirmede görmezdi.
+await db.run(
+  `INSERT INTO group_discounts (id, activity_id, min_people, percent, created_at)
+   VALUES (?, ?, 6, 10, ?)`,
+  [randomUUID(), activityId, now]
+);
+await db.run(
+  `INSERT INTO group_discounts (id, activity_id, min_people, percent, created_at)
+   VALUES (?, ?, 6, 25, ?)
+   ON CONFLICT (activity_id, min_people) DO UPDATE SET percent = excluded.percent`,
+  [randomUUID(), activityId, now]
+);
+
+const discountRows = await db.all(
+  'SELECT percent FROM group_discounts WHERE activity_id = ? AND min_people = 6',
+  [activityId]
+);
+check(
+  'grup indirimi ON CONFLICT ile GÜNCELLENİYOR, çoğalmıyor (Postgres)',
+  discountRows.length === 1 && Number(discountRows[0].percent) === 25,
+  `${discountRows.length} satır, %${discountRows[0]?.percent}`
+);
+
+let badRuleRejected = false;
+try {
+  await db.run(
+    `INSERT INTO price_rules (id, activity_id, label, priority, weekdays, price_try, created_at)
+     VALUES (?, ?, 'Hiçbir gün', 0, 0, 500, ?)`,
+    [randomUUID(), activityId, now]
+  );
+} catch (error) {
+  badRuleRejected = /check|constraint/i.test(String(error));
+}
+check(
+  'hiçbir güne uymayan fiyat kuralı reddediliyor (Postgres CHECK)',
+  badRuleRejected,
+  'sessizce kabul edilseydi işletme listede gördüğü kuralın neden çalışmadığını bulamazdı'
+);
+
 // --- Temizlik ---
 
 // Sıra önemli: yabancı anahtarlar yüzünden iade -> ödeme -> rezervasyon.
 // Sıra yabancı anahtarların TERSİ: payouts, payments'a bakıyor.
 await db.run('DELETE FROM weather_forecasts WHERE activity_id = ?', [activityId]);
+await db.run('DELETE FROM group_discounts WHERE activity_id = ?', [activityId]);
+await db.run('DELETE FROM price_rules WHERE activity_id = ?', [activityId]);
 await db.run('DELETE FROM agency_users WHERE agency_id = ?', [agencyId]);
 await db.run('DELETE FROM agencies WHERE id = ?', [agencyId]);
 await db.run('DELETE FROM operator_memberships WHERE operator_user_id = ?', [memberUserId]);

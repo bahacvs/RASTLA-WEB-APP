@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { Icon } from '@/components/Icon';
 import { formatPrice } from '@/lib/format';
 import { createBookingAction, slotsForDate, type BookingFormState } from '@/app/actions/booking';
+import { quote, type GroupDiscount, type PriceRule } from '@/lib/pricing.mjs';
 import type { Activity } from '@/lib/catalog';
 import type { Slot } from '@/lib/db/slots';
 
@@ -41,6 +42,8 @@ export function BookingView({
   initialSlots,
   payOnline,
   linkCode,
+  priceRules,
+  groupDiscounts,
 }: {
   activity: Activity;
   /** Boş yeri olan günler; takvimde yalnızca bunlar seçilebilir. */
@@ -58,6 +61,16 @@ export function BookingView({
    * yazdırabilirdi.
    */
   linkCode: string | null;
+  /**
+   * Sezon/gün/saat fiyat kuralları ve grup indirimleri.
+   *
+   * Ekranda gösterilen tutar bunlardan hesaplanıyor ama **bağlayıcı olan bu
+   * değil**: sunucu rezervasyonu yazarken aynı kuralları veritabanından
+   * yeniden okuyup tutarı baştan hesaplıyor. Burada olmalarının tek sebebi
+   * müşterinin ödeyeceği rakamı seçim yaparken görmesi.
+   */
+  priceRules: PriceRule[];
+  groupDiscounts: GroupDiscount[];
 }) {
   const router = useRouter();
   const available = useMemo(() => new Set(availableDates), [availableDates]);
@@ -98,12 +111,26 @@ export function BookingView({
 
   const cells = useMemo(() => buildMonthGrid(year, month), [year, month]);
 
-  const total = (adults + children) * activity.priceTRY;
   const party = adults + children;
   // Slottan düşecek birim; işletmenin aktivite için seçtiği kapasite moduna bağlı.
   const units = activity.capacityMode === 'per_person' ? party : 1;
 
   const selectedSlot = slots.find((s) => s.id === slotId);
+
+  // Fiyat SEÇİLEN SAATE bağlı: "hafta içi sabah 400, cumartesi öğleden sonra
+  // 600" ancak tarih ve saat belliyken hesaplanabilir. Henüz seçim yokken
+  // kural uygulanmıyor ve liste fiyatı gösteriliyor — uygulanmayacak bir
+  // indirimli rakam göstermek, seçim yapıldığında fiyatın "artmasına" yol
+  // açardı.
+  const priced = quote({
+    basePrice: activity.priceTRY,
+    rules: selectedDate && selectedSlot ? priceRules : [],
+    discounts: groupDiscounts,
+    date: selectedDate ?? '',
+    time: selectedSlot?.time ?? '',
+    people: party,
+  });
+  const total = priced.total;
   const ready = Boolean(selectedDate && selectedSlot && selectedSlot.remaining >= units);
 
   const [state, formAction, pending] = useActionState<BookingFormState, FormData>(
@@ -306,22 +333,40 @@ export function BookingView({
                 </span>
               </div>
 
+              {priced.ruleLabel && (
+                <div className="flex justify-between">
+                  <span className="text-primary">{priced.ruleLabel}</span>
+                  <span className="text-primary">
+                    {formatPrice(priced.unitPrice)} / kişi
+                  </span>
+                </div>
+              )}
+
               <div className="flex justify-between">
                 <span>
-                  {adults} Yetişkin x {formatPrice(activity.priceTRY)}
+                  {adults} Yetişkin x {formatPrice(priced.unitPrice)}
                 </span>
                 <span className="font-medium text-on-surface">
-                  {formatPrice(adults * activity.priceTRY)}
+                  {formatPrice(adults * priced.unitPrice)}
                 </span>
               </div>
 
               {children > 0 && (
                 <div className="flex justify-between">
                   <span>
-                    {children} Çocuk x {formatPrice(activity.priceTRY)}
+                    {children} Çocuk x {formatPrice(priced.unitPrice)}
                   </span>
                   <span className="font-medium text-on-surface">
-                    {formatPrice(children * activity.priceTRY)}
+                    {formatPrice(children * priced.unitPrice)}
+                  </span>
+                </div>
+              )}
+
+              {priced.discountTRY > 0 && (
+                <div className="flex justify-between">
+                  <span>Grup indirimi (%{priced.discountPercent})</span>
+                  <span className="font-medium text-primary">
+                    -{formatPrice(priced.discountTRY)}
                   </span>
                 </div>
               )}

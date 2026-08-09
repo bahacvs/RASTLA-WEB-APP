@@ -43,6 +43,7 @@ Arama ve rezervasyondan SMS doğrulamasına, online ödemeden bilet okutmaya kad
 | `/isletme/aktiviteler` | Aktivite ekleme, düzenleme, görsel yükleme, yayına alma |
 | `/isletme/odeme-ayarlari` | Alt üye işyeri başvurusu ve komisyon bilgisi (sahip) |
 | `/isletme/aktiviteler/[id]/takvim` | Takvim kuralı ve slot yönetimi |
+| `/isletme/aktiviteler/[id]/fiyat` | Sezon/gün/saat fiyat kuralları ve grup indirimi |
 | `/isletme/rezervasyonlar` | Güne göre rezervasyonlar ve doluluk |
 | `/isletme/ekip` | Ekip yönetimi — hesap ekleme, parola sıfırlama, askıya alma (sahip) |
 | `/isletme/finans` | Hak ediş — bekleyen/hak edilen bakiye, CSV mutabakat raporu (sahip) |
@@ -100,6 +101,29 @@ UPDATE slots SET booked = booked + :units
 ```
 
 Atomiktir; son yeri iki kişi aynı anda almaya çalıştığında yalnızca biri geçer. `scripts/verify-capacity.mjs` bunu 12 eşzamanlı süreçle sınar. Şemadaki `CHECK (booked <= capacity)` son savunma hattıdır.
+
+## Fiyatlandırma
+
+Tek bir liste fiyatı gerçek hayatta yetmiyor: temmuz cumartesi öğleden sonrası ile mayıs salı sabahı aynı fiyata satılmıyor. İşletme kural yazamayınca ya ortalama bir fiyat koyup yoğun saatte para bırakıyor ya da yüksek koyup boş saati boş bırakıyordu.
+
+İki ayrı kavram var, iki ayrı tablo:
+
+| Ne | Soru | Tablo |
+| --- | --- | --- |
+| Fiyat kuralı | **Ne zaman?** — sezon, haftanın günü, saat aralığı | `price_rules` |
+| Grup indirimi | **Kaç kişi?** — eşiği geçen gruba yüzde | `group_discounts` |
+
+Kurallar **öncelik sırasına** göre taranır ve **ilk eşleşen kazanır**; hiçbiri uymuyorsa `activities.price_try` geçerlidir. "En özgül kural kazansın" gibi örtük bir seçim daha akıllı görünürdü ama işletme hangi fiyatın neden çıktığını göremezdi — bu yüzden ekrandaki liste değerlendirme sırasının aynısıdır ve uygulanan kuralın adı müşteriye de gösterilir.
+
+Grup indiriminde kişi sayısının **geçtiği en yüksek eşik** uygulanır, yalnızca biri: üst üste binen indirimler işletmenin kafadan hesaplayamayacağı bir toplam üretirdi. İndirim tutarı yukarı yuvarlanır — yuvarlama farkı müşterinin lehine kalsın.
+
+### Hesap tek yerde
+
+`lib/pricing.mjs` saftır: veritabanı yok, `process` yok, ağ yok. Rezervasyon ekranındaki istemci bileşeni de sunucu eylemleri de aynı `quote()` fonksiyonunu çağırır, dolayısıyla **ekranda yazan tutar ile tahsil edilen tutar aynı koddan gelir.** Bu dosya açılmadan önce hesap beş yerde kopyaydı (rezervasyon ekranı, müşteri rezervasyonu, manuel kayıt, acente rezervasyonu, tanıtım betiği) ve fiyat kuralları eklenirken beşini birden güncellemek gerekecekti; biri unutulsaydı gösterilen tutar ile alınan tutar ayrışırdı.
+
+Buna rağmen **sunucu her zaman yeniden hesaplar.** İstemciden gelen tutara güvenilmez: form alanı olarak taşınsaydı onu değiştiren biri 2.400 TL'lik turu 1 TL'ye alırdı. `scripts/verify-pricing.mjs` bunu forma `total` alanı enjekte ederek sınar.
+
+Para **tam sayı** tutulur (`price_try INTEGER`); kayan noktayla hesaplanan bir kuruş, mutabakatta açıklanamayan bir fark demektir.
 
 ## İptal ve kapasite iadesi
 
@@ -363,6 +387,7 @@ node scripts/verify-branches.mjs      # şube süzgeci ve çoklu işletme erişi
 node scripts/verify-agency.mjs        # acente: aynı kapasite, hak ediş YOK, alanlar ayrı
 SERVER_LOG=… node scripts/verify-links.mjs  # paylaşım linki: kanal formdan belirlenemiyor
 node scripts/verify-signup.mjs        # self-servis kayıt: başvuru DOĞRULAMA değil
+SERVER_LOG=… node scripts/verify-pricing.mjs # sezon/saat tarifesi, grup indirimi, tutar sunucuda
 
 # Otomatik uyarılar (sunucu CRON_SECRET ve ALERT_EMAIL_TO ile başlatılmış olmalı):
 SERVER_LOG=server.log node scripts/verify-alerts.mjs  # eşik, tekilleştirme, yarış, e-posta içeriği
@@ -393,7 +418,7 @@ Bilinen bir tuzak: `--spacing-md` gibi adlandırılmış boşluk tokenları Tail
 
 **Partner tarafı bir ilan paneli değil, operasyon sistemi.** Panel açıldığında ilk gelen soru "bugün ne var?" ve cevabı `/isletme/bugun`. Telefondan gelen rezervasyon aynı kapasiteyi tüketiyor, ekipman havuzu kişi sayısından bağımsız sınır koyuyor, katılım ve gelmeyen ayrı ayrı işaretleniyor. İkinci soru "ne kadar kazandım" ve cevabı `/isletme/finans`: ödeme alındığında işletmenin payı bloke ediliyor, hizmet verildiğinde serbest bırakılıyor — müşterinin ödemesi tek başına işletmenin kazancı değil.
 
-Bunların hepsi **gerçek bir veritabanına** yazıyor (SQLite ya da Postgres, tek bir bağlantı dizesiyle seçilir) ve doğruluk iddiaları 29 süitle, ayrı işletim sistemi süreçleriyle, iki motorda birden sınanıyor.
+Bunların hepsi **gerçek bir veritabanına** yazıyor (SQLite ya da Postgres, tek bir bağlantı dizesiyle seçilir) ve doğruluk iddiaları 30 süitle, ayrı işletim sistemi süreçleriyle, iki motorda birden sınanıyor.
 
 ### Bilinen sınır: iyzico onay akışı
 
@@ -433,7 +458,7 @@ lib/alerts/           tespit kuralları ve uyarı üretimi
 lib/jobs/             zamanlanmış işler — HTTP ucu ve komut satırı aynı kodu çağırır
 lib/sms/, lib/mail/   giden mesaj sağlayıcıları (console varsayılan)
 public/               görseller ve marka varlıkları
-scripts/              varlık üretimi ve 16 doğrulama süiti
+scripts/              varlık üretimi ve 30 doğrulama süiti
 reference/prototypes/ özgün statik Stitch ekranları (build'e dahil değil)
 legal/                KVKK ve mesafeli satış metinleri — TASLAK, hukukçu onayı bekliyor
 ```

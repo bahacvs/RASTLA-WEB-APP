@@ -24,6 +24,7 @@ import { randomUUID, randomBytes } from 'node:crypto';
 import { db as connect } from '../lib/db/index.mjs';
 import { neonHttpClient } from './lib/neon-http.mjs';
 import { DEFAULT_COMMISSION_BP } from '../lib/commission.mjs';
+import { quote } from '../lib/pricing.mjs';
 
 const OPERATOR = process.env.DEMO_OPERATOR ?? 'demo-marti-koyu';
 
@@ -60,7 +61,8 @@ const GUESTS = [
 ];
 
 const slots = await db.all(
-  `SELECT s.id, s.slot_time, s.capacity, s.booked, a.slug, a.price_try, a.capacity_mode
+  `SELECT s.id, s.activity_id, s.slot_time, s.capacity, s.booked, a.slug, a.price_try,
+          a.capacity_mode
      FROM slots s JOIN activities a ON a.id = s.activity_id
     WHERE a.operator_id = ? AND s.slot_date = ? AND s.status = 'open'
     ORDER BY s.slot_time`,
@@ -73,6 +75,46 @@ if (slots.length === 0) {
 }
 
 console.log(`${OPERATOR} · ${today} · ${slots.length} açık slot\n`);
+
+/**
+ * Fiyat kuralları ve grup indirimleri — tanıtım günü de gerçek tarifeyi
+ * kullanıyor.
+ *
+ * `kişi × liste fiyatı` yazılsaydı, sezon tarifesi tanımlı bir işletmede
+ * tanıtım ekranındaki ciro paneldeki gerçek hesapla uyuşmazdı; müşteriye
+ * gösterilen ilk sayının yanlış olduğu yer burası olurdu.
+ */
+const rulesByActivity = new Map();
+const discountsByActivity = new Map();
+for (const row of await db.all(
+  `SELECT r.* FROM price_rules r JOIN activities a ON a.id = r.activity_id
+    WHERE a.operator_id = ?`,
+  [OPERATOR]
+)) {
+  const list = rulesByActivity.get(row.activity_id) ?? [];
+  list.push({
+    id: row.id,
+    label: row.label,
+    priority: Number(row.priority),
+    validFrom: row.valid_from,
+    validUntil: row.valid_until,
+    weekdays: Number(row.weekdays),
+    startTime: row.start_time,
+    endTime: row.end_time,
+    priceTRY: Number(row.price_try),
+    createdAt: row.created_at,
+  });
+  rulesByActivity.set(row.activity_id, list);
+}
+for (const row of await db.all(
+  `SELECT d.* FROM group_discounts d JOIN activities a ON a.id = d.activity_id
+    WHERE a.operator_id = ?`,
+  [OPERATOR]
+)) {
+  const list = discountsByActivity.get(row.activity_id) ?? [];
+  list.push({ minPeople: Number(row.min_people), percent: Number(row.percent) });
+  discountsByActivity.set(row.activity_id, list);
+}
 
 let created = 0;
 for (let i = 0; i < GUESTS.length; i++) {
@@ -106,7 +148,14 @@ for (let i = 0; i < GUESTS.length; i++) {
 
   const bookingId = randomUUID();
   const code = generateCode();
-  const total = slot.price_try * guest.people;
+  const total = quote({
+    basePrice: Number(slot.price_try),
+    rules: rulesByActivity.get(slot.activity_id) ?? [],
+    discounts: discountsByActivity.get(slot.activity_id) ?? [],
+    date: today,
+    time: slot.slot_time,
+    people: guest.people,
+  }).total;
   const online = guest.payment === 'online';
 
   await db.run(

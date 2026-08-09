@@ -5,6 +5,8 @@ import { revalidatePath } from 'next/cache';
 import { cancelBooking, createBooking, getBookingByCode } from '@/lib/db/bookings';
 import { notifyCancellation } from '@/lib/notify.mjs';
 import { countLinkBooking, resolveLink } from '@/lib/db/booking-links';
+import { loadPricing } from '@/lib/db/pricing';
+import { quote } from '@/lib/pricing.mjs';
 import { findOrCreateUser, getUser, normalizePhone } from '@/lib/db/users';
 import {
   gateBooking,
@@ -184,7 +186,21 @@ export async function createBookingAction(
   // Online ödeme yalnızca sağlayıcı yapılandırılmışsa VE işletmenin alt üye
   // işyeri anahtarı varsa devreye girer. Ücretsiz aktivitede de tahsilat
   // yapılmaz — sıfır tutarlı bir ödeme oturumu açmanın anlamı yok.
-  const totalTRY = (adults + children) * activity.priceTRY;
+  //
+  // Tutar SUNUCUDA yeniden hesaplanıyor. Rezervasyon ekranı da aynı
+  // fonksiyonu çağırıyor ama oradan gelen rakama bakılmıyor: form alanı
+  // olarak taşınsaydı onu değiştiren biri 2400 TL'lik turu 1 TL'ye alırdı.
+  const pricing = await loadPricing(activity.id);
+  const priced = quote({
+    basePrice: activity.priceTRY,
+    rules: pricing.rules,
+    discounts: pricing.discounts,
+    date: slot.date,
+    time: slot.time,
+    people: adults + children,
+  });
+
+  const totalTRY = priced.total;
   const online = totalTRY > 0 ? await onlinePaymentFor(activity.operatorId) : null;
   const payOnline = online?.available === true;
 

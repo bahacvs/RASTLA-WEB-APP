@@ -126,7 +126,17 @@ async function upload(page, activityId, { name, mimeType, buffer, alt = '', forc
 
   await input.setInputFiles({ name, mimeType, buffer });
   if (alt) await page.locator('input[name="alt"]').first().fill(alt);
-  await page.locator('form button[type="submit"]').last().click();
+
+  // Gönder düğmesi, DOSYA ALANINI İÇEREN formdan seçiliyor.
+  //
+  // Önceki hâli sayfadaki son gönder düğmesini tıklıyordu ve bu, ekranda
+  // yükleme bölümünden sonra hiçbir form olmadığı sürece doğru çalışıyordu.
+  // Paylaşım linkleri bölümü eklenince "son form" o oldu: test artık link
+  // formunu gönderiyor, hiçbir görsel yüklenmiyor, buna rağmen "reddedilen
+  // dosya için kayıt oluşmuyor" gibi kontroller GEÇİYORDU — yani süit doğru
+  // sonucu yanlış sebeple veriyordu. Konum bağımlı seçici, yeni bir bölüm
+  // eklendiğinde sessizce yanlış şeyi test etmeye başlar.
+  await input.locator('xpath=ancestor::form[1]').locator('button[type="submit"]').last().click();
   await page.waitForTimeout(3000);
 
   // Next.js'in KENDİ yönlendirme duyurucusu da `role="alert"` taşıyor

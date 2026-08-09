@@ -8,6 +8,8 @@ import { gateBooking, getSlot, listSlots, reserveCapacity, type Slot } from '@/l
 import { findOrCreateUser, normalizePhone } from '@/lib/db/users';
 import { record } from '@/lib/db/audit';
 import { requestContext } from '@/lib/request-context';
+import { loadPricing } from '@/lib/db/pricing';
+import { quote } from '@/lib/pricing.mjs';
 
 /**
  * Telefondan, WhatsApp'tan ya da resepsiyondan gelen müşteriyi elle eklemek.
@@ -82,6 +84,20 @@ export async function createManualBookingAction(
 
   const user = await findOrCreateUser(name, phone);
 
+  // Telefondan gelen müşteriye de İNTERNETTEKİ fiyat söyleniyor: sezon
+  // tarifesi ve grup indirimi burada da uygulanıyor. Elle hesaplanan bir
+  // rakam yazılsaydı aynı saat için iki farklı fiyat çıkardı ve farkı ilk
+  // gören müşteri olurdu.
+  const pricing = await loadPricing(activity.id);
+  const priced = quote({
+    basePrice: activity.priceTRY,
+    rules: pricing.rules,
+    discounts: pricing.discounts,
+    date: slot.date,
+    time: slot.time,
+    people,
+  });
+
   const booking = await createBooking({
     userId: user.id,
     activitySlug: activity.slug,
@@ -97,7 +113,7 @@ export async function createManualBookingAction(
     bookingTime: slot.time,
     adults: people,
     children: 0,
-    totalTRY: paid ? people * activity.priceTRY : 0,
+    totalTRY: paid ? priced.total : 0,
     // Ödeme akışı yok: rezervasyon doğrudan geçerli bir bilete dönüşür.
     status: 'confirmed',
   });

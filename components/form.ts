@@ -34,3 +34,20 @@ export const PRIMARY_BUTTON =
 
 export const GHOST_BUTTON =
   'rounded-lg border border-outline-variant px-5 py-3 text-label-bold text-on-surface-variant transition-transform active:scale-95';
+
+/**
+ * Haftanın günleri — **bit 0 = Pazartesi.**
+ *
+ * Bu dizi üç ekranda birebir kopyaydı (takvim sayfası, takvim formu,
+ * sihirbaz) ve dördüncüsü fiyat kurallarıyla geliyordu. Sıra maskeyle
+ * eşleşmek zorunda: kopyalardan birinde Pazar başa alınsaydı işletme
+ * cumartesi tarifesini cumaya yazmış olurdu ve hatayı ancak cumartesi günü
+ * fark ederdi.
+ */
+export const WEEKDAYS = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz'];
+
+/** 7 bitlik maskeyi okunur güne çevirir. 127 = her gün. */
+export function weekdayMaskLabel(mask: number): string {
+  if (mask === 127) return 'Her gün';
+  return WEEKDAYS.filter((_, i) => (mask & (1 << i)) !== 0).join(', ');
+}

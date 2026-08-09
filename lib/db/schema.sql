@@ -389,6 +389,74 @@ CREATE TABLE IF NOT EXISTS booking_links (
 
 CREATE INDEX IF NOT EXISTS idx_booking_links_activity ON booking_links(activity_id);
 
+-- Fiyat kuralları: sezon, gün ve saat.
+--
+-- Tek fiyat su sporlarında gerçeği yansıtmıyor: temmuz ile eylül aynı değil,
+-- hafta içi sabahla cumartesi öğleden sonra hiç değil. Kuralsız bir sistemde
+-- işletme ya yüksek fiyattan boş kalıyor ya düşük fiyattan dolu günde para
+-- bırakıyor.
+--
+-- SIRA AÇIK: `priority` büyük olan önce bakılır, eşitlikte önce oluşturulan.
+-- "En özgül kural kazanır" gibi örtük bir kural daha akıllı görünürdü ama
+-- işletme hangi fiyatın neden çıktığını göremezdi; güvenlik duvarı kuralları
+-- gibi sıralı ve okunabilir olması bilinçli.
+--
+-- Hiçbir kural eşleşmezse `activities.price_try` geçerli — yani kural
+-- eklemeyen işletme için hiçbir şey değişmiyor.
+CREATE TABLE IF NOT EXISTS price_rules (
+  id           TEXT PRIMARY KEY,
+  activity_id  TEXT NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
+
+  label        TEXT NOT NULL,
+  priority     INTEGER NOT NULL DEFAULT 0,
+
+  -- Tarih aralığı; NULL = sınırsız. Sezon böyle tanımlanıyor.
+  valid_from   TEXT,
+  valid_until  TEXT,
+
+  -- Haftanın günleri, 7 bitlik maske. Bit 0 = Pazartesi (schedule_rules ile
+  -- AYNI düzen; iki farklı düzen olsaydı biri diğerine bakarak yazan kişi
+  -- yanılırdı). 127 = her gün.
+  weekdays     INTEGER NOT NULL DEFAULT 127 CHECK (weekdays BETWEEN 1 AND 127),
+
+  -- Saat aralığı; NULL = tüm gün. start dahil, end hariç (schedule_rules ile
+  -- aynı yorum).
+  start_time   TEXT,
+  end_time     TEXT,
+
+  -- Kişi başı fiyat, TL. Tam sayı: kuruş yuvarlaması olmasın.
+  price_try    INTEGER NOT NULL CHECK (price_try >= 0),
+
+  created_at   TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_price_rules_activity ON price_rules(activity_id);
+
+-- Grup indirimi: kişi sayısına göre yüzde.
+--
+-- Ayrı tablo çünkü ayrı bir soru: fiyat kuralı "ne zaman" der, indirim "kaç
+-- kişi" der. Tek tabloda birleştirilseydi her sezon kuralının her grup
+-- büyüklüğü için tekrar yazılması gerekirdi.
+--
+-- Uygulanan indirim, kişi sayısının GEÇTİĞİ en yüksek eşik. İki eşik birden
+-- uygulanmıyor; üst üste binen indirimler işletmenin hesaplayamayacağı bir
+-- toplam üretirdi.
+CREATE TABLE IF NOT EXISTS group_discounts (
+  id           TEXT PRIMARY KEY,
+  activity_id  TEXT NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
+
+  min_people   INTEGER NOT NULL CHECK (min_people >= 2),
+  percent      INTEGER NOT NULL CHECK (percent > 0 AND percent <= 50),
+
+  created_at   TEXT NOT NULL,
+
+  -- Aynı eşik için iki indirim olamaz: hangisinin geçerli olduğu belirsiz
+  -- kalırdı.
+  UNIQUE (activity_id, min_people)
+);
+
+CREATE INDEX IF NOT EXISTS idx_group_discounts_activity ON group_discounts(activity_id);
+
 
 -- Tekrarlayan müsaitlik tanımı: "08:00'dan 18:00'e, 15 dakikada bir, 4 kişi".
 -- Slotların tek gerçek kaynağıdır; slotlar buradan üretilir.

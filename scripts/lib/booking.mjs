@@ -110,6 +110,15 @@ export async function book(page, options) {
     /** Rezervasyon sayfasına eklenecek sorgu dizesi (paylaşım linki kodu gibi). */
     query = '',
     /**
+     * Yetişkin sayısı. Varsayılan ekranın kendi varsayılanı (2).
+     *
+     * Sayaç düğmeye basılarak artırılıyor, alana yazılarak değil: grup
+     * indirimi testinin gerçek kullanıcının yolunu izlemesi gerekiyor —
+     * duruma doğrudan değer yazmak, ekrandaki sınırların (kalan yer) hiç
+     * çalışmadığı bir yol açardı.
+     */
+    people = null,
+    /**
      * Her GÖNDERİMDEN ÖNCE çağrılır — formu kurcalamak için.
      *
      * Her seferinde çağrılıyor çünkü doğrulama kodu ekranı formu yeniden
@@ -163,6 +172,16 @@ export async function book(page, options) {
   if ((await first.count()) === 0) return { error: 'boş slot yok' };
 
   const label = slotLabel ? await first.innerText() : undefined;
+
+  // Kişi sayısı slot seçiminden ÖNCE ayarlanıyor: seçilebilir slotlar kalan
+  // yere göre süzülüyor ve 5 kişilik bir grup için 3 yeri kalan saat zaten
+  // seçilmemeli. Sonra ayarlansaydı seçim geçersizleşir, gönder düğmesi
+  // sessizce kapanırdı.
+  if (people !== null) {
+    const plus = page.getByRole('button', { name: 'Yetişkin sayısını artır' });
+    for (let i = 2; i < people; i++) await plus.click();
+  }
+
   if (!(await pickAvailableSlot(page))) return { error: 'slot seçilemedi', slotLabel: label };
 
   await page.getByLabel('Ad Soyad').fill(name);
