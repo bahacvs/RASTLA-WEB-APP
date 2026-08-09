@@ -48,6 +48,8 @@ export type Booking = {
   paymentMode: PaymentMode;
   /** Manuel kaydı açan işletme personeli; RASTLA rezervasyonlarında null. */
   createdBy: string | null;
+  /** Rezervasyonu açan acente; acente değilse null. */
+  agencyId: string | null;
   /** Check-in'de kaç kişi geldi; okutulmadıysa null. */
   attended: number | null;
   noShowAt: string | null;
@@ -85,6 +87,7 @@ type Row = {
   source: BookingSource;
   payment_mode: PaymentMode;
   created_by: string | null;
+  agency_id: string | null;
   attended: number | null;
   no_show_at: string | null;
   booking_date: string;
@@ -117,6 +120,7 @@ function toBooking(row: Row): Booking {
     source: row.source ?? 'rastla',
     paymentMode: row.payment_mode ?? 'online',
     createdBy: row.created_by ?? null,
+    agencyId: row.agency_id ?? null,
     attended: row.attended ?? null,
     noShowAt: row.no_show_at ?? null,
     bookingDate: row.booking_date,
@@ -167,6 +171,8 @@ export async function createBooking(input: {
   paymentMode?: PaymentMode;
   /** Manuel kaydı açan işletme personeli; RASTLA rezervasyonlarında null. */
   createdBy?: string | null;
+  /** Rezervasyonu açan acente; acente değilse null. */
+  agencyId?: string | null;
   bookingDate: string;
   bookingTime: string;
   adults: number;
@@ -205,6 +211,7 @@ export async function createBooking(input: {
     source: input.source ?? 'rastla',
     payment_mode: input.paymentMode ?? 'online',
     created_by: input.createdBy ?? null,
+    agency_id: input.agencyId ?? null,
     attended: null,
     no_show_at: null,
     booking_date: input.bookingDate,
@@ -230,12 +237,12 @@ export async function createBooking(input: {
   ).run(
     `INSERT INTO bookings
        (id, code, user_id, activity_slug, operator_id, slot_id, units, equipment_units,
-        source, payment_mode, created_by, attended, no_show_at, booking_date,
+        source, payment_mode, created_by, agency_id, attended, no_show_at, booking_date,
         booking_time, adults, children, total_try, status, created_at, terms_accepted_at,
         confirmed_at, expired_at, redeemed_at, redeemed_by, cancelled_at, cancel_reason)
      VALUES
        (@id, @code, @user_id, @activity_slug, @operator_id, @slot_id, @units, @equipment_units,
-        @source, @payment_mode, @created_by, @attended, @no_show_at, @booking_date,
+        @source, @payment_mode, @created_by, @agency_id, @attended, @no_show_at, @booking_date,
         @booking_time, @adults, @children, @total_try, @status, @created_at, @terms_accepted_at,
         @confirmed_at, @expired_at, @redeemed_at, @redeemed_by, @cancelled_at, @cancel_reason)`,
     row
@@ -448,6 +455,25 @@ export async function cancelDay(
   return { cancelled, skipped };
 }
 
+
+/**
+ * Bir acentenin açtığı rezervasyonlar.
+ *
+ * Acente **yalnızca kendi** kayıtlarını görüyor: süzgeç `agency_id` üzerinde
+ * ve kimlik oturumdan geliyor, adresten değil. Başka bir acentenin kimliğini
+ * göndermek diye bir yol yok.
+ */
+export async function listBookingsForAgency(agencyId: string): Promise<Booking[]> {
+  const rows = await (
+    await db()
+  ).all<Row>(
+    `SELECT * FROM bookings
+      WHERE agency_id = ?
+      ORDER BY booking_date DESC, booking_time DESC`,
+    [agencyId]
+  );
+  return rows.map(toBooking);
+}
 
 export type RescheduleResult =
   | { ok: true; booking: Booking; from: { date: string; time: string } }

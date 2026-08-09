@@ -18,6 +18,7 @@ import {
 const LINKS: { href: string; label: string; needs: PlatformCapability }[] = [
   { href: '/yonetim/isletmeler', label: 'İşletmeler', needs: 'isletme.goruntule' },
   { href: '/yonetim/ilanlar', label: 'İlan İncelemesi', needs: 'ilan.incele' },
+  { href: '/yonetim/acenteler', label: 'Acenteler', needs: 'acente.yonet' },
 ];
 
 export function PlatformNav({ user }: { user: PlatformUser }) {

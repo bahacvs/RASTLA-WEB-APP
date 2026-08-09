@@ -11,6 +11,7 @@ import { formatPrice } from '@/lib/format';
 import { listSlots } from '@/lib/db/slots';
 import { forecastsForOperator } from '@/lib/db/weather.mjs';
 import { listBranches, validBranchFilter } from '@/lib/db/branches';
+import { getAgency } from '@/lib/db/agencies';
 import { BranchFilter } from '@/components/BranchFilter';
 import { WeatherStrip } from '@/components/WeatherStrip';
 import { CancelBookingButton, CancelDayButton } from './CancelControls';
@@ -118,6 +119,16 @@ export default async function OperatorBookingsPage({
     slotOptions.set(slug, options);
   }
 
+  // "Hangi acente gönderdi" sorusu işletmenin en sık sorduğu şeylerden biri;
+  // `source='agency'` etiketi yalnızca "acenteden" der, hangisinden demez.
+  const agencies = new Map(
+    await Promise.all(
+      [...new Set(bookings.map((b) => b.agencyId).filter((id): id is string => id !== null))].map(
+        async (id) => [id, await getAgency(id)] as const
+      )
+    )
+  );
+
   const forecasts = await forecastsForOperator(operatorId, day);
   const warnings = [...activities.values()]
     .filter((a) => a !== null)
@@ -212,6 +223,11 @@ export default async function OperatorBookingsPage({
                       <p className="text-body-md text-on-surface-variant">
                         {guest.name} · {guest.phone}
                       </p>
+                      {booking.agencyId && (
+                        <p className="text-label-sm text-on-surface-variant">
+                          Acente: {agencies.get(booking.agencyId)?.name ?? 'bilinmiyor'}
+                        </p>
+                      )}
                     </div>
                     <span
                       className={`shrink-0 rounded-full px-2 py-1 text-label-bold ${status.className}`}

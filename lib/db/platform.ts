@@ -64,6 +64,14 @@ export type PlatformCapability =
   | 'isletme.goruntule'
   | 'isletme.dogrula'
   | 'ilan.incele'
+  /**
+   * Acente açmak ve askıya almak.
+   *
+   * `admin`'e ait: acente kabul etmek ticari bir karar (kimin misafir
+   * yönlendirebileceği) ve geri dönüşü, her gün yapılan ilan incelemesinden
+   * daha pahalı.
+   */
+  | 'acente.yonet'
   | 'komisyon.belirle'
   | 'hakedis.durdur'
   | 'platform.ekip';
@@ -71,6 +79,7 @@ export type PlatformCapability =
 const REVIEWER: PlatformCapability[] = ['isletme.goruntule', 'isletme.dogrula', 'ilan.incele'];
 const ADMIN: PlatformCapability[] = [
   ...REVIEWER,
+  'acente.yonet',
   'komisyon.belirle',
   'hakedis.durdur',
   'platform.ekip',

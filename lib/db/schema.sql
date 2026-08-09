@@ -20,6 +20,51 @@ CREATE TABLE IF NOT EXISTS users (
   deleted_at  TEXT
 );
 
+-- Otel, tur şirketi, konsiyerj — RASTLA'ya misafir yönlendiren aracılar.
+--
+-- Otellerin çoğunda teknik ekip yok; makine API'si bu turun kapsamı dışında.
+-- Onun yerine bir portal: resepsiyon görevlisi giriyor, müsaitliği görüyor,
+-- misafir adına yer tutuyor.
+--
+-- **Acente rezervasyonu KOMİSYON DOĞURMUYOR** (bu turun ticari kararı) ama
+-- kapasiteyi normal bir rezervasyon gibi tüketiyor. Sebep komisyon değil,
+-- MÜSAİTLİĞİN DOĞRU OLMASI: otelden alınan yer sisteme girmezse RASTLA
+-- müşterisine boş görünen saat aslında doludur ve iki grup aynı anda
+-- iskeleye gelir. `source='agency'` bugünden kaydediliyor, böylece ticari
+-- model netleştiğinde geçmiş veri kaybolmuş olmuyor.
+CREATE TABLE IF NOT EXISTS agencies (
+  id            TEXT PRIMARY KEY,
+  name          TEXT NOT NULL,
+  contact_email TEXT,
+  phone         TEXT,
+
+  status        TEXT NOT NULL DEFAULT 'active'
+                CHECK (status IN ('active', 'suspended')),
+
+  created_at    TEXT NOT NULL
+);
+
+-- Acente personelinin hesabı. `platform_users` deseninin birebir eşi.
+--
+-- Aynı e-posta hem işletme, hem platform, hem acente hesabı olabilir; üçü ayrı
+-- oturum çerezi taşır ve hiçbiri diğerinin yetkisini vermez.
+CREATE TABLE IF NOT EXISTS agency_users (
+  id             TEXT PRIMARY KEY,
+  agency_id      TEXT NOT NULL REFERENCES agencies(id) ON DELETE CASCADE,
+
+  email          TEXT NOT NULL UNIQUE,   -- küçük harfe indirgenmiş
+  name           TEXT NOT NULL,
+  password_hash  TEXT NOT NULL,
+
+  status         TEXT NOT NULL DEFAULT 'active'
+                 CHECK (status IN ('active', 'suspended')),
+
+  created_at     TEXT NOT NULL,
+  last_login_at  TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_agency_users_agency ON agency_users(agency_id, status);
+
 -- Hizmeti veren işletme. Önceden lib/operators.ts içinde sabit bir diziydi.
 CREATE TABLE IF NOT EXISTS operators (
   id          TEXT PRIMARY KEY,
@@ -442,6 +487,14 @@ CREATE TABLE IF NOT EXISTS bookings (
   -- Manuel kaydı açan işletme personeli. RASTLA'dan gelen rezervasyonlarda
   -- NULL. "Kim ekledi" sorusu uyuşmazlıkta soruluyor.
   created_by     TEXT,
+
+  -- Rezervasyonu açan acente. NULL = acente yok.
+  --
+  -- `source='agency'` etiketiyle birlikte çalışıyor ama onun yerine geçmiyor:
+  -- etiket "nereden geldi" der, bu sütun "hangi acenteden" der. Acente kendi
+  -- rezervasyonlarını bu alanla listeliyor ve işletme "hangi otel gönderdi"
+  -- sorusunu buradan görüyor.
+  agency_id      TEXT,
 
   booking_date   TEXT NOT NULL,   -- YYYY-MM-DD
   booking_time   TEXT NOT NULL,   -- HH:MM

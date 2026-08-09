@@ -105,6 +105,14 @@ export const AUDIT_ACTIONS = [
   // yaptı" sorusu bu satırlarda cevaplanıyor.
   'platform.login',
   'platform.login_failed',
+
+  // Acente portalı. Acente rezervasyonu `booking.created` altında kaydediliyor
+  // ve meta'da `source: 'agency'` taşıyor; ayrı bir eylem açmak aynı olayı iki
+  // isimle aramaya yol açardı.
+  'agency.login',
+  'agency.created',
+  'agency.suspended',
+  'agency.resumed',
   'operator.verification_changed',
   'operator.commission_changed',
   'operator.payouts_suspended',

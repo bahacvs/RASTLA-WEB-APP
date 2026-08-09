@@ -128,6 +128,29 @@ export async function clearPlatformSession() {
 }
 
 /**
+ * Acente portalının oturumu — üçüncü ve son ayrı çerez.
+ *
+ * İşletme ve platform çerezleriyle aynı gerekçe: acente oturumunun `/isletme`
+ * ve `/yonetim` için hiçbir şey ifade etmemesi bir kontrol meselesi değil,
+ * yapısal olmalı. Tek çerezde taşınsalardı fark yalnızca bir veritabanı
+ * sorgusuna kalırdı ve o sorgunun bir yerde atlanması, otel resepsiyonundaki
+ * birinin işletme paneline girmesi demek olurdu.
+ */
+const AGENCY_COOKIE = 'rastla_agency';
+
+export async function setAgencySession(agencyUserId: string) {
+  (await cookies()).set(AGENCY_COOKIE, pack(agencyUserId), COOKIE_OPTIONS);
+}
+
+export async function getAgencyUserId(): Promise<string | null> {
+  return unpack((await cookies()).get(AGENCY_COOKIE)?.value);
+}
+
+export async function clearAgencySession() {
+  (await cookies()).delete(AGENCY_COOKIE);
+}
+
+/**
  * Yarım kalmış işletme girişi — parola doğru, ikinci faktör bekleniyor.
  *
  * Ayrı ve **kısa ömürlü** bir çerezde taşınır. Asıl oturum çerezine
