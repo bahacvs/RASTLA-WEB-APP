@@ -362,6 +362,7 @@ node scripts/verify-weather.mjs       # hava hükmü, veri yokluğu, taşıma ya
 node scripts/verify-branches.mjs      # şube süzgeci ve çoklu işletme erişimi (çerez elle yazılarak)
 node scripts/verify-agency.mjs        # acente: aynı kapasite, hak ediş YOK, alanlar ayrı
 SERVER_LOG=… node scripts/verify-links.mjs  # paylaşım linki: kanal formdan belirlenemiyor
+node scripts/verify-signup.mjs        # self-servis kayıt: başvuru DOĞRULAMA değil
 
 # Otomatik uyarılar (sunucu CRON_SECRET ve ALERT_EMAIL_TO ile başlatılmış olmalı):
 SERVER_LOG=server.log node scripts/verify-alerts.mjs  # eşik, tekilleştirme, yarış, e-posta içeriği
@@ -392,7 +393,7 @@ Bilinen bir tuzak: `--spacing-md` gibi adlandırılmış boşluk tokenları Tail
 
 **Partner tarafı bir ilan paneli değil, operasyon sistemi.** Panel açıldığında ilk gelen soru "bugün ne var?" ve cevabı `/isletme/bugun`. Telefondan gelen rezervasyon aynı kapasiteyi tüketiyor, ekipman havuzu kişi sayısından bağımsız sınır koyuyor, katılım ve gelmeyen ayrı ayrı işaretleniyor. İkinci soru "ne kadar kazandım" ve cevabı `/isletme/finans`: ödeme alındığında işletmenin payı bloke ediliyor, hizmet verildiğinde serbest bırakılıyor — müşterinin ödemesi tek başına işletmenin kazancı değil.
 
-Bunların hepsi **gerçek bir veritabanına** yazıyor (SQLite ya da Postgres, tek bir bağlantı dizesiyle seçilir) ve doğruluk iddiaları 28 süitle, ayrı işletim sistemi süreçleriyle, iki motorda birden sınanıyor.
+Bunların hepsi **gerçek bir veritabanına** yazıyor (SQLite ya da Postgres, tek bir bağlantı dizesiyle seçilir) ve doğruluk iddiaları 29 süitle, ayrı işletim sistemi süreçleriyle, iki motorda birden sınanıyor.
 
 ### Bilinen sınır: iyzico onay akışı
 

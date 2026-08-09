@@ -79,6 +79,18 @@ export const LIMITS = {
    */
   otpByPhone: { limit: 5, windowSeconds: 60 * 60 },
 
+  /**
+   * Aynı IP'den işletme başvurusu: saatte 3.
+   *
+   * Başvuru her seferinde bir işletme VE bir hesap yaratıyor; sınırsız
+   * bırakılsaydı tek bir betik operatör tablosunu doldurup /yonetim'deki
+   * inceleme kuyruğunu kullanılamaz hâle getirirdi — ve o kuyruk, doğrulama
+   * rozetinin arkasındaki tek insan kontrolü.
+   *
+   * Üç, gerçek bir kullanıcıyı zorlamıyor: kimse saatte üç işletme açmıyor.
+   */
+  operatorSignupByIp: { limit: 3, windowSeconds: 60 * 60 },
+
   /** Aynı IP'den kod isteme: saatte 30. CGNAT yüzünden geniş (bkz. yukarısı). */
   otpByIp: { limit: 30, windowSeconds: 60 * 60 },
 } as const satisfies Record<string, LimitRule>;

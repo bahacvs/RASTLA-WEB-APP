@@ -187,6 +187,101 @@ export async function upsertOperator(id: string, name: string): Promise<Operator
   return (await getOperator(id))!;
 }
 
+/**
+ * İşletme kimliği için okunur ve benzersiz bir slug.
+ *
+ * Kimlik adreslerde görünmüyor ama günlüklerde, mutabakat dosyalarında ve
+ * destek yazışmalarında görünüyor; UUID yerine okunur bir değer, "hangi
+ * işletme" sorusunu bakışta cevaplıyor. Aktivite slug'ıyla aynı kurallar —
+ * kopyalamak yerine oradaki üretici yeniden kullanılabilirdi ama o tabloya
+ * bakıyor; sorgulanan tablo farklı olduğu için ayrı duruyor.
+ */
+export async function uniqueOperatorId(name: string): Promise<string> {
+  const base =
+    name
+      .toLocaleLowerCase('tr-TR')
+      .replaceAll('ı', 'i')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 40) || 'isletme';
+
+  const client = await db();
+  let id = base;
+  let n = 2;
+  while (await client.get('SELECT 1 FROM operators WHERE id = ?', [id])) {
+    id = `${base}-${n++}`;
+  }
+  return id;
+}
+
+export type SignupResult =
+  | { ok: true; operator: Operator; user: OperatorUser }
+  | { ok: false; reason: 'email_taken' };
+
+/**
+ * İşletmenin kendi başvurusu: işletme + sahip hesabı birlikte açılır.
+ *
+ * Bu duvar yıkılmadan onuncu işletmeye çıkılamıyordu — hesabı elle biz
+ * açıyorduk ve her işletme bir insan-iş demekti.
+ *
+ * **Başvuru DOĞRULAMA DEĞİLDİR.** İşletme `verification_status='basvuru'`
+ * ile doğuyor; müşteri tarafındaki rozet görünmüyor ve ilanları
+ * `pending_review`'a düşüyor (bkz. `publishTargetFor`). Kendi kendini
+ * doğrulayabilen bir kayıt, rozetin arkasındaki tek insan kontrolünü
+ * ortadan kaldırırdı.
+ *
+ * E-posta çakışırsa **işletme de açılmıyor**: sıra bilinçli olarak
+ * hesap-önce değil, ama başarısızlıkta yaratılan işletme siliniyor. Yoksa
+ * her başarısız denemede sahipsiz bir işletme satırı birikirdi.
+ */
+export async function signUpOperator(input: {
+  operatorName: string;
+  contactEmail: string;
+  userName: string;
+  email: string;
+  phone: string | null;
+  password: string;
+}): Promise<SignupResult> {
+  const client = await db();
+
+  // E-posta zaten alınmışsa işletmeyi hiç açmıyoruz. UNIQUE kısıtı yine son
+  // söz sahibi (aşağıda yakalanıyor); bu kontrol yalnızca boş işletme
+  // satırı bırakmamak için.
+  const taken = await client.get('SELECT 1 FROM operator_users WHERE email = ?', [
+    normalizeEmail(input.email),
+  ]);
+  if (taken) return { ok: false, reason: 'email_taken' };
+
+  const operatorId = await uniqueOperatorId(input.operatorName);
+
+  await client.run(
+    `INSERT INTO operators (id, name, contact_email, verification_status, created_at)
+     VALUES (?, ?, ?, 'basvuru', ?)`,
+    [operatorId, input.operatorName, input.contactEmail, new Date().toISOString()]
+  );
+
+  const created = await createOperatorUser({
+    operatorId,
+    email: input.email,
+    name: input.userName,
+    phone: input.phone,
+    password: input.password,
+    role: 'owner',
+  });
+
+  if (!created.ok) {
+    // Yarışta kaybettik: aynı e-posta bu arada alınmış. Az önce açtığımız
+    // işletmeyi geri alıyoruz — sahipsiz bir işletme, inceleme kuyruğunda
+    // hiç kimsenin açıklayamayacağı bir satır olurdu.
+    await client.run('DELETE FROM operators WHERE id = ?', [operatorId]);
+    return { ok: false, reason: 'email_taken' };
+  }
+
+  return { ok: true, operator: (await getOperator(operatorId))!, user: created.user };
+}
+
 // ------------------------------------------------------- pazaryeri / ödeme
 
 /**

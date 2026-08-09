@@ -106,12 +106,17 @@ export default function PartnerPage() {
           </p>
 
           <div className="flex flex-wrap gap-sm">
-            <a
-              href={`mailto:${PARTNER_CONTACT_EMAIL}?subject=İşletme kaydı`}
+            {/*
+              Ana düğme artık e-posta değil, kaydın kendisi: işletme kendi
+              hesabını açıp takvimini kurabiliyor. E-posta yolu duruyor ama
+              ikincil — "önce konuşalım" diyen için.
+            */}
+            <Link
+              href="/isletme/basvuru"
               className="rounded-lg bg-primary px-5 py-3 text-label-bold text-on-primary transition-transform active:scale-95"
             >
               İşletmemi Kaydet
-            </a>
+            </Link>
             <a
               href={`mailto:${PARTNER_CONTACT_EMAIL}?subject=Demo talebi`}
               className="rounded-lg border border-outline-variant px-5 py-3 text-label-bold text-on-surface-variant transition-transform active:scale-95"

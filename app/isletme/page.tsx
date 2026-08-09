@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
+import Link from 'next/link';
 import { OperatorLoginForm } from './OperatorLoginForm';
 import { currentOperator } from '@/lib/auth';
 import { countOperatorUsers } from '@/lib/db/operators';
@@ -25,14 +26,32 @@ export default async function OperatorLoginPage() {
         {hasAccounts ? (
           <OperatorLoginForm />
         ) : (
+          /*
+            Kurulumda hiç hesap yokken de giriş formu göstermenin anlamı yok.
+            Eskiden burada `npm run operator:create` yazıyordu; artık işletme
+            kendi hesabını açabildiği için komut satırı tek yol değil ve
+            sayfayı açan kişi çoğunlukla sunucuya erişimi olan biri de değil.
+          */
           <div className="rounded-xl border border-outline-variant bg-surface-container-lowest p-md shadow-card">
             <p className="mb-sm text-body-md text-on-surface-variant">
-              Henüz hesap oluşturulmamış. Sunucuda ilk sahip hesabını şu komutla açın:
+              Henüz hesap yok. İlk işletme hesabını buradan açabilirsiniz.
             </p>
-            <pre className="overflow-x-auto rounded-lg bg-surface-container p-3 font-mono text-label-sm text-on-surface">
-              npm run operator:create
-            </pre>
+            <Link
+              href="/isletme/basvuru"
+              className="inline-block rounded-lg bg-primary px-4 py-3 text-label-bold text-on-primary"
+            >
+              İşletme Kaydı
+            </Link>
           </div>
+        )}
+
+        {hasAccounts && (
+          <p className="mt-lg text-center text-body-md text-on-surface-variant">
+            Hesabınız yok mu?{' '}
+            <Link href="/isletme/basvuru" className="text-primary underline">
+              İşletme kaydı
+            </Link>
+          </p>
         )}
       </div>
     </div>
