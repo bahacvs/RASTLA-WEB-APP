@@ -176,6 +176,41 @@ export default async function ActivityDetailPage({
               )}
             </div>
 
+            {/*
+              Masaüstü rezervasyon kartı — AKIŞIN İÇİNDE, yapışkan değil.
+
+              Önce `fixed`, sonra `sticky bottom` denendi; ikisi de sağ
+              sütunun içeriğini örtüyordu. Sebep yapısal: kart ile uzun
+              içerik AYNI sütunda, dolayısıyla konumlandırılmış bir kart her
+              hâlükârda birinin üstüne biniyor. Ayrı bir sütun açmak bu
+              ekranın düzenini baştan kurmak demekti.
+
+              Yukarıya alınınca sorun kendiliğinden bitiyor: kart sayfa
+              açılışında zaten görünür durumda ve hiçbir metni kesmiyor.
+              Mobilde alttaki yapışkan çubuk aynen duruyor — orada tek sütun
+              olduğu için o örtüşme yaşanmıyor.
+            */}
+            <div className="mb-lg hidden rounded-xl border border-outline-variant/50 bg-surface p-md shadow-card md:block">
+              <div className="mb-md flex items-center justify-between">
+                <div>
+                  <p className="text-label-sm text-on-surface-variant">Kişi başı</p>
+                  <p className="text-title-price text-on-surface">
+                    {formatPrice(activity.priceTRY)}
+                  </p>
+                </div>
+                <div className="flex items-center text-primary">
+                  <Icon name="star" filled size={16} />
+                  <span className="ml-1 text-label-bold text-on-surface">{activity.rating}</span>
+                </div>
+              </div>
+              <Link
+                href={`/rezervasyon/${activity.slug}`}
+                className="block w-full rounded-lg bg-primary px-8 py-3 text-center text-label-bold text-on-primary shadow-sm transition-colors hover:bg-primary-container"
+              >
+                Rezervasyon Yap
+              </Link>
+            </div>
+
             {activity.description && (
               <div className="mb-lg">
                 <h2 className="mb-sm text-headline-sm text-on-surface">Açıklama</h2>
@@ -283,6 +318,7 @@ export default async function ActivityDetailPage({
               </div>
             )}
           </div>
+
         </div>
       </main>
 
@@ -302,25 +338,6 @@ export default async function ActivityDetailPage({
         </div>
       </div>
 
-      {/* Masaüstü sabit rezervasyon kartı */}
-      <div className="fixed right-lg bottom-lg z-50 hidden w-[320px] rounded-xl border border-outline-variant/50 bg-surface p-md shadow-[0_8px_24px_rgba(0,0,0,0.1)] md:block">
-        <div className="mb-md flex items-center justify-between">
-          <div>
-            <p className="text-label-sm text-on-surface-variant">Kişi başı</p>
-            <p className="text-title-price text-on-surface">{formatPrice(activity.priceTRY)}</p>
-          </div>
-          <div className="flex items-center text-primary">
-            <Icon name="star" filled size={16} />
-            <span className="ml-1 text-label-bold text-on-surface">{activity.rating}</span>
-          </div>
-        </div>
-        <Link
-          href={`/rezervasyon/${activity.slug}`}
-          className="block w-full rounded-lg bg-primary px-8 py-3 text-center text-label-bold text-on-primary shadow-sm transition-colors hover:bg-primary-container"
-        >
-          Rezervasyon Yap
-        </Link>
-      </div>
     </div>
   );
 }

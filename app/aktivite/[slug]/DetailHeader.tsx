@@ -52,11 +52,25 @@ export function DetailHeader() {
   }, []);
 
   return (
+    /*
+      `sticky` + `-mb-16`: başlık AKIŞTA ama yer KAPLAMIYOR.
+
+      Buradaki tasarım kasıtlı — başlık açılışta kahraman görselin üzerinde
+      şeffaf duruyor, kaydırınca opaklaşıyor. `fixed` ile yapılıyordu ve iki
+      şeyi bozuyordu: `mx-auto` akış dışı bir öğede ortalamadığı için başlık
+      sola yapışıp geniş ekranlarda sağda örtülmemiş bir şerit bırakıyordu, ve
+      sayfanın en üstündeki tanıtım bandını tamamen kapatıyordu.
+
+      `sticky` bandın altına diziliyor; negatif alt boşluk kapladığı 64 pikseli
+      geri veriyor, böylece görsel yine başlığın altından başlıyor ve şeffaf
+      geçiş korunuyor.
+    */
     <header
-      className={`fixed top-0 z-50 mx-auto flex h-16 w-full max-w-7xl items-center justify-between px-container-margin transition-all duration-300 ${
+      className={`sticky top-0 z-50 -mb-16 w-full transition-all duration-300 ${
         scrolled ? 'border-b border-outline-variant/30 bg-surface shadow-sm' : 'bg-transparent'
       }`}
     >
+      <div className="mx-auto flex h-16 w-full max-w-7xl items-center justify-between px-container-margin">
       <button
         type="button"
         onClick={() => router.back()}
@@ -81,6 +95,7 @@ export function DetailHeader() {
       >
         <Icon name={copied ? 'check_circle' : 'share'} />
       </button>
+      </div>
     </header>
   );
 }

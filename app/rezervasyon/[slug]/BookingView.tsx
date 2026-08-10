@@ -166,7 +166,14 @@ export function BookingView({
 
   return (
     <div className="pb-32 md:pb-12">
-      <header className="fixed top-0 z-50 mx-auto flex h-16 w-full max-w-7xl items-center justify-between border-b border-surface-variant bg-surface px-container-margin shadow-sm">
+      {/*
+        `sticky` + iki katman: `fixed` bir öğede `mx-auto` ortalama yapmıyor
+        (öğe akışta değil), bu yüzden başlık sola yapışıp geniş ekranlarda
+        sağda örtülmemiş bir şerit bırakıyordu — ve akışın en üstündeki
+        tanıtım bandını tamamen kapatıyordu. Genişlik sınırı iç katmanda.
+      */}
+      <header className="sticky top-0 z-50 w-full border-b border-surface-variant bg-surface shadow-sm">
+        <div className="mx-auto flex h-16 w-full max-w-7xl items-center justify-between px-container-margin">
         <div className="flex items-center gap-4">
           <button
             type="button"
@@ -177,6 +184,7 @@ export function BookingView({
             <Icon name="arrow_back" />
           </button>
           <h1 className="text-headline-sm text-primary">Rezervasyon</h1>
+        </div>
         </div>
       </header>
 
@@ -189,7 +197,7 @@ export function BookingView({
         <input type="hidden" name="children" value={children} />
 
         {/* max-w-[32rem]: `max-w-lg` @theme'deki --spacing-lg tokenı yüzünden kullanılamıyor. */}
-        <main className="mx-auto mt-20 max-w-[32rem] space-y-lg px-container-margin">
+        <main className="mx-auto mt-lg max-w-[32rem] space-y-lg px-container-margin">
           {/* Adım 1 — tarih ve saat */}
           <section className="rounded-xl border border-outline-variant bg-surface-container-lowest p-md shadow-card">
             <h2 className="mb-md text-headline-sm text-on-surface">Tarih ve Saat Seçimi</h2>

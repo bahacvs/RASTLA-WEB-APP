@@ -50,7 +50,7 @@ export default async function HomePage() {
     <div className="pb-24">
       <HomeTopBar />
 
-      <main className="mx-auto max-w-7xl px-container-margin pt-20">
+      <main className="mx-auto max-w-7xl px-container-margin pt-lg">
         {/* Hero + arama kutusu */}
         <section className="mt-xl mb-xl">
           <h1 className="mb-4 text-display-lg text-on-background">
