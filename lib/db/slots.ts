@@ -395,6 +395,38 @@ export async function listSlots(activityId: string, date: string): Promise<Slot[
   return rows.map(toSlot);
 }
 
+/**
+ * Birden çok aktivitenin birden çok günü — **tek sorguda.**
+ *
+ * İşletme ekranları `listSlots`'u iç içe döngülerde çağırıyordu: Bugün ekranı
+ * aktivite başına bir kez, Rezervasyonlar ekranı aktivite × gün kez. Beş
+ * aktiviteli bir işletmede taşıma seçenekleri için on beş ayrı sorgu demekti
+ * ve sorgular birbirini beklediği için süre doğrusal büyüyordu.
+ *
+ * Boş listeyle çağrılırsa sorgu HİÇ atılmıyor: `IN ()` geçersiz SQL ve
+ * "aktivitesi olmayan işletme" gerçek bir durum (yeni kayıt olan herkes).
+ */
+export async function listSlotsForActivities(
+  activityIds: string[],
+  dates: string[]
+): Promise<Slot[]> {
+  const ids = [...new Set(activityIds)];
+  const days = [...new Set(dates)];
+  if (ids.length === 0 || days.length === 0) return [];
+
+  const rows = await (
+    await db()
+  ).all<SlotRow>(
+    `SELECT * FROM slots
+      WHERE activity_id IN (${ids.map(() => '?').join(', ')})
+        AND slot_date IN (${days.map(() => '?').join(', ')})
+      ORDER BY slot_date, slot_time`,
+    [...ids, ...days]
+  );
+
+  return rows.map(toSlot);
+}
+
 export async function getSlot(id: string): Promise<Slot | null> {
   const row = await (await db()).get<SlotRow>('SELECT * FROM slots WHERE id = ?', [id]);
   return row ? toSlot(row) : null;

@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { LinkPending, LinkPendingAnnouncement } from '@/components/Pending';
 import { agencyLogoutAction } from '@/app/actions/agency';
 import type { AgencySession } from '@/lib/agency-auth';
 
@@ -41,6 +42,8 @@ export function AgencyNav({ session }: { session: AgencySession }) {
             className="rounded-full border border-outline-variant px-4 py-2 text-label-bold whitespace-nowrap text-on-surface-variant hover:bg-surface-container-low"
           >
             {label}
+            <LinkPending />
+            <LinkPendingAnnouncement />
           </Link>
         ))}
       </nav>

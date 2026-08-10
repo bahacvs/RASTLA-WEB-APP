@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { LinkPending, LinkPendingAnnouncement } from '@/components/Pending';
 import { operatorLogoutAction } from '@/app/actions/operator';
 import { listMemberships } from '@/lib/db/memberships';
 import { OperatorSwitcher } from '@/components/OperatorSwitcher';
@@ -86,6 +87,10 @@ export async function OperatorNav({ session }: { session: OperatorSession }) {
             className="rounded-full border border-outline-variant px-4 py-2 text-label-bold whitespace-nowrap text-on-surface-variant hover:bg-surface-container-low"
           >
             {label}
+            {/* Tıklandığı anda görünen bekleme halkası — sunucu cevabı
+                beklenirken ekranda hiçbir şey değişmiyordu. */}
+            <LinkPending />
+            <LinkPendingAnnouncement />
           </Link>
         ))}
       </nav>

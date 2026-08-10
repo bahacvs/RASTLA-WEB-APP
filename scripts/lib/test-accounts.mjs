@@ -135,12 +135,36 @@ export async function ensurePlatformAccounts() {
 }
 
 /** Yönetim paneline gerçek giriş formundan girer. */
+/**
+ * Adres değişti ama İÇERİK geldi mi.
+ *
+ * Bölümlere `loading.tsx` eklendiğinde gezinme iki aşamalı oldu: adres hemen
+ * değişiyor, iskelet çiziliyor, gerçek içerik akışla arkadan geliyor.
+ * `waitForURL` ilk aşamada çözülüyor ve hemen ardından `innerText()` okuyan
+ * bir test iskeleti okuyup "ekranda İşletmeler yazmıyor" diyordu — ürün doğru
+ * çalışırken test düşüyordu.
+ *
+ * `networkidle` akış tamamlanana kadar bekliyor; iskelet olmayan sayfalarda
+ * da anında dönüyor.
+ */
+async function settled(page) {
+  await page.waitForLoadState('networkidle');
+
+  // `networkidle` yetmiyor: akışla gelen içerikte ağ sakinleşmiş ama React
+  // hâlâ iskeleti gösteriyor olabiliyor. Kesin ölçüt iskeletin DOM'dan
+  // KALKMASI. İskeleti olmayan sayfalarda anında çözülüyor.
+  await page
+    .locator('[aria-label="Sayfa yükleniyor"]')
+    .waitFor({ state: 'detached', timeout: 20000 });
+}
+
 export async function loginAsPlatform(page, baseUrl, role = 'admin') {
   await page.goto(`${baseUrl}/yonetim`, { waitUntil: 'networkidle' });
   await page.fill('#email', platformEmailFor(role));
   await page.fill('#password', TEST_PASSWORD);
   await page.getByRole('button', { name: 'Giriş Yap' }).click();
   await page.waitForURL(/\/yonetim\/isletmeler/, { timeout: 15000 });
+  await settled(page);
 }
 
 /** Giriş formunu gerçek yoldan doldurur — oturum çerezi elle üretilmez. */
@@ -152,4 +176,5 @@ export async function loginAs(page, baseUrl, operatorId, role = 'owner') {
   // Giriş sonrası varsayılan ekran role göre değişiyor: Bugün'ü görebilen
   // oraya, göremeyen bilet okutma ekranına düşüyor.
   await page.waitForURL(/\/isletme\/(bugun|tara)/, { timeout: 15000 });
+  await settled(page);
 }

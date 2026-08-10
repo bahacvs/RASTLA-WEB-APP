@@ -5,10 +5,10 @@ import { Icon } from '@/components/Icon';
 import { currentOperator } from '@/lib/auth';
 import { listOperatorUsers } from '@/lib/db/operators';
 import { listBookingsForOperator, type BookingStatus } from '@/lib/db/bookings';
-import { displayContact, getUser } from '@/lib/db/users';
-import { getActivityBySlug } from '@/lib/db/activities';
+import { displayContact, getUsers } from '@/lib/db/users';
+import { getActivitiesBySlugs } from '@/lib/db/activities';
 import { formatPrice } from '@/lib/format';
-import { listSlots } from '@/lib/db/slots';
+import { listSlotsForActivities } from '@/lib/db/slots';
 import { forecastsForOperator } from '@/lib/db/weather.mjs';
 import { listBranches, validBranchFilter } from '@/lib/db/branches';
 import { getAgency } from '@/lib/db/agencies';
@@ -69,18 +69,22 @@ export default async function OperatorBookingsPage({
   // Aktivite ve misafir bilgisi JSX'ten ÖNCE toplanır: render sırasında veri
   // çekilemez. Aynı slug ya da aynı kişi birden çok rezervasyonda geçebildiği
   // için tekilleştirilir; aksi hâlde aynı satır defalarca sorgulanırdı.
+  // İlanlar ve müşteriler İKİ sorguda. Önce her biri için ayrı sorgu
+  // atılıyordu; paralel oldukları için süre patlamıyordu ama otuz
+  // rezervasyonlu bir gün altmış sorgu demekti.
+  const [activityMap, userMap] = await Promise.all([
+    getActivitiesBySlugs(bookings.map((b) => b.activitySlug)),
+    getUsers(bookings.map((b) => b.userId)),
+  ]);
+
   const activities = new Map(
-    await Promise.all(
-      [...new Set(bookings.map((b) => b.activitySlug))].map(
-        async (slug) => [slug, await getActivityBySlug(slug)] as const
-      )
+    [...new Set(bookings.map((b) => b.activitySlug))].map(
+      (slug) => [slug, activityMap.get(slug) ?? null] as const
     )
   );
   const guests_ = new Map(
-    await Promise.all(
-      [...new Set(bookings.map((b) => b.userId))].map(
-        async (id) => [id, displayContact(await getUser(id))] as const
-      )
+    [...new Set(bookings.map((b) => b.userId))].map(
+      (id) => [id, displayContact(userMap.get(id) ?? null)] as const
     )
   );
 
@@ -106,17 +110,23 @@ export default async function OperatorBookingsPage({
     return isoDate(d);
   });
 
+  // Taşıma seçenekleri TEK sorguda. Önce aktivite × gün iç içe döngüsüydü:
+  // beş aktiviteli bir işletmede on beş ayrı sorgu ve hepsi birbirini
+  // bekliyordu.
+  const optionSlots = await listSlotsForActivities(
+    [...activities.values()].filter((a) => a !== null).map((a) => a.id),
+    optionDays
+  );
+
   const slotOptions = new Map<string, SlotOption[]>();
   for (const [slug, activity] of activities) {
     if (!activity) continue;
-    const options: SlotOption[] = [];
-    for (const date of optionDays) {
-      for (const slot of await listSlots(activity.id, date)) {
-        if (slot.status !== 'open' || slot.remaining <= 0) continue;
-        options.push({ id: slot.id, date, time: slot.time, remaining: slot.remaining });
-      }
-    }
-    slotOptions.set(slug, options);
+    slotOptions.set(
+      slug,
+      optionSlots
+        .filter((s) => s.activityId === activity.id && s.status === 'open' && s.remaining > 0)
+        .map((s) => ({ id: s.id, date: s.date, time: s.time, remaining: s.remaining }))
+    );
   }
 
   // "Hangi acente gönderdi" sorusu işletmenin en sık sorduğu şeylerden biri;

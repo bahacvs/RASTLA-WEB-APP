@@ -139,6 +139,38 @@ Bölme tek bir yerde yapılır — `paymentSplit()` (`lib/pricing.mjs`) — ve b
 
 Online tahsilat açık değilse kapora **alınmaz** ve kayıt kaporalı görünmez: tahsil edilemeyecek bir kaporayı "alındı" diye yazmak, tesiste ödenecek tutarı olduğundan az göstermek olurdu.
 
+## Performans
+
+Üç ölçülmüş kural var ve üçü de bir kez ihlal edildiği için yazılı.
+
+**Fonksiyonlar veritabanıyla aynı kıtada çalışır.** `vercel.json` içindeki
+`regions: ["fra1"]` Neon'un `eu-central-1` bölgesiyle eşleşir. Varsayılan
+`iad1` (Virginia) ile her sorgu bir Atlantik geçişiydi: ölçülen gidiş-dönüş
+**176 ms**. Veritabanı taşınırsa bu ayar da taşınmalı; ayrı düşmeleri sessizce
+yavaşlama üretir.
+
+**Hiçbir ekranın sorgu sayısı kayıt sayısıyla büyümez.** Bir döngü içinde
+`await` edilen sorgu, yerelde SQLite ile görünmez (sorgu 0,1 ms) ama ağ
+varken doğrusal büyür. Bugün ekranı dolu bir günde **96 sorgu** atıyordu;
+şimdi 10 atıyor ve rezervasyon sayısı on beş katına çıksa da 10 kalıyor.
+Toplu okuma yolları: `getUsers`, `getActivitiesBySlugs`,
+`listSlotsForActivities`.
+
+**İddia sayılabilir.** `RASTLA_QUERY_LOG=1` ile her sorgu günlüğe düşer ve
+`scripts/verify-performance.mjs` sayfa başına sorgu sayısını sayar: az ve çok
+kayıtla ölçüp farkın sabit kaldığını doğrular. Süre değil sorgu sayısı
+ölçülür — süre makineye ve ağa bağlı, sorgu sayısı ise doğrudan hatanın
+kendisi.
+
+### Bekleme görünür olmalı
+
+Ekranların çoğu `force-dynamic` ve veritabanına gidiyor. App Router'da
+dinamik bir sayfaya giden `<Link>`, sunucu cevap verene kadar ekranda hiçbir
+şeyi değiştirmez — kullanıcı tıklamadığını sanıp tekrar basar. İki katman
+var: bölüm başına `loading.tsx` iskelet ekranı **anında** çizilir, ve
+`components/Pending.tsx` içindeki `LinkPending` tıklanan bağlantının yanında
+bekleme halkasını gösterir. İkisi de ekran okuyucuya ayrıca bildirir.
+
 ## İptal ve kapasite iadesi
 
 Rezervasyon hem müşteri hem işletme tarafından iptal edilebilir; iptal edilen yerin kapasitesi slota **tam olarak bir kez** geri verilir. Çift tıklama ya da tekrar gönderim kapasiteyi şişirmez — güvence yine koşullu güncellemede:
@@ -406,6 +438,10 @@ SERVER_LOG=… node scripts/verify-pricing.mjs # sezon/saat tarifesi, grup indir
 # Kapora (sunucu PAYMENT_PROVIDER=fake ile başlatılmış olmalı):
 SERVER_LOG=… node scripts/verify-deposit.mjs # kaporadan komisyon, iade, beklenen tahsilat
 
+# Performans (sunucu RASTLA_QUERY_LOG=1 ile başlatılmış olmalı):
+RASTLA_QUERY_LOG=1 npm start > server.log &
+SERVER_LOG=server.log node scripts/verify-performance.mjs # sorgu sayısı rezervasyonla büyümüyor
+
 # Otomatik uyarılar (sunucu CRON_SECRET ve ALERT_EMAIL_TO ile başlatılmış olmalı):
 SERVER_LOG=server.log node scripts/verify-alerts.mjs  # eşik, tekilleştirme, yarış, e-posta içeriği
 
@@ -435,7 +471,7 @@ Bilinen bir tuzak: `--spacing-md` gibi adlandırılmış boşluk tokenları Tail
 
 **Partner tarafı bir ilan paneli değil, operasyon sistemi.** Panel açıldığında ilk gelen soru "bugün ne var?" ve cevabı `/isletme/bugun`. Telefondan gelen rezervasyon aynı kapasiteyi tüketiyor, ekipman havuzu kişi sayısından bağımsız sınır koyuyor, katılım ve gelmeyen ayrı ayrı işaretleniyor. İkinci soru "ne kadar kazandım" ve cevabı `/isletme/finans`: ödeme alındığında işletmenin payı bloke ediliyor, hizmet verildiğinde serbest bırakılıyor — müşterinin ödemesi tek başına işletmenin kazancı değil.
 
-Bunların hepsi **gerçek bir veritabanına** yazıyor (SQLite ya da Postgres, tek bir bağlantı dizesiyle seçilir) ve doğruluk iddiaları 31 süitle, ayrı işletim sistemi süreçleriyle, iki motorda birden sınanıyor.
+Bunların hepsi **gerçek bir veritabanına** yazıyor (SQLite ya da Postgres, tek bir bağlantı dizesiyle seçilir) ve doğruluk iddiaları 32 süitle, ayrı işletim sistemi süreçleriyle, iki motorda birden sınanıyor.
 
 ### Bilinen sınır: iyzico onay akışı
 
@@ -475,7 +511,7 @@ lib/alerts/           tespit kuralları ve uyarı üretimi
 lib/jobs/             zamanlanmış işler — HTTP ucu ve komut satırı aynı kodu çağırır
 lib/sms/, lib/mail/   giden mesaj sağlayıcıları (console varsayılan)
 public/               görseller ve marka varlıkları
-scripts/              varlık üretimi ve 31 doğrulama süiti
+scripts/              varlık üretimi ve 32 doğrulama süiti
 reference/prototypes/ özgün statik Stitch ekranları (build'e dahil değil)
 legal/                KVKK ve mesafeli satış metinleri — TASLAK, hukukçu onayı bekliyor
 ```

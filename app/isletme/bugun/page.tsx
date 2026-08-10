@@ -3,8 +3,8 @@ import { OperatorNav } from '@/components/OperatorNav';
 import { requireOperatorPage, can } from '@/lib/auth';
 import { listBookingsForOperator, SOURCE_LABELS, PAYMENT_MODE_LABELS } from '@/lib/db/bookings';
 import { listActivitiesForOperator } from '@/lib/db/activities';
-import { listSlots } from '@/lib/db/slots';
-import { displayContact, getUser } from '@/lib/db/users';
+import { listSlotsForActivities } from '@/lib/db/slots';
+import { displayContact, getUsers } from '@/lib/db/users';
 import { formatPrice } from '@/lib/format';
 import { forecastsForOperator } from '@/lib/db/weather.mjs';
 import { listBranches, validBranchFilter } from '@/lib/db/branches';
@@ -74,20 +74,26 @@ export default async function TodayPage({
 
   const awaitingPayment = bookings.filter((b) => b.status === 'pending_payment').length;
 
-  // Bugünün boş kapasitesi: açık slotlardaki kalan yer.
-  let freeCapacity = 0;
-  for (const activity of activities) {
-    const slots = await listSlots(activity.id, today);
-    freeCapacity += slots
-      .filter((s) => s.status === 'open')
-      .reduce((sum, s) => sum + s.remaining, 0);
-  }
+  // Bugünün boş kapasitesi: açık slotlardaki kalan yer — TEK sorguda.
+  // Aktivite başına ayrı sorgu atan bir döngüydü.
+  const todaySlots = await listSlotsForActivities(
+    activities.map((a) => a.id),
+    [today]
+  );
+  const freeCapacity = todaySlots
+    .filter((s) => s.status === 'open')
+    .reduce((sum, s) => sum + s.remaining, 0);
 
-  const contacts = new Map<string, { name: string; phone: string }>();
-  for (const booking of live) {
-    if (contacts.has(booking.userId)) continue;
-    contacts.set(booking.userId, displayContact(await getUser(booking.userId)));
-  }
+  // Müşteri adları TEK sorguda geliyor.
+  //
+  // Burada bir döngü içinde `await getUser(...)` vardı ve dolu bir günde 82
+  // ayrı sorgu üretiyordu; sorgular birbirini beklediği için ekran sekiz
+  // saniyeye çıkıyordu. Az rezervasyonlu bir kurulumda hiç fark edilmiyordu —
+  // bu tür hatalar tam da işletme büyüdüğünde ortaya çıkıyor.
+  const users = await getUsers(live.map((b) => b.userId));
+  const contacts = new Map(
+    live.map((b) => [b.userId, displayContact(users.get(b.userId) ?? null)])
+  );
 
   const mayAddManual = can(session, 'rezervasyon.manuel');
 

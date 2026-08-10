@@ -81,6 +81,33 @@ export async function getUser(id: string): Promise<User | null> {
 }
 
 /**
+ * Birden çok kullanıcıyı **tek sorguda** getirir.
+ *
+ * Var olma sebebi ölçülmüş bir yavaşlık: işletme ekranları müşteri adlarını
+ * rezervasyon listesi üzerinde döngüyle çekiyordu ve dolu bir günde bu 82 ayrı
+ * sorgu demekti. Sunucu Frankfurt'taki veritabanına her sorguda ~176 ms
+ * harcadığı için Bugün ekranı sekiz saniyeye çıkmıştı — hem de sorgular
+ * birbirini beklediği için doğrusal olarak.
+ *
+ * Döngüde `await` etmek küçük listelerde görünmez, büyüklerde ölümcül.
+ * Ekranların kendi döngülerini yazması yerine burada tek bir yol var ki
+ * "acaba burada da N+1 var mı" sorusu tek yerde cevaplanabilsin.
+ */
+export async function getUsers(ids: string[]): Promise<Map<string, User>> {
+  const unique = [...new Set(ids)];
+  if (unique.length === 0) return new Map();
+
+  const rows = await (
+    await db()
+  ).all<Row>(
+    `SELECT * FROM users WHERE id IN (${unique.map(() => '?').join(', ')})`,
+    unique
+  );
+
+  return new Map(rows.map((row) => [row.id, toUser(row)]));
+}
+
+/**
  * Silinmiş hesabın adı yerine yazılan metin.
  *
  * İşletme, geçmiş bir rezervasyonu listelediğinde bunu görür — kaydın kaybolmuş

@@ -1,5 +1,19 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+
+  "//regions": [
+    "Fonksiyonlar VERİTABANIYLA AYNI KITADA çalışmalı.",
+    "",
+    "Varsayılan `iad1` (Virginia) ile Neon'un `eu-central-1` (Frankfurt) arası",
+    "her sorguda bir Atlantik geçişi demekti: ölçülen gidiş-dönüş 176 ms.",
+    "Beş sorgulu sıradan bir sayfa daha ilk baytı göndermeden yarım saniyeyi",
+    "kaybediyordu; sorgu sayısı arttıkça bu doğrusal büyüyor.",
+    "",
+    "`fra1` Frankfurt. Veritabanı taşınırsa BURASI DA taşınmalı — ikisi",
+    "birbirine bağlı ve ayrı düşmeleri sessizce yavaşlama üretir."
+  ],
+  "regions": ["fra1"],
+
   "crons": [
     {
       "path": "/api/gorevler/odeme-suresi",

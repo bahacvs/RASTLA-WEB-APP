@@ -164,6 +164,25 @@ export async function getActivityBySlug(slug: string): Promise<Activity | null> 
   return row ? toActivity(row) : null;
 }
 
+/**
+ * Birden çok ilanı slug'ıyla **tek sorguda** getirir.
+ *
+ * Rezervasyon listesi her satırın ilanını ayrı ayrı okuyordu. Paralel
+ * çalıştıkları için toplam süre patlamıyordu ama otuz rezervasyonlu bir gün
+ * yine otuz sorgu demekti; veritabanı bağlantı havuzu asıl darboğaz hâline
+ * gelmeden önce bunu tek sorguya indirmek doğru olan.
+ */
+export async function getActivitiesBySlugs(slugs: string[]): Promise<Map<string, Activity>> {
+  const unique = [...new Set(slugs)];
+  if (unique.length === 0) return new Map();
+
+  const rows = await (
+    await db()
+  ).all<Row>(`${SELECT} WHERE slug IN (${unique.map(() => '?').join(', ')})`, unique);
+
+  return new Map(rows.map((row) => [row.slug, toActivity(row)]));
+}
+
 export async function getActivityById(id: string): Promise<Activity | null> {
   const row = await (await db()).get<Row>(`${SELECT} WHERE id = ?`, [id]);
   return row ? toActivity(row) : null;
